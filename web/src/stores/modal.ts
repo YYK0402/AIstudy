@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 export const useModalStore = defineStore("modal", {
   state: () => ({
     newCourseOpen: false,
+    newProviderOpen: false,
   }),
   actions: {
     openNewCourse() {
@@ -10,6 +11,12 @@ export const useModalStore = defineStore("modal", {
     },
     closeNewCourse() {
       this.newCourseOpen = false;
+    },
+    openNewProvider() {
+      this.newProviderOpen = true;
+    },
+    closeNewProvider() {
+      this.newProviderOpen = false;
     },
   },
 });

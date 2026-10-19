@@ -8,6 +8,7 @@
       </div>
     </main>
     <NewCourseModal />
+    <NewProviderModal />
   </div>
 </template>
 
@@ -15,4 +16,5 @@
 import Sidebar from "./components/Sidebar.vue";
 import Topbar from "./components/Topbar.vue";
 import NewCourseModal from "./components/NewCourseModal.vue";
+import NewProviderModal from "./components/NewProviderModal.vue";
 </script>

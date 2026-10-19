@@ -249,3 +249,45 @@ export async function createCourse(input: {
   await saveData(data);
   return course;
 }
+
+// ===== 服务商 CRUD =====
+export async function queryProviders(): Promise<AiProvider[]> {
+  const data = await getData();
+  return data.providers;
+}
+
+export async function createProvider(input: {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  timeout?: number;
+}): Promise<AiProvider> {
+  const data = await getData();
+  const provider: AiProvider = {
+    id: nextId(data.providers),
+    name: input.name,
+    baseUrl: input.baseUrl,
+    apiKey: input.apiKey,
+    timeout: input.timeout ?? 60,
+    enabled: true,
+    createTime: now(),
+  };
+  data.providers.push(provider);
+  await saveData(data);
+  return provider;
+}
+
+export async function updateProvider(provider: AiProvider): Promise<void> {
+  const data = await getData();
+  const idx = data.providers.findIndex((p) => p.id === provider.id);
+  if (idx >= 0) {
+    data.providers[idx] = provider;
+    await saveData(data);
+  }
+}
+
+export async function deleteProvider(id: number): Promise<void> {
+  const data = await getData();
+  data.providers = data.providers.filter((p) => p.id !== id);
+  await saveData(data);
+}
