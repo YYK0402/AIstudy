@@ -2,13 +2,17 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import { viteSingleFile } from "vite-plugin-singlefile";
 
 const webDir = fileURLToPath(new URL(".", import.meta.url));
 
 // 前端打包为 IIFE JS bundle，由插件主入口动态加载后直接 mount 到页签
 export default defineConfig({
   root: webDir,
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    viteSingleFile(),
+  ],
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },

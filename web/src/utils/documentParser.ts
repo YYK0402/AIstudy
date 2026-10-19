@@ -3,7 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth/mammoth.browser";
 import JSZip from "jszip";
 
-// pdfjs-dist 4.x 需要设置 worker 路径，vite 用 new URL 自动处理打包
+// pdfjs-dist 4.x 需要设置 worker 路径
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
@@ -16,7 +16,6 @@ export interface ParsedDocument {
 }
 
 async function parseTxt(arrayBuffer: ArrayBuffer): Promise<string> {
-  // GBK / UTF-8 兼容检测（思源用户多中文）
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(arrayBuffer);
     if (text.includes("\uFFFD")) {
@@ -83,8 +82,6 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
   let contentText = "";
   switch (fileType) {
     case "txt":
-      contentText = await parseTxt(arrayBuffer);
-      break;
     case "md":
       contentText = await parseTxt(arrayBuffer);
       break;
