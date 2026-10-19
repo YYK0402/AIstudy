@@ -10,7 +10,7 @@
         </div>
         <div v-else class="provider-list">
           <div v-for="p in providerStore.providers" :key="p.id" class="provider-item">
-            <div class="logo" style="background:var(--accent-soft);color:var(--accent-strong)">{{ p.name.slice(0, 2) }}</div>
+            <div class="logo" style="background:var(--as-accent-soft);color:var(--as-accent-strong)">{{ p.name.slice(0, 2) }}</div>
             <div class="info"><div class="n">{{ p.name }}</div><div class="s">{{ p.baseUrl }}</div></div>
             <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
           </div>

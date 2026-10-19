@@ -12,11 +12,11 @@
     <div class="course-grid">
       <div v-for="c in courseStore.courses" :key="c.id" class="course-card" @click="enterCourse(c)">
         <div class="cc-top">
-          <div class="cc-icon" style="background:var(--accent-soft)">{{ emojiOf(c.id) }}</div>
+          <div class="cc-icon" style="background:var(--as-accent-soft)">{{ emojiOf(c.id) }}</div>
           <div><div class="cc-name">{{ c.name }}</div><div class="cc-desc">{{ c.description || "尚未添加简介" }}</div></div>
         </div>
         <div class="cc-stats" style="margin-top:14px"><span>创建于 {{ formatDate(c.createTime) }}</span></div>
-        <div class="cc-foot"><span class="cc-todo" style="color:var(--text-faint)">○ 暂无学习记录</span><span class="cc-go">开始学习 →</span></div>
+        <div class="cc-foot"><span class="cc-todo" style="color:var(--as-text-faint)">○ 暂无学习记录</span><span class="cc-go">开始学习 →</span></div>
       </div>
       <div class="course-card add" @click="modalStore.openNewCourse()">
         <span class="plus">＋</span>

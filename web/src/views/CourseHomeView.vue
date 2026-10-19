@@ -6,10 +6,10 @@
     </div>
 
     <div class="stat-grid">
-      <div class="stat"><div class="k"><span class="dot" style="background:var(--green)"></span>已掌握知识点</div><div class="v">0<span> / 0</span></div></div>
-      <div class="stat"><div class="k"><span class="dot" style="background:var(--accent)"></span>待复习</div><div class="v">0</div></div>
-      <div class="stat"><div class="k"><span class="dot" style="background:var(--red)"></span>错题待攻克</div><div class="v">0</div></div>
-      <div class="stat"><div class="k"><span class="dot" style="background:var(--blue)"></span>题目总数</div><div class="v">0</div></div>
+      <div class="stat"><div class="k"><span class="dot" style="background:var(--as-green)"></span>已掌握知识点</div><div class="v">0<span> / 0</span></div></div>
+      <div class="stat"><div class="k"><span class="dot" style="background:var(--as-accent)"></span>待复习</div><div class="v">0</div></div>
+      <div class="stat"><div class="k"><span class="dot" style="background:var(--as-red)"></span>错题待攻克</div><div class="v">0</div></div>
+      <div class="stat"><div class="k"><span class="dot" style="background:var(--as-blue)"></span>题目总数</div><div class="v">0</div></div>
     </div>
 
     <div class="two-col">

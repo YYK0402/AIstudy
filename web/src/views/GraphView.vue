@@ -7,10 +7,10 @@
         <button class="btn sm ghost">⟳ 自动布局</button>
         <button class="btn sm ghost">⤓ 写入思源文档</button>
         <div class="graph-legend">
-          <span class="l"><i style="background:var(--accent)"></i>精通</span>
-          <span class="l"><i style="background:var(--green)"></i>掌握</span>
-          <span class="l"><i style="background:var(--blue)"></i>了解</span>
-          <span class="l"><i style="background:var(--text-faint)"></i>未学习</span>
+          <span class="l"><i style="background:var(--as-accent)"></i>精通</span>
+          <span class="l"><i style="background:var(--as-green)"></i>掌握</span>
+          <span class="l"><i style="background:var(--as-blue)"></i>了解</span>
+          <span class="l"><i style="background:var(--as-text-faint)"></i>未学习</span>
         </div>
       </div>
       <div class="empty-state" style="padding:120px 20px">
