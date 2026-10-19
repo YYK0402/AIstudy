@@ -9,6 +9,7 @@
     </main>
     <NewCourseModal />
     <NewProviderModal />
+    <UploadMaterialModal />
   </div>
 </template>
 
@@ -17,4 +18,5 @@ import Sidebar from "./components/Sidebar.vue";
 import Topbar from "./components/Topbar.vue";
 import NewCourseModal from "./components/NewCourseModal.vue";
 import NewProviderModal from "./components/NewProviderModal.vue";
+import UploadMaterialModal from "./components/UploadMaterialModal.vue";
 </script>

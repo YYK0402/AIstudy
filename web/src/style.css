@@ -441,6 +441,10 @@
 .model-item input { background: var(--as-bg-elev); border: 1px solid var(--as-border); color: var(--as-text); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: var(--as-font-body); width: 110px; }
 .model-item input:focus { outline: none; border-color: var(--as-accent-line); }
 .provider-wrap { display: flex; flex-direction: column; }
+.material-list { display: flex; flex-direction: column; gap: 6px; }
+.material-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--as-bg-elev2); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); }
+.material-item .m-name { font-weight: 500; font-size: 13px; }
+.material-item .m-meta { font-size: 11px; color: var(--as-text-faint); margin-top: 2px; font-family: var(--as-font-mono); }
 .q-list { display: flex; flex-direction: column; gap: 8px; }
 .q-item { padding: 13px 15px; background: var(--as-bg-elev); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); cursor: pointer; transition: all .15s; }
 .q-item:hover { border-color: var(--as-accent-line); }

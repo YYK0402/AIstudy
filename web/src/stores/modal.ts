@@ -6,6 +6,8 @@ export const useModalStore = defineStore("modal", {
     newCourseOpen: false,
     newProviderOpen: false,
     editingProvider: null as AiProvider | null,
+    uploadMaterialOpen: false,
+    uploadMaterialCourseId: 0,
   }),
   actions: {
     openNewCourse() {
@@ -25,6 +27,14 @@ export const useModalStore = defineStore("modal", {
     closeNewProvider() {
       this.newProviderOpen = false;
       this.editingProvider = null;
+    },
+    openUploadMaterial(courseId: number) {
+      this.uploadMaterialCourseId = courseId;
+      this.uploadMaterialOpen = true;
+    },
+    closeUploadMaterial() {
+      this.uploadMaterialOpen = false;
+      this.uploadMaterialCourseId = 0;
     },
   },
 });

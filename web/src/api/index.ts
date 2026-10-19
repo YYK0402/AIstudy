@@ -360,3 +360,38 @@ export async function getTaskModelMap(): Promise<Record<string, number | null>> 
   }
   return map;
 }
+
+// ===== 资料管理 =====
+export async function createMaterial(input: {
+  courseId: number;
+  name: string;
+  fileType: string;
+  contentText: string;
+  assetPath?: string;
+}): Promise<Material> {
+  const data = await getData();
+  const material: Material = {
+    id: nextId(data.materials),
+    courseId: input.courseId,
+    name: input.name,
+    assetPath: input.assetPath ?? "",
+    fileType: input.fileType,
+    contentText: input.contentText,
+    status: "parsed",
+    createTime: now(),
+  };
+  data.materials.push(material);
+  await saveData(data);
+  return material;
+}
+
+export async function deleteMaterial(id: number): Promise<void> {
+  const data = await getData();
+  data.materials = data.materials.filter((m) => m.id !== id);
+  await saveData(data);
+}
+
+export async function queryMaterials(courseId: number): Promise<Material[]> {
+  const data = await getData();
+  return data.materials.filter((m) => m.courseId === courseId);
+}

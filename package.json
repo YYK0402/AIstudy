@@ -30,5 +30,10 @@
     "vue": "^3.5.0",
     "vue-router": "^4.5.0",
     "vue-tsc": "^2.1.10"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299"
   }
 }
