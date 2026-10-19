@@ -11,7 +11,16 @@
         <div v-else class="provider-list">
           <div v-for="p in providerStore.providers" :key="p.id" class="provider-item">
             <div class="logo" style="background:var(--as-accent-soft);color:var(--as-accent-strong)">{{ p.name.slice(0, 2) }}</div>
-            <div class="info"><div class="n">{{ p.name }}</div><div class="s">{{ p.baseUrl }}</div></div>
+            <div class="info">
+              <div class="n">{{ p.name }}</div>
+              <div class="s">{{ p.baseUrl }}</div>
+              <div v-if="testResults[p.id]" class="s" :style="{ color: testResults[p.id].ok ? 'var(--as-green)' : 'var(--as-red)' }">
+                {{ testResults[p.id].message }}
+              </div>
+            </div>
+            <button class="btn sm ghost" :disabled="testingId === p.id" @click="handleTest(p)">
+              {{ testingId === p.id ? "测试中…" : "测试" }}
+            </button>
             <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
           </div>
         </div>
@@ -50,14 +59,17 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
-import { updateProvider } from "../api";
+import { updateProvider, testProvider as testProviderApi } from "../api";
 import type { AiProvider } from "../api";
 
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
+
+const testingId = ref<number | null>(null);
+const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
 
 const tasks = [
   { name: "文档知识点抽取", model: "" },
@@ -75,6 +87,19 @@ async function toggleProvider(provider: AiProvider) {
     await updateProvider(provider);
   } catch (error) {
     console.error("更新服务商状态失败:", error);
+  }
+}
+
+async function handleTest(provider: AiProvider) {
+  testingId.value = provider.id;
+  try {
+    const result = await testProviderApi(provider.id);
+    testResults[provider.id] = { ok: result.ok, message: result.message };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    testResults[provider.id] = { ok: false, message };
+  } finally {
+    testingId.value = null;
   }
 }
 

@@ -1,15 +1,40 @@
 import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
 import { createEmptyData } from "./data";
-import type { AppData } from "./data";
+import type { AppData, CallLog } from "./data";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
+
+interface CallAiMessage {
+  role: string;
+  content: string;
+}
+
+interface CallAiInput {
+  providerId: number;
+  modelId: string;
+  messages: CallAiMessage[];
+  taskKey: string;
+}
+
+interface CallAiResult {
+  content: string;
+  tokenIn: number;
+  tokenOut: number;
+}
+
+interface TestProviderResult {
+  ok: boolean;
+  message: string;
+}
 
 // 暴露给前端（同渲染进程直接挂载）的数据/内核 API
 interface StudyApi {
   getData(): AppData;
   saveData(data: AppData): Promise<{ code: number }>;
   querySql(stmt: string): Promise<unknown>;
+  callAi(input: CallAiInput): Promise<CallAiResult>;
+  testProvider(providerId: number): Promise<TestProviderResult>;
 }
 
 declare global {
@@ -20,6 +45,37 @@ declare global {
       unmount(): void;
     };
   }
+}
+
+interface ForwardProxyResponse {
+  code: number;
+  msg: string;
+  data: {
+    url: string;
+    status: number;
+    contentType: string;
+    body: string;
+    bodyEncoding: string;
+    headers: Record<string, Array<string> | null> | null;
+  } | null;
+}
+
+// 经思源内核 forwardProxy 转发外部请求（绕过 CORS，timeout 单位为毫秒）
+async function forwardProxyRequest(input: {
+  url: string;
+  method: string;
+  headers: Array<Record<string, string>>;
+  payload?: string;
+  timeout?: number;
+}): Promise<ForwardProxyResponse> {
+  return (await fetchSyncPost("/api/network/forwardProxy", {
+    url: input.url,
+    method: input.method,
+    headers: input.headers,
+    payload: input.payload ?? "",
+    contentType: "application/json",
+    timeout: input.timeout ?? 60000,
+  })) as ForwardProxyResponse;
 }
 
 export default class AiStudyPlugin extends Plugin {
@@ -57,7 +113,119 @@ export default class AiStudyPlugin extends Plugin {
       querySql: async (stmt: string) => {
         return await fetchSyncPost("/api/query/sql", { stmt });
       },
+      callAi: async (input: CallAiInput) => {
+        return await this.handleCallAi(input);
+      },
+      testProvider: async (providerId: number) => {
+        return await this.handleTestProvider(providerId);
+      },
     };
+  }
+
+  private getData(): AppData {
+    return this.data[DATA_STORAGE] ?? createEmptyData();
+  }
+
+  private async persist(data: AppData) {
+    this.data[DATA_STORAGE] = data;
+    await this.saveData(DATA_STORAGE, data);
+  }
+
+  private appendLog(
+    data: AppData,
+    taskKey: string,
+    providerName: string,
+    modelName: string,
+    tokenIn: number,
+    tokenOut: number,
+    status: string,
+    errorMsg: string,
+  ) {
+    const log: CallLog = {
+      id: data.logs.reduce((max, l) => Math.max(max, l.id), 0) + 1,
+      taskKey,
+      providerName,
+      modelName,
+      tokenIn,
+      tokenOut,
+      status,
+      errorMsg,
+      createTime: new Date().toISOString(),
+    };
+    data.logs.push(log);
+  }
+
+  private async handleCallAi(input: CallAiInput): Promise<CallAiResult> {
+    const data = this.getData();
+    const provider = data.providers.find((p) => p.id === input.providerId);
+    if (!provider) {
+      throw new Error("服务商不存在");
+    }
+    const url = provider.baseUrl.replace(/\/$/, "") + "/chat/completions";
+    const payload = {
+      model: input.modelId,
+      messages: input.messages,
+    };
+    try {
+      const res = await forwardProxyRequest({
+        url,
+        method: "POST",
+        headers: [
+          { Authorization: `Bearer ${provider.apiKey}` },
+          { "Content-Type": "application/json" },
+        ],
+        payload: JSON.stringify(payload),
+        timeout: (provider.timeout || 60) * 1000,
+      });
+      if (res.code !== 0 || !res.data) {
+        throw new Error(`forwardProxy 失败: ${res.msg}`);
+      }
+      if (res.data.status < 200 || res.data.status >= 300) {
+        throw new Error(`LLM 请求失败: HTTP ${res.data.status} ${res.data.body}`);
+      }
+      const body = JSON.parse(res.data.body) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      const content = body.choices?.[0]?.message?.content ?? "";
+      const tokenIn = body.usage?.prompt_tokens ?? 0;
+      const tokenOut = body.usage?.completion_tokens ?? 0;
+      this.appendLog(data, input.taskKey, provider.name, input.modelId, tokenIn, tokenOut, "success", "");
+      await this.persist(data);
+      return { content, tokenIn, tokenOut };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.appendLog(data, input.taskKey, provider.name, input.modelId, 0, 0, "error", message);
+      await this.persist(data);
+      throw error;
+    }
+  }
+
+  private async handleTestProvider(providerId: number): Promise<TestProviderResult> {
+    const data = this.getData();
+    const provider = data.providers.find((p) => p.id === providerId);
+    if (!provider) {
+      return { ok: false, message: "服务商不存在" };
+    }
+    const url = provider.baseUrl.replace(/\/$/, "") + "/models";
+    try {
+      const res = await forwardProxyRequest({
+        url,
+        method: "GET",
+        headers: [{ Authorization: `Bearer ${provider.apiKey}` }],
+        timeout: 15000,
+      });
+      if (res.code !== 0 || !res.data) {
+        return { ok: false, message: res.msg };
+      }
+      if (res.data.status >= 200 && res.data.status < 300) {
+        return { ok: true, message: `连接成功（HTTP ${res.data.status}）` };
+      }
+      return { ok: false, message: `HTTP ${res.data.status}: ${res.data.body.slice(0, 200)}` };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, message };
+    }
   }
 
   // 注册自定义页签：动态加载前端 bundle 并直接 mount 到页签元素

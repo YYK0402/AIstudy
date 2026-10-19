@@ -279,3 +279,17 @@ export async function deleteProvider(id: number): Promise<void> {
   data.providers = data.providers.filter((p) => p.id !== id);
   await saveData(data);
 }
+
+// ===== AI 调用 =====
+export async function callAi(input: {
+  providerId: number;
+  modelId: string;
+  messages: Array<{ role: string; content: string }>;
+  taskKey: string;
+}): Promise<{ content: string; tokenIn: number; tokenOut: number }> {
+  return window.siyuanAiStudy.callAi(input);
+}
+
+export async function testProvider(providerId: number): Promise<{ ok: boolean; message: string }> {
+  return window.siyuanAiStudy.testProvider(providerId);
+}
