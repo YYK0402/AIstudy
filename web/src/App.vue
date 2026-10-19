@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="ai-study-app">
     <Sidebar />
     <main class="main">
       <Topbar />

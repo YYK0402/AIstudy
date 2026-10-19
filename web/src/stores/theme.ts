@@ -15,10 +15,14 @@ export const useThemeStore = defineStore("theme", {
       this.apply();
     },
     apply() {
+      const root = document.querySelector(".ai-study-app");
+      if (!root) {
+        return;
+      }
       if (this.theme === "light") {
-        document.documentElement.dataset.theme = "light";
+        root.setAttribute("data-theme", "light");
       } else {
-        delete document.documentElement.dataset.theme;
+        root.removeAttribute("data-theme");
       }
     },
   },
