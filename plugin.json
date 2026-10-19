@@ -1,0 +1,50 @@
+{
+  "name": "siyuan-ai-study",
+  "author": "yyk",
+  "url": "",
+  "version": "0.1.0",
+  "minAppVersion": "3.8.0",
+  "kernels": [
+    "windows",
+    "linux",
+    "darwin",
+    "docker",
+    "all"
+  ],
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "docker"
+  ],
+  "frontends": [
+    "desktop",
+    "desktop-window"
+  ],
+  "displayName": {
+    "default": "AI 智能学习",
+    "zh-CN": "AI 智能学习",
+    "en-US": "AI Study"
+  },
+  "description": {
+    "default": "基于可自定义大模型服务商的思源自学课程插件：资料导入、知识点拆解、学习计划、题库刷题、错题复盘、知识图谱、学习报告",
+    "zh-CN": "基于可自定义大模型服务商的思源自学课程插件：资料导入、知识点拆解、学习计划、题库刷题、错题复盘、知识图谱、学习报告",
+    "en-US": "A self-study course plugin based on customizable LLM providers: material import, knowledge points, study plans, quizzes, reviews, knowledge graph and reports"
+  },
+  "readme": {
+    "default": "README.md",
+    "zh-CN": "README.md"
+  },
+  "icon": "icon.png",
+  "preview": "preview.png",
+  "keywords": [
+    "AI",
+    "学习",
+    "课程",
+    "刷题",
+    "知识图谱",
+    "study",
+    "quiz",
+    "knowledge-graph"
+  ]
+}
