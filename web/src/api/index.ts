@@ -1,196 +1,6 @@
-// ===== 数据模型（与主窗口 src/data.ts 保持一致） =====
-export interface AiProvider {
-  id: number;
-  name: string;
-  baseUrl: string;
-  apiKey: string;
-  timeout: number;
-  enabled: boolean;
-  createTime: string;
-}
-
-export interface AiModel {
-  id: number;
-  providerId: number;
-  modelId: string;
-  displayName: string;
-  maxContext: number | null;
-}
-
-export interface TaskModel {
-  taskKey: string;
-  modelId: number | null;
-  isGlobalDefault: boolean;
-}
-
-export interface CallLog {
-  id: number;
-  taskKey: string;
-  providerName: string;
-  modelName: string;
-  tokenIn: number;
-  tokenOut: number;
-  status: string;
-  errorMsg: string;
-  createTime: string;
-}
-
-export interface Course {
-  id: number;
-  siyuanDocId: string;
-  name: string;
-  description: string;
-  target: string;
-  totalCycle: string;
-  status: string;
-  createTime: string;
-}
-
-export interface Chapter {
-  id: number;
-  courseId: number;
-  parentId: number | null;
-  siyuanBlockId: string | null;
-  name: string;
-  level: "chapter" | "unit";
-  sort: number;
-}
-
-export type Mastery = "unlearn" | "known" | "mastered" | "proficient";
-
-export interface KnowledgePoint {
-  id: number;
-  courseId: number;
-  chapterId: number | null;
-  blockId: string | null;
-  name: string;
-  content: string;
-  mastery: Mastery;
-  sourceAssetIds: string;
-  prevKpIds: string;
-  sort: number;
-  createTime: string;
-}
-
-export interface Material {
-  id: number;
-  courseId: number;
-  name: string;
-  assetPath: string;
-  fileType: string;
-  contentText: string;
-  status: string;
-  createTime: string;
-}
-
-export interface MaterialChapter {
-  id: number;
-  materialId: number;
-  chapterId: number;
-}
-
-export interface Question {
-  id: number;
-  courseId: number;
-  kpIds: string;
-  title: string;
-  options: string;
-  answer: string;
-  analysis: string;
-  qType: string;
-  difficulty: string;
-  source: string;
-  createTime: string;
-}
-
-export interface AnswerRecord {
-  id: number;
-  qId: number;
-  userAnswer: string;
-  isCorrect: boolean;
-  score: string;
-  createTime: string;
-}
-
-export interface WrongQuestion {
-  id: number;
-  recordId: number | null;
-  qId: number;
-  reviewTimes: number;
-  createTime: string;
-}
-
-export interface StudyPlan {
-  id: number;
-  courseId: number;
-  planContent: string;
-  targetDate: string;
-  dailyHour: string;
-  createTime: string;
-}
-
-export interface StudyTask {
-  id: number;
-  planId: number;
-  chapterId: number | null;
-  taskType: string;
-  title: string;
-  scheduledDate: string;
-  status: string;
-  sort: number;
-}
-
-export interface ExplainRecord {
-  id: number;
-  courseId: number;
-  kpId: number;
-  userContent: string;
-  aiFeedback: string;
-  aiScore: string;
-  createTime: string;
-}
-
-export interface ReviewSchedule {
-  id: number;
-  kpId: number | null;
-  qId: number | null;
-  stage: number;
-  dueTime: string;
-  easeFactor: number;
-  intervalDays: number;
-  lastReviewTime: string | null;
-  reviewTimes: number;
-}
-
-export interface StudyLog {
-  id: number;
-  courseId: number;
-  kpId: number | null;
-  taskId: number | null;
-  action: string;
-  duration: number;
-  createTime: string;
-}
-
-export interface AppData {
-  providers: AiProvider[];
-  models: AiModel[];
-  taskModels: TaskModel[];
-  logs: CallLog[];
-  courses: Course[];
-  chapters: Chapter[];
-  knowledgePoints: KnowledgePoint[];
-  materials: Material[];
-  materialChapters: MaterialChapter[];
-  questions: Question[];
-  answerRecords: AnswerRecord[];
-  wrongQuestions: WrongQuestion[];
-  studyPlans: StudyPlan[];
-  studyTasks: StudyTask[];
-  explainRecords: ExplainRecord[];
-  reviewSchedules: ReviewSchedule[];
-  studyLogs: StudyLog[];
-}
+// 重新导出所有数据类型
+import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, Mastery } from "../types/appData";
+export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, Mastery };
 
 // ===== 底层数据读写（直接调用主窗口暴露的 Plugin 实例 API） =====
 export async function getData(): Promise<AppData> {
@@ -394,4 +204,152 @@ export async function deleteMaterial(id: number): Promise<void> {
 export async function queryMaterials(courseId: number): Promise<Material[]> {
   const data = await getData();
   return data.materials.filter((m) => m.courseId === courseId);
+}
+
+// ===== AI 知识点抽取 =====
+export interface ExtractKpResult {
+  newCount: number;
+  updateCount: number;
+  duplicateCount: number;
+  totalChunks: number;
+  errors: string[];
+}
+
+interface AiKpItem {
+  name: string;
+  description: string;
+  status: "new" | "update" | "duplicate";
+  duplicateOf?: string;
+}
+
+function parseAiKpResponse(content: string): AiKpItem[] {
+  // 尝试从 LLM 返回中提取 JSON 数组（可能包裹在代码块或含前后文字）
+  const trimmed = content.trim();
+  const jsonMatch =
+    trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+    trimmed.match(/(\[[\s\S]*\])/);
+  const candidate = (jsonMatch ? jsonMatch[1] : trimmed).trim();
+  try {
+    const parsed = JSON.parse(candidate);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (it): it is AiKpItem =>
+          it && typeof it.name === "string" && typeof it.description === "string",
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+function findTaskBinding(
+  data: AppData,
+  taskKey: string,
+): { providerId: number; modelId: string } | null {
+  const taskBinding = data.taskModels.find((t) => t.taskKey === taskKey);
+  let modelId = taskBinding?.modelId ?? null;
+  if (!modelId) {
+    const def = data.taskModels.find((t) => t.taskKey === GLOBAL_DEFAULT_KEY);
+    modelId = def?.modelId ?? null;
+  }
+  if (!modelId) {
+    return null;
+  }
+  const model = data.models.find((m) => m.id === modelId);
+  if (!model) {
+    return null;
+  }
+  const provider = data.providers.find((p) => p.id === model.providerId);
+  if (!provider || !provider.enabled) {
+    return null;
+  }
+  return { providerId: provider.id, modelId: model.modelId };
+}
+
+export async function extractKnowledgePoints(
+  materialId: number,
+  options?: { taskKey?: string },
+): Promise<ExtractKpResult> {
+  const data: AppData = await getData();
+  const material = data.materials.find((m) => m.id === materialId);
+  if (!material) {
+    throw new Error("资料不存在");
+  }
+  const taskKey = options?.taskKey ?? "extract_kp";
+  const binding = findTaskBinding(data, taskKey);
+  if (!binding) {
+    throw new Error(
+      "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「" + taskKey + "」任务或「全局默认模型」",
+    );
+  }
+
+  const chunks = (await import("../utils/textChunker")).chunkText(material.contentText, 2000);
+  const existingKps: KnowledgePoint[] = data.knowledgePoints.filter((k) => k.courseId === material.courseId);
+  const existingNames = existingKps.map((k) => k.name);
+
+  let newCount = 0;
+  let updateCount = 0;
+  let duplicateCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    try {
+      const res = await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey,
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是知识抽取助手。从给定文本中提取关键知识点（概念/定义/原理/公式/考点）。输出 JSON 数组，每项含 name、description、status 三个字段。status 取值：'new' 全新、'update' 对已有知识点的补充、'duplicate' 与已有知识点重复。如标 duplicate 则填 duplicateOf 为已有知识点名称。只返回 JSON，不要任何其他文字。",
+          },
+          {
+            role: "user",
+            content:
+              `已有知识点：${existingNames.join("、") || "无"}\n\n文本片段（第${i+1}/${chunks.length}块）：\n${chunks[i]}`,
+          },
+        ],
+      });
+      const items = parseAiKpResponse(res.content);
+      for (const item of items) {
+        const trimmedName = item.name.trim();
+        if (!trimmedName) continue;
+        const existing: KnowledgePoint | undefined = existingKps.find(
+          (k) => k.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+        );
+        if (item.status === "duplicate" || existing) {
+          duplicateCount++;
+        } else if (item.status === "update" && existing) {
+          (existing as KnowledgePoint).content = (existing as KnowledgePoint).content
+            ? (existing as KnowledgePoint).content + "\n" + item.description
+            : item.description;
+          updateCount++;
+        } else {
+          data.knowledgePoints.push({
+            id: data.knowledgePoints.reduce((m, k) => Math.max(m, k.id), 0) + 1,
+            courseId: material.courseId,
+            chapterId: null,
+            blockId: null,
+            name: trimmedName,
+            content: item.description,
+            mastery: "unlearn",
+            sourceAssetIds: String(materialId),
+            prevKpIds: "",
+            sort: 0,
+            createTime: new Date().toISOString(),
+          });
+          existingNames.push(trimmedName);
+          newCount++;
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`第 ${i + 1} 块失败：${msg}`);
+    }
+  }
+
+  await saveData(data);
+  return { newCount, updateCount, duplicateCount, totalChunks: chunks.length, errors };
 }

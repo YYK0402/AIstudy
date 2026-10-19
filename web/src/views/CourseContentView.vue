@@ -19,8 +19,20 @@
           <div>
             <div class="m-name">{{ m.name }}</div>
             <div class="m-meta">.{{ m.fileType }} · {{ m.contentText.length }} 字 · {{ formatTime(m.createTime) }}</div>
+            <div v-if="extractState[m.id]?.status === 'loading'" class="s" style="color:var(--as-accent-strong);margin-top:4px">抽取中…</div>
+            <div v-else-if="extractState[m.id]?.status === 'done'" class="s" style="color:var(--as-green);margin-top:4px">
+              ✓ 抽取完成：新增 {{ extractState[m.id]!.newCount }} · 更新 {{ extractState[m.id]!.updateCount }} · 跳过 {{ extractState[m.id]!.duplicateCount }}
+            </div>
+            <div v-else-if="extractState[m.id]?.status === 'error'" class="s" style="color:var(--as-red);margin-top:4px">
+              ✗ {{ extractState[m.id]!.error }}
+            </div>
           </div>
-          <button class="btn sm ghost" @click="del(m)">删除</button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn sm ghost" :disabled="extractState[m.id]?.status === 'loading'" @click="extract(m)">
+              {{ extractState[m.id]?.status === 'loading' ? "抽取中…" : "抽取知识点" }}
+            </button>
+            <button class="btn sm ghost" @click="del(m)">删除</button>
+          </div>
         </div>
       </div>
     </div>
@@ -35,15 +47,24 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
-import { queryMaterials, deleteMaterial } from "../api";
+import { queryMaterials, deleteMaterial, extractKnowledgePoints } from "../api";
 import type { Material } from "../api";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
 const materials = ref<Material[]>([]);
+
+interface ExtractState {
+  status: "loading" | "done" | "error";
+  newCount?: number;
+  updateCount?: number;
+  duplicateCount?: number;
+  error?: string;
+}
+const extractState = reactive<Record<number, ExtractState>>({});
 
 const currentCourseId = () => courseStore.currentCourseId;
 
@@ -64,9 +85,28 @@ async function del(m: Material) {
   if (!window.confirm(`确定删除资料「${m.name}」？`)) return;
   try {
     await deleteMaterial(m.id);
+    delete extractState[m.id];
     await load();
   } catch (e) {
     console.error("删除资料失败:", e);
+  }
+}
+
+async function extract(m: Material) {
+  extractState[m.id] = { status: "loading" };
+  try {
+    const result = await extractKnowledgePoints(m.id);
+    extractState[m.id] = {
+      status: "done",
+      newCount: result.newCount,
+      updateCount: result.updateCount,
+      duplicateCount: result.duplicateCount,
+    };
+  } catch (e) {
+    extractState[m.id] = {
+      status: "error",
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 
