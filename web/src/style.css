@@ -424,6 +424,23 @@
 .chip { padding: 5px 13px; border-radius: 16px; border: 1px solid var(--as-border); background: var(--as-bg-elev); font-size: 12px; color: var(--as-text-dim); cursor: pointer; transition: all .15s; }
 .chip:hover { border-color: var(--as-accent-line); color: var(--as-text); }
 .chip.on { background: var(--as-accent-soft); border-color: var(--as-accent-line); color: var(--as-accent-strong); }
+.preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.model-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.model-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); font-size: 12.5px; }
+.model-item .m-name { font-weight: 500; }
+.model-item .m-id { color: var(--as-text-faint); font-family: var(--as-font-mono); font-size: 11px; }
+.model-item .m-del { margin-left: auto; cursor: pointer; color: var(--as-text-faint); opacity: .6; transition: all .15s; }
+.model-item .m-del:hover { color: var(--as-red); opacity: 1; }
+.provider-item .p-actions { display: flex; gap: 4px; align-items: center; }
+.provider-item .p-action { cursor: pointer; color: var(--as-text-faint); opacity: .7; transition: all .15s; font-size: 13px; padding: 2px 4px; }
+.provider-item .p-action:hover { opacity: 1; color: var(--as-accent-strong); }
+.provider-item .p-action.danger:hover { color: var(--as-red); }
+.provider-item .expand-tgl { cursor: pointer; color: var(--as-text-faint); transition: transform .15s; font-size: 10px; }
+.provider-item.expanded .expand-tgl { transform: rotate(90deg); }
+.provider-models { grid-column: 1 / -1; padding-left: 48px; }
+.model-item input { background: var(--as-bg-elev); border: 1px solid var(--as-border); color: var(--as-text); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: var(--as-font-body); width: 110px; }
+.model-item input:focus { outline: none; border-color: var(--as-accent-line); }
+.provider-wrap { display: flex; flex-direction: column; }
 .q-list { display: flex; flex-direction: column; gap: 8px; }
 .q-item { padding: 13px 15px; background: var(--as-bg-elev); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); cursor: pointer; transition: all .15s; }
 .q-item:hover { border-color: var(--as-accent-line); }

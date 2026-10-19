@@ -9,30 +9,56 @@
           暂无服务商，新增 OpenAI 兼容接口的大模型服务
         </div>
         <div v-else class="provider-list">
-          <div v-for="p in providerStore.providers" :key="p.id" class="provider-item">
-            <div class="logo" style="background:var(--as-accent-soft);color:var(--as-accent-strong)">{{ p.name.slice(0, 2) }}</div>
-            <div class="info">
-              <div class="n">{{ p.name }}</div>
-              <div class="s">{{ p.baseUrl }}</div>
-              <div v-if="testResults[p.id]" class="s" :style="{ color: testResults[p.id].ok ? 'var(--as-green)' : 'var(--as-red)' }">
-                {{ testResults[p.id].message }}
+          <div v-for="p in providerStore.providers" :key="p.id" class="provider-wrap">
+            <div class="provider-item" :class="{ expanded: expandedId === p.id }">
+              <span class="expand-tgl" @click="toggleExpand(p.id)">▶</span>
+              <div class="logo" style="background:var(--as-accent-soft);color:var(--as-accent-strong)">{{ p.name.slice(0, 2) }}</div>
+              <div class="info">
+                <div class="n">{{ p.name }}</div>
+                <div class="s">{{ p.baseUrl }}</div>
+                <div v-if="testResults[p.id]" class="s" :style="{ color: testResults[p.id].ok ? 'var(--as-green)' : 'var(--as-red)' }">{{ testResults[p.id].message }}</div>
+              </div>
+              <button class="btn sm ghost" :disabled="testingId === p.id" @click="handleTest(p)">{{ testingId === p.id ? "测试中…" : "测试" }}</button>
+              <span class="p-action" title="编辑" @click="handleEdit(p)">✎</span>
+              <span class="p-action danger" title="删除" @click="handleDelete(p)">✕</span>
+              <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
+            </div>
+            <div v-if="expandedId === p.id" class="provider-models">
+              <div class="model-list">
+                <div v-if="modelsOf(p.id).length === 0" class="s" style="color:var(--as-text-faint)">暂无模型</div>
+                <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item">
+                  <span class="m-name">{{ m.displayName }}</span>
+                  <span class="m-id">{{ m.modelId }}</span>
+                  <span v-if="m.maxContext" class="m-id">{{ m.maxContext }} ctx</span>
+                  <span class="m-del" @click="removeModel(m)">✕</span>
+                </div>
+                <div v-if="addingModelId === p.id" class="model-item">
+                  <input v-model="newModel.modelId" placeholder="模型 ID" />
+                  <input v-model="newModel.displayName" placeholder="显示名" />
+                  <input v-model="newModel.maxContext" placeholder="上下文" type="number" />
+                  <button class="btn sm" @click="addModel(p.id)">确定</button>
+                </div>
+                <button v-else class="btn sm ghost" @click="startAddModel(p.id)">＋ 添加模型</button>
               </div>
             </div>
-            <button class="btn sm ghost" :disabled="testingId === p.id" @click="handleTest(p)">
-              {{ testingId === p.id ? "测试中…" : "测试" }}
-            </button>
-            <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
           </div>
         </div>
       </div>
       <div class="card">
         <h3>AI 任务模型分配</h3>
         <div class="task-assign">
-          <div v-for="t in tasks" :key="t.name" class="ta-row">
+          <div class="ta-row">
+            <span class="t">全局默认模型</span>
+            <select :value="taskModelMap[GLOBAL_DEFAULT_KEY] ?? ''" @change="onTaskModelChange(GLOBAL_DEFAULT_KEY, $event)">
+              <option value="">（未设置）</option>
+              <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
+            </select>
+          </div>
+          <div v-for="t in tasks" :key="t.key" class="ta-row">
             <span class="t">{{ t.name }}</span>
-            <select :value="t.model">
+            <select :value="taskModelMap[t.key] ?? ''" @change="onTaskModelChange(t.key, $event)">
               <option value="">全局默认</option>
-              <option v-for="m in providerStore.models" :key="m.id" :value="m.displayName">{{ m.displayName }}</option>
+              <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
             </select>
           </div>
         </div>
@@ -59,27 +85,39 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
-import { updateProvider, testProvider as testProviderApi } from "../api";
-import type { AiProvider } from "../api";
+import {
+  updateProvider,
+  deleteProvider,
+  testProvider as testProviderApi,
+  createModel,
+  deleteModel,
+  saveTaskModel,
+  AI_TASKS,
+  GLOBAL_DEFAULT_KEY,
+} from "../api";
+import type { AiProvider, AiModel } from "../api";
 
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
 
 const testingId = ref<number | null>(null);
 const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
+const expandedId = ref<number | null>(null);
+const addingModelId = ref<number | null>(null);
+const newModel = reactive({ modelId: "", displayName: "", maxContext: "" });
 
-const tasks = [
-  { name: "文档知识点抽取", model: "" },
-  { name: "AI 学习计划生成", model: "" },
-  { name: "AI 习题生成", model: "" },
-  { name: "讲解内容评估", model: "" },
-  { name: "简答题 AI 阅卷", model: "" },
-  { name: "学习报告生成", model: "" },
-  { name: "图谱关联关系推理", model: "" },
-];
+const tasks = AI_TASKS;
+const taskModelMap = computed(() => providerStore.taskModelMap);
+
+const modelsOf = (providerId: number): AiModel[] => providerStore.models.filter((m) => m.providerId === providerId);
+
+function toggleExpand(id: number) {
+  expandedId.value = expandedId.value === id ? null : id;
+  addingModelId.value = null;
+}
 
 async function toggleProvider(provider: AiProvider) {
   provider.enabled = !provider.enabled;
@@ -101,6 +139,64 @@ async function handleTest(provider: AiProvider) {
   } finally {
     testingId.value = null;
   }
+}
+
+function handleEdit(provider: AiProvider) {
+  modalStore.openEditProvider(provider);
+}
+
+async function handleDelete(provider: AiProvider) {
+  if (!window.confirm(`确定删除服务商「${provider.name}」？其下的模型也会一并删除。`)) {
+    return;
+  }
+  try {
+    await deleteProvider(provider.id);
+    await providerStore.load();
+  } catch (error) {
+    console.error("删除服务商失败:", error);
+  }
+}
+
+function startAddModel(providerId: number) {
+  addingModelId.value = providerId;
+  newModel.modelId = "";
+  newModel.displayName = "";
+  newModel.maxContext = "";
+}
+
+async function addModel(providerId: number) {
+  if (!newModel.modelId.trim() || !newModel.displayName.trim()) {
+    return;
+  }
+  try {
+    await createModel({
+      providerId,
+      modelId: newModel.modelId.trim(),
+      displayName: newModel.displayName.trim(),
+      maxContext: Number(newModel.maxContext) || null,
+    });
+    addingModelId.value = null;
+    await providerStore.load();
+  } catch (error) {
+    console.error("添加模型失败:", error);
+  }
+}
+
+async function removeModel(model: AiModel) {
+  try {
+    await deleteModel(model.id);
+    await providerStore.load();
+  } catch (error) {
+    console.error("删除模型失败:", error);
+  }
+}
+
+function onTaskModelChange(taskKey: string, event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  const modelId = value === "" ? null : Number(value);
+  saveTaskModel(taskKey, modelId)
+    .then(() => providerStore.load())
+    .catch((error) => console.error("保存任务分配失败:", error));
 }
 
 function formatTime(iso: string): string {

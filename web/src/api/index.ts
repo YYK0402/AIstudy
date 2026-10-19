@@ -277,6 +277,7 @@ export async function updateProvider(provider: AiProvider): Promise<void> {
 export async function deleteProvider(id: number): Promise<void> {
   const data = await getData();
   data.providers = data.providers.filter((p) => p.id !== id);
+  data.models = data.models.filter((m) => m.providerId !== id);
   await saveData(data);
 }
 
@@ -292,4 +293,70 @@ export async function callAi(input: {
 
 export async function testProvider(providerId: number): Promise<{ ok: boolean; message: string }> {
   return window.siyuanAiStudy.testProvider(providerId);
+}
+
+// ===== 模型管理 =====
+export const PROVIDER_PRESETS = [
+  { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1" },
+  { name: "通义千问", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  { name: "智谱", baseUrl: "https://open.bigmodel.cn/api/paas/v4" },
+];
+
+export async function createModel(input: {
+  providerId: number;
+  modelId: string;
+  displayName: string;
+  maxContext?: number | null;
+}): Promise<AiModel> {
+  const data = await getData();
+  const model: AiModel = {
+    id: nextId(data.models),
+    providerId: input.providerId,
+    modelId: input.modelId,
+    displayName: input.displayName,
+    maxContext: input.maxContext ?? null,
+  };
+  data.models.push(model);
+  await saveData(data);
+  return model;
+}
+
+export async function deleteModel(id: number): Promise<void> {
+  const data = await getData();
+  data.models = data.models.filter((m) => m.id !== id);
+  await saveData(data);
+}
+
+// ===== 任务模型绑定 =====
+export const AI_TASKS = [
+  { key: "extract_kp", name: "文档知识点抽取" },
+  { key: "gen_plan", name: "AI 学习计划生成" },
+  { key: "gen_question", name: "AI 习题生成" },
+  { key: "eval_explain", name: "讲解内容评估" },
+  { key: "grade_answer", name: "简答题 AI 阅卷" },
+  { key: "gen_report", name: "学习报告生成" },
+  { key: "infer_graph", name: "图谱关联关系推理" },
+] as const;
+
+export const GLOBAL_DEFAULT_KEY = "global_default";
+
+export async function saveTaskModel(taskKey: string, modelId: number | null): Promise<void> {
+  const data = await getData();
+  const idx = data.taskModels.findIndex((t) => t.taskKey === taskKey);
+  if (idx >= 0) {
+    data.taskModels[idx].modelId = modelId;
+  } else {
+    data.taskModels.push({ taskKey, modelId, isGlobalDefault: taskKey === GLOBAL_DEFAULT_KEY });
+  }
+  await saveData(data);
+}
+
+export async function getTaskModelMap(): Promise<Record<string, number | null>> {
+  const data = await getData();
+  const map: Record<string, number | null> = {};
+  for (const t of data.taskModels) {
+    map[t.taskKey] = t.modelId;
+  }
+  return map;
 }
