@@ -1,4 +1,4 @@
-import { Plugin, showMessage, openTab, fetchSyncPost } from "siyuan";
+import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
 import { createEmptyData } from "./data";
 import type { AppData } from "./data";
 
@@ -66,14 +66,19 @@ export default class AiStudyPlugin extends Plugin {
     this.addTab({
       type: TAB_TYPE,
       init() {
+        const frontend = getFrontend();
+        const isBrowser = frontend === "browser-desktop" || frontend === "browser-mobile";
         const dataDir = window.siyuan.config?.system?.dataDir;
+        const src = isBrowser
+          ? `/plugins/${pluginName}/web/index.js`
+          : `file://${dataDir}/plugins/${pluginName}/web/index.js`;
         const script = document.createElement("script");
-        script.src = `file://${dataDir}/plugins/${pluginName}/web/index.js`;
+        script.src = src;
         script.onload = () => {
           window.AiStudyApp?.mount(this.element);
         };
         script.onerror = () => {
-          console.error("[siyuan-ai-study] 加载前端资源失败");
+          console.error("[siyuan-ai-study] 加载前端资源失败:", src);
         };
         document.head.appendChild(script);
       },
