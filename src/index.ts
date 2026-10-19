@@ -1,13 +1,30 @@
-import { Plugin, showMessage, openTab } from "siyuan";
-import { registerBridge } from "./bridge";
+import { Plugin, showMessage, openTab, fetchSyncPost } from "siyuan";
 import { createEmptyData } from "./data";
+import type { AppData } from "./data";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
 
+// 暴露给前端（同渲染进程直接挂载）的数据/内核 API
+interface StudyApi {
+  getData(): AppData;
+  saveData(data: AppData): Promise<{ code: number }>;
+  querySql(stmt: string): Promise<unknown>;
+}
+
+declare global {
+  interface Window {
+    siyuanAiStudy: StudyApi;
+    AiStudyApp: {
+      mount(el: Element): void;
+      unmount(): void;
+    };
+  }
+}
+
 export default class AiStudyPlugin extends Plugin {
   async onload() {
-    registerBridge(this);
+    this.exposeApi();
     await this.initData();
     this.registerTab();
   }
@@ -28,17 +45,37 @@ export default class AiStudyPlugin extends Plugin {
 
   onunload() {}
 
-  // 注册自定义页签：以 iframe 加载打包后的前端（在思源窗口内部运行）
+  // 暴露数据与内核 API 到全局，供直接挂载的前端调用
+  private exposeApi() {
+    window.siyuanAiStudy = {
+      getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
+      saveData: async (data: AppData) => {
+        this.data[DATA_STORAGE] = data;
+        const res = await this.saveData(DATA_STORAGE, data);
+        return { code: (res as { code?: number })?.code ?? 0 };
+      },
+      querySql: async (stmt: string) => {
+        return await fetchSyncPost("/api/query/sql", { stmt });
+      },
+    };
+  }
+
+  // 注册自定义页签：动态加载前端 bundle 并直接 mount 到页签元素
   private registerTab() {
     const pluginName = this.name;
     this.addTab({
       type: TAB_TYPE,
       init() {
         const dataDir = window.siyuan.config?.system?.dataDir;
-        const iframe = document.createElement("iframe");
-        iframe.src = `file://${dataDir}/plugins/${pluginName}/web/index.html`;
-        iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
-        this.element.appendChild(iframe);
+        const script = document.createElement("script");
+        script.src = `file://${dataDir}/plugins/${pluginName}/web/index.js`;
+        script.onload = () => {
+          window.AiStudyApp?.mount(this.element);
+        };
+        script.onerror = () => {
+          console.error("[siyuan-ai-study] 加载前端资源失败");
+        };
+        document.head.appendChild(script);
       },
     });
   }

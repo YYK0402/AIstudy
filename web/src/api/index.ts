@@ -1,5 +1,3 @@
-import { bridgeRequest } from "../bridge";
-
 // ===== 数据模型（与主窗口 src/data.ts 保持一致） =====
 export interface AiProvider {
   id: number;
@@ -194,23 +192,13 @@ export interface AppData {
   studyLogs: StudyLog[];
 }
 
-export interface PingResult {
-  dataDir: string;
-  workspaceDir: string;
-  time: number;
-}
-
-// ===== 底层数据读写 =====
-export async function ping(): Promise<PingResult> {
-  return (await bridgeRequest("ping")) as PingResult;
-}
-
+// ===== 底层数据读写（直接调用主窗口暴露的 Plugin 实例 API） =====
 export async function getData(): Promise<AppData> {
-  return (await bridgeRequest("getData")) as AppData;
+  return window.siyuanAiStudy.getData();
 }
 
 export async function saveData(data: AppData): Promise<void> {
-  await bridgeRequest("saveData", data);
+  await window.siyuanAiStudy.saveData(data);
 }
 
 // ===== 通用工具 =====
