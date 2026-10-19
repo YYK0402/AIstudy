@@ -9,6 +9,9 @@ const webDir = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   root: webDir,
   plugins: [vue()],
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   resolve: {
     alias: {
       "@": resolve(webDir, "src"),
