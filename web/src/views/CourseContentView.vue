@@ -6,6 +6,7 @@
       <!-- 目录结构 -->
       <div class="card">
         <h3>目录结构
+          <button class="btn sm ghost" :disabled="!currentCourseId()" @click="reidentifyChapters">🔄 重新识别目录</button>
           <button class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
@@ -143,6 +144,7 @@ import {
   deleteChapter,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
+import type { ParsedHeading } from "../utils/documentParser";
 import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
 import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
@@ -304,6 +306,37 @@ function addTopChapter() {
   if (!currentCourseId()) return;
   editingChapter.value = null;
   chapterModal.value = "top";
+}
+
+// 聚合所有资料的标题结构，重新识别目录（后续资料多了可重新生成完整目录）
+function reidentifyChapters() {
+  if (!currentCourseId()) return;
+  const allHeadings: ParsedHeading[] = [];
+  for (const m of materials.value) {
+    try {
+      const hs = JSON.parse(m.headings || "[]") as Array<{ level: number; text: string }>;
+      for (const h of hs) {
+        if (h && typeof h.level === "number" && typeof h.text === "string" && h.text.trim()) {
+          allHeadings.push({ level: h.level, text: h.text.trim() });
+        }
+      }
+    } catch {
+      // 忽略无法解析的 headings
+    }
+  }
+  // 按「层级 + 标题」去重
+  const seen = new Set<string>();
+  const deduped = allHeadings.filter((h) => {
+    const key = `${h.level}:${h.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (deduped.length === 0) {
+    window.siyuanAiStudy.showMessage("未识别到标题结构，请先上传资料");
+    return;
+  }
+  modalStore.openChapterPreview(currentCourseId(), deduped);
 }
 
 function addUnit(ch: Chapter) {
