@@ -94,6 +94,7 @@ async function save() {
       contentText: result.value.contentText,
     });
     close();
+    modalStore.notifyMaterialSaved();
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {

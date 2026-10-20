@@ -9,6 +9,8 @@ export const useModalStore = defineStore("modal", {
     editingProvider: null as AiProvider | null,
     uploadMaterialOpen: false,
     uploadMaterialCourseId: 0,
+    // 资料保存后递增，通知课程内容页刷新资料列表（App 层 modal 与 router-view 视图无父子关系，用信号传递）
+    materialVersion: 0,
   }),
   actions: {
     openNewCourse() {
@@ -42,6 +44,9 @@ export const useModalStore = defineStore("modal", {
     closeUploadMaterial() {
       this.uploadMaterialOpen = false;
       this.uploadMaterialCourseId = 0;
+    },
+    notifyMaterialSaved() {
+      this.materialVersion++;
     },
   },
 });

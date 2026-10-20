@@ -12,7 +12,7 @@ export const useProviderStore = defineStore("provider", {
   actions: {
     async load() {
       const data = await getData();
-      // 深拷贝，避免 store 直接持有插件数据的引用，防止被意外原地修改污染真相源
+      // structuredClone 深拷贝总是返回新引用，整体赋值能可靠触发响应式，同时隔离 store 与 data 引用
       this.providers = structuredClone(data.providers);
       this.models = structuredClone(data.models);
       this.logs = structuredClone(data.logs);

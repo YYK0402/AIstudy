@@ -302,5 +302,11 @@ watch(
   () => load(),
 );
 
+// 资料上传保存在 App 层 modal 完成，监听刷新信号更新资料列表
+watch(
+  () => modalStore.materialVersion,
+  () => loadMaterials(),
+);
+
 onMounted(load);
 </script>
