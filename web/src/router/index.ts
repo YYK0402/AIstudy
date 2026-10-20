@@ -1,7 +1,9 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
+// 思源页签 URL 形如 /stage/build/desktop/?r=xxx，需把 pathname + search 作为 base，
+// 否则 hash 路由生成的链接会丢失 path 与 query，点击侧栏会跳转到思源首页
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHashHistory(location.pathname + location.search),
   routes: [
     { path: "/", name: "home", component: () => import("../views/HomeView.vue") },
     { path: "/course", name: "course", component: () => import("../views/CourseHomeView.vue") },
