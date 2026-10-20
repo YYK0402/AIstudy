@@ -1,4 +1,4 @@
-// 文档文本解析（前端）：读取 File，提取纯文本
+// 文档文本解析（前端）：读取 File，提取 markdown 文本与标题结构
 import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth/mammoth.browser";
 import JSZip from "jszip";
@@ -9,61 +9,174 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+export interface ParsedHeading {
+  level: number;
+  text: string;
+}
+
 export interface ParsedDocument {
   name: string;
   fileType: string;
+  /** markdown 文本（含标题层级，用于落库思源与 AI 抽取） */
   contentText: string;
+  /** 标题结构（用于章节识别） */
+  headings: ParsedHeading[];
 }
 
-async function parseTxt(arrayBuffer: ArrayBuffer): Promise<string> {
+interface ParsedContent {
+  markdown: string;
+  headings: ParsedHeading[];
+}
+
+/** 从 markdown 中提取一级/二级标题（### 及更深层级忽略） */
+function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
+  const headings: ParsedHeading[] = [];
+  for (const line of markdown.split("\n")) {
+    const m = line.match(/^(#{1,2})\s+(.+?)\s*$/);
+    if (m) {
+      headings.push({ level: m[1].length, text: m[2].trim() });
+    }
+  }
+  return headings;
+}
+
+async function parseTxt(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
+  let text: string;
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(arrayBuffer);
+    text = new TextDecoder("utf-8", { fatal: true }).decode(arrayBuffer);
     if (text.includes("\uFFFD")) {
       try {
-        return new TextDecoder("gbk").decode(arrayBuffer);
+        text = new TextDecoder("gbk").decode(arrayBuffer);
       } catch {
-        return text;
+        // 保留带替换符的 utf-8 结果
       }
     }
-    return text;
   } catch {
-    return new TextDecoder("gbk").decode(arrayBuffer);
+    text = new TextDecoder("gbk").decode(arrayBuffer);
   }
+  return { markdown: text, headings: extractHeadingsFromMarkdown(text) };
 }
 
-async function parsePdf(arrayBuffer: ArrayBuffer): Promise<string> {
+async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  let text = "";
+  // 聚合所有行：每行 = { 文本, 字号 }（字号用于启发式识别标题）
+  const lines: Array<{ text: string; height: number }> = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const items = content.items as Array<{ str?: string }>;
-    text += items.map((item) => item.str ?? "").join(" ") + "\n";
+    const items = content.items as Array<{
+      str?: string;
+      transform?: number[];
+      height?: number;
+    }>;
+    // 按 y 坐标聚合成行
+    const rows: Array<{ y: number; parts: Array<{ x: number; str: string; height: number }> }> = [];
+    for (const it of items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = it.transform?.[5] ?? 0;
+      const x = it.transform?.[4] ?? 0;
+      const height = Math.abs(it.transform?.[3] ?? it.height ?? 12);
+      let row = rows.find((r) => Math.abs(r.y - y) < 3);
+      if (!row) {
+        row = { y, parts: [] };
+        rows.push(row);
+      }
+      row.parts.push({ x, str: it.str, height });
+    }
+    for (const row of rows) {
+      row.parts.sort((a, b) => a.x - b.x);
+      const text = row.parts.map((p) => p.str).join("").trim();
+      if (!text) continue;
+      const height = Math.max(...row.parts.map((p) => p.height));
+      lines.push({ text, height });
+    }
   }
-  return text;
+
+  // 字号中位数作为正文字号基线，明显更大者判定为标题（启发式，best-effort）
+  const heights = lines.map((l) => l.height).sort((a, b) => a - b);
+  const median = heights.length ? heights[Math.floor(heights.length / 2)] : 12;
+
+  let markdown = "";
+  const headings: ParsedHeading[] = [];
+  for (const line of lines) {
+    if (line.height > median * 1.35) {
+      markdown += `# ${line.text}\n\n`;
+      headings.push({ level: 1, text: line.text });
+    } else if (line.height > median * 1.12) {
+      markdown += `## ${line.text}\n\n`;
+      headings.push({ level: 2, text: line.text });
+    } else {
+      markdown += `${line.text}\n`;
+    }
+  }
+  return { markdown, headings };
 }
 
-async function parseDocx(arrayBuffer: ArrayBuffer): Promise<string> {
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value;
+async function parseDocx(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
+  // convertToMarkdown 将 Word 的标题样式映射为 # / ## 标题
+  const result = await mammoth.convertToMarkdown({ arrayBuffer });
+  const markdown = result.value;
+  return { markdown, headings: extractHeadingsFromMarkdown(markdown) };
 }
 
-async function parsePptx(arrayBuffer: ArrayBuffer): Promise<string> {
+interface PptxShape {
+  type: string;
+  text: string;
+}
+
+function extractPptxShapes(xml: string): PptxShape[] {
+  const shapes: PptxShape[] = [];
+  const spRegex = /<p:sp[\s\S]*?<\/p:sp>/g;
+  let m: RegExpExecArray | null;
+  while ((m = spRegex.exec(xml))) {
+    const sp = m[0];
+    const typeMatch = sp.match(/<p:ph type=["']([^"']*)["']/);
+    const type = typeMatch ? typeMatch[1] : "";
+    // 按段落 <a:p> 提取，段落内 <a:t> 拼接，段落间换行分隔
+    const paragraphs: string[] = [];
+    const pRegex = /<a:p[\s\S]*?<\/a:p>/g;
+    let pm: RegExpExecArray | null;
+    while ((pm = pRegex.exec(sp))) {
+      const pText = [...pm[0].matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)]
+        .map((x) => x[1])
+        .join("")
+        .trim();
+      if (pText) paragraphs.push(pText);
+    }
+    const text = paragraphs.join("\n");
+    if (text) {
+      shapes.push({ type, text });
+    }
+  }
+  return shapes;
+}
+
+async function parsePptx(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const zip = await JSZip.loadAsync(arrayBuffer);
   const slideNames = Object.keys(zip.files)
     .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
     .sort();
-  const texts: string[] = [];
+  let markdown = "";
+  const headings: ParsedHeading[] = [];
   for (const name of slideNames) {
     const xml = await zip.files[name].async("string");
-    const matches = xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g);
-    for (const m of matches) {
-      if (m[1]) {
-        texts.push(m[1]);
-      }
+    const shapes = extractPptxShapes(xml);
+    // 标题占位符优先；无占位符时用第一个非空形状作为标题
+    const titleShape = shapes.find((s) => s.type === "title" || s.type === "ctrTitle" || s.type === "subTitle");
+    const title = titleShape ? titleShape.text : shapes[0]?.text;
+    const bodies = shapes
+      .filter((s) => s !== titleShape)
+      .filter((s) => s.text !== title)
+      .map((s) => s.text);
+    if (title) {
+      markdown += `# ${title}\n\n`;
+      headings.push({ level: 1, text: title });
+    }
+    if (bodies.length) {
+      markdown += `${bodies.join("\n\n")}\n\n`;
     }
   }
-  return texts.join("\n");
+  return { markdown: markdown.trim(), headings };
 }
 
 export function detectFileType(file: File): string {
@@ -79,25 +192,28 @@ export function detectFileType(file: File): string {
 export async function parseDocument(file: File): Promise<ParsedDocument> {
   const arrayBuffer = await file.arrayBuffer();
   const fileType = detectFileType(file);
-  let contentText = "";
+  let content: ParsedContent;
   switch (fileType) {
     case "txt":
     case "md":
-      contentText = await parseTxt(arrayBuffer);
+      content = await parseTxt(arrayBuffer);
       break;
     case "pdf":
-      contentText = await parsePdf(arrayBuffer);
+      content = await parsePdf(arrayBuffer);
       break;
     case "docx":
-      contentText = await parseDocx(arrayBuffer);
+      content = await parseDocx(arrayBuffer);
       break;
     case "pptx":
-      contentText = await parsePptx(arrayBuffer);
+      content = await parsePptx(arrayBuffer);
       break;
     default:
-      contentText = `[暂不支持解析该文件类型: .${fileType}]`;
+      content = {
+        markdown: `[暂不支持解析该文件类型: .${fileType}]`,
+        headings: [],
+      };
   }
-  return { name: file.name, fileType, contentText };
+  return { name: file.name, fileType, contentText: content.markdown, headings: content.headings };
 }
 
 export async function parseTextInput(text: string): Promise<ParsedDocument> {
@@ -105,5 +221,6 @@ export async function parseTextInput(text: string): Promise<ParsedDocument> {
     name: `粘贴文本 ${new Date().toLocaleString("zh-CN")}`,
     fileType: "text",
     contentText: text,
+    headings: extractHeadingsFromMarkdown(text),
   };
 }
