@@ -1,18 +1,78 @@
 <template>
   <div class="page">
-    <div class="page-title"><h1>课程内容</h1><div class="desc">章节 · 资料 · 知识点 · 关联题目</div></div>
+    <div class="page-title"><h1>课程内容</h1><div class="desc">章节 · 单元 · 知识点 · 关联资料</div></div>
 
-    <div class="card">
-      <h3>资料库
-        <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload" style="margin-left:auto">
-          ＋ 上传资料
-        </button>
-      </h3>
-      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
-        <span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程
+    <div class="two-col">
+      <!-- 目录结构 -->
+      <div class="card">
+        <h3>目录结构
+          <button class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
+        </h3>
+        <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
+          <span class="ico">📭</span> 请先选择课程
+        </div>
+        <div v-else-if="chapters.length === 0" class="empty-state" style="padding:24px 0">
+          <span class="ico">🗂️</span> 暂无章节，点击「添加章节」搭建目录
+        </div>
+        <div v-else class="tree">
+          <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: !collapsedChapters.has(ch.id) }">
+            <div class="row" @click="toggleChapter(ch.id)">
+              <span class="tgl">▶</span>
+              <span class="name">{{ ch.name }}</span>
+              <span class="count">{{ kpCountOf(ch.id) }}</span>
+              <button class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
+              <button class="btn sm ghost" @click.stop="editChapter(ch)">编辑</button>
+              <button class="btn sm ghost" @click.stop="delChapter(ch)">删除</button>
+            </div>
+            <div class="tree-children">
+              <div v-for="u in ch.units" :key="u.id" class="tree-node">
+                <div class="row">
+                  <span class="tgl" style="opacity:0">▶</span>
+                  <span class="name">{{ u.name }}</span>
+                  <span class="count">{{ kpCountOf(u.id) }}</span>
+                  <button class="btn sm ghost" @click="editChapter(u)">编辑</button>
+                  <button class="btn sm ghost" @click="delChapter(u)">删除</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div v-else-if="materials.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">📚</span> 暂无资料，上传讲义 / Word / PDF / PPT 触发 AI 抽取
+
+      <!-- 知识点 -->
+      <div class="card">
+        <h3>知识点
+          <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ knowledgePoints.length }} 个</span>
+        </h3>
+        <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
+          <span class="ico">📭</span> 请先选择课程
+        </div>
+        <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:24px 0">
+          <span class="ico">🌱</span> 暂无知识点，上传资料后点击「抽取知识点」生成
+        </div>
+        <div v-else class="kp-list">
+          <div v-for="(kp, i) in knowledgePoints" :key="kp.id" class="kp-item">
+            <span class="idx">{{ String(i + 1).padStart(2, "0") }}</span>
+            <span class="nm">{{ kp.name }}</span>
+            <span class="meta">{{ kpSources[kp.id]?.length || 0 }} 份资料</span>
+            <span class="tag" :class="kp.mastery"><span class="d"></span>{{ masteryLabel(kp.mastery) }}</span>
+            <button class="btn sm ghost" @click="editKp(kp)">编辑</button>
+            <button class="btn sm ghost" @click="delKp(kp)">删除</button>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px">
+          <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload">＋ 上传资料</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 资料库 -->
+    <div class="card" style="margin-top:14px">
+      <h3>资料库
+        <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">上传资料后点击「抽取知识点」生成</span>
+      </h3>
+      <div v-if="materials.length === 0" class="empty-state" style="padding:24px 0">
+        <span class="ico">📚</span> 暂无资料，点击右上「＋ 上传资料」导入讲义 / Word / PDF / PPT
       </div>
       <div v-else class="material-list">
         <div v-for="m in materials" :key="m.id" class="material-item">
@@ -32,74 +92,6 @@
               {{ extractState[m.id]?.status === 'loading' ? "抽取中…" : "抽取知识点" }}
             </button>
             <button class="btn sm ghost" @click="del(m)">删除</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:14px">
-      <h3>章节目录
-        <button class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">
-          ＋ 添加章节
-        </button>
-      </h3>
-      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
-        <span class="ico">📭</span> 请先选择课程
-      </div>
-      <div v-else-if="chapters.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">🗂️</span> 暂无章节，手动添加章节后可在知识点编辑中调整归属
-      </div>
-      <div v-else class="chapter-list">
-        <template v-for="ch in chapterTree" :key="ch.id">
-          <div class="chapter-row">
-            <span class="chapter-name">{{ ch.name }}</span>
-            <span class="tag chapter">
-              <span class="d"></span>{{ ch.level === "chapter" ? "章" : "节" }}
-            </span>
-            <span style="margin-left:auto"></span>
-            <button v-if="ch.level === 'chapter'" class="btn sm ghost" @click="addUnit(ch)">＋小节</button>
-            <button class="btn sm ghost" @click="editChapter(ch)">编辑</button>
-            <button class="btn sm ghost" @click="delChapter(ch)">删除</button>
-          </div>
-          <div v-for="u in ch.units" :key="u.id" class="chapter-row unit">
-            <span class="chapter-name">{{ u.name }}</span>
-            <span class="tag chapter">
-              <span class="d"></span>节
-            </span>
-            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:auto">
-              <button class="btn sm ghost" @click="editChapter(u)">编辑</button>
-              <button class="btn sm ghost" @click="delChapter(u)">删除</button>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:14px">
-      <h3>知识点
-        <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ knowledgePoints.length }} 个</span>
-      </h3>
-      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
-        <span class="ico">📭</span> 请先选择课程
-      </div>
-      <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">🌱</span> 暂无知识点，上传资料后点击「抽取知识点」生成
-      </div>
-      <div v-else class="kp-list">
-        <div v-for="kp in knowledgePoints" :key="kp.id" class="kp-item-row">
-          <div class="kp-main">
-            <div class="kp-line">
-              <span class="kp-name">{{ kp.name }}</span>
-              <span class="tag" :class="kp.mastery"><span class="d"></span>{{ masteryLabel(kp.mastery) }}</span>
-            </div>
-            <div class="kp-desc">{{ truncate(kp.content, 80) }}</div>
-            <div v-if="kpSources[kp.id]?.length" class="kp-meta">
-              来源资料：{{ kpSources[kp.id]!.join("、") }}
-            </div>
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="btn sm ghost" @click="editKp(kp)">编辑</button>
-            <button class="btn sm ghost" @click="delKp(kp)">删除</button>
           </div>
         </div>
       </div>
@@ -142,6 +134,7 @@ const editingKp = ref<KnowledgePoint | null>(null);
 const chapters = ref<Chapter[]>([]);
 const chapterModal = ref<"edit" | "top" | "unit" | null>(null);
 const editingChapter = ref<Chapter | null>(null);
+const collapsedChapters = ref<Set<number>>(new Set());
 
 interface ChapterNode extends Chapter {
   units: Chapter[];
@@ -182,8 +175,27 @@ const masteryLabel = (m: Mastery): string => {
   return map[m];
 };
 
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "…" : s;
+function toggleChapter(id: number) {
+  const s = new Set(collapsedChapters.value);
+  if (s.has(id)) {
+    s.delete(id);
+  } else {
+    s.add(id);
+  }
+  collapsedChapters.value = s;
+}
+
+// 统计某章/节下关联的知识点数量（章包含其下小节）
+function kpCountOf(chapterId: number): number {
+  const ch = chapters.value.find((c) => c.id === chapterId);
+  if (!ch) return 0;
+  const ids = new Set<number>([ch.id]);
+  if (ch.level === "chapter") {
+    for (const u of chapters.value) {
+      if (u.level === "unit" && u.parentId === ch.id) ids.add(u.id);
+    }
+  }
+  return knowledgePoints.value.filter((k) => k.chapterId !== null && ids.has(k.chapterId)).length;
 }
 
 async function loadMaterials() {
@@ -202,16 +214,16 @@ async function loadKnowledgePoints() {
   knowledgePoints.value = await queryKnowledgePoints(currentCourseId());
 }
 
-async function load() {
-  await Promise.all([loadMaterials(), loadKnowledgePoints(), loadChapters()]);
-}
-
 async function loadChapters() {
   if (!currentCourseId()) {
     chapters.value = [];
     return;
   }
   chapters.value = await queryChapters(currentCourseId());
+}
+
+async function load() {
+  await Promise.all([loadMaterials(), loadKnowledgePoints(), loadChapters()]);
 }
 
 function addTopChapter() {
