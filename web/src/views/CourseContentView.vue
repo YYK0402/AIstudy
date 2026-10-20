@@ -16,8 +16,8 @@
         </div>
         <div v-else class="tree">
           <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: !collapsedChapters.has(ch.id) }">
-            <div class="row" @click="toggleChapter(ch.id)">
-              <span class="tgl">▶</span>
+            <div class="row" :class="{ active: selectedChapterId === ch.id }" @click="selectChapter(ch.id)">
+              <span class="tgl" @click.stop="toggleChapter(ch.id)">▶</span>
               <span class="name">{{ ch.name }}</span>
               <span class="count">{{ kpCountOf(ch.id) }}</span>
               <button class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
@@ -26,12 +26,12 @@
             </div>
             <div class="tree-children">
               <div v-for="u in ch.units" :key="u.id" class="tree-node">
-                <div class="row">
+                <div class="row" :class="{ active: selectedChapterId === u.id }" @click="selectChapter(u.id)">
                   <span class="tgl" style="opacity:0">▶</span>
                   <span class="name">{{ u.name }}</span>
                   <span class="count">{{ kpCountOf(u.id) }}</span>
-                  <button class="btn sm ghost" @click="editChapter(u)">编辑</button>
-                  <button class="btn sm ghost" @click="delChapter(u)">删除</button>
+                  <button class="btn sm ghost" @click.stop="editChapter(u)">编辑</button>
+                  <button class="btn sm ghost" @click.stop="delChapter(u)">删除</button>
                 </div>
               </div>
             </div>
@@ -41,24 +41,38 @@
 
       <!-- 知识点 -->
       <div class="card">
-        <h3>知识点
-          <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ knowledgePoints.length }} 个</span>
+        <h3>知识点<span v-if="selectedChapterName"> · {{ selectedChapterName }}</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ filteredKnowledgePoints.length }} 个</span>
         </h3>
+        <input
+          v-model="searchKeyword"
+          class="search-input"
+          type="text"
+          placeholder="搜索知识点名称 / 内容…"
+        />
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
           <span class="ico">📭</span> 请先选择课程
         </div>
-        <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">🌱</span> 暂无知识点，上传资料后点击「抽取知识点」生成
+        <div v-else-if="filteredKnowledgePoints.length === 0" class="empty-state" style="padding:24px 0">
+          <span class="ico">🌱</span> {{ searchKeyword ? "未找到匹配的知识点" : "暂无知识点，上传资料后点击「抽取知识点」生成" }}
         </div>
         <div v-else class="kp-list">
-          <div v-for="(kp, i) in knowledgePoints" :key="kp.id" class="kp-item">
-            <span class="idx">{{ String(i + 1).padStart(2, "0") }}</span>
+          <div
+            v-for="(kp, i) in pagedKnowledgePoints"
+            :key="kp.id"
+            class="kp-item clickable"
+            @click="viewKp(kp)"
+          >
+            <span class="idx">{{ String((currentPage - 1) * PAGE_SIZE + i + 1).padStart(2, "0") }}</span>
             <span class="nm">{{ kp.name }}</span>
             <span class="meta">{{ kpSources[kp.id]?.length || 0 }} 份资料</span>
             <span class="tag" :class="kp.mastery"><span class="d"></span>{{ masteryLabel(kp.mastery) }}</span>
-            <button class="btn sm ghost" @click="editKp(kp)">编辑</button>
-            <button class="btn sm ghost" @click="delKp(kp)">删除</button>
           </div>
+        </div>
+        <div v-if="totalPages > 1" class="pagination">
+          <button class="btn sm ghost" :disabled="currentPage === 1" @click="currentPage--">‹ 上一页</button>
+          <span class="pg-info">{{ currentPage }} / {{ totalPages }}</span>
+          <button class="btn sm ghost" :disabled="currentPage === totalPages" @click="currentPage++">下一页 ›</button>
         </div>
         <div style="margin-top:16px;display:flex;gap:8px">
           <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload">＋ 上传资料</button>
@@ -97,6 +111,15 @@
       </div>
     </div>
 
+    <KnowledgePointDetailModal
+      :open="detailKp !== null"
+      :kp="detailKp"
+      :chapter-name="detailChapterName"
+      :source-names="detailSourceNames"
+      @close="detailKp = null"
+      @edit="editDetailKp"
+      @delete="removeDetailKp"
+    />
     <KnowledgePointEditModal :open="editingKp !== null" :knowledge-point="editingKp" @close="editingKp = null" @saved="loadKnowledgePoints" />
     <ChapterEditModal
       :open="chapterModal !== null"
@@ -123,6 +146,7 @@ import {
   deleteChapter,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
+import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
 import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
 
@@ -131,10 +155,15 @@ const modalStore = useModalStore();
 const materials = ref<Material[]>([]);
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
+const detailKp = ref<KnowledgePoint | null>(null);
 const chapters = ref<Chapter[]>([]);
 const chapterModal = ref<"edit" | "top" | "unit" | null>(null);
 const editingChapter = ref<Chapter | null>(null);
 const collapsedChapters = ref<Set<number>>(new Set());
+const selectedChapterId = ref<number | null>(null);
+const searchKeyword = ref("");
+const currentPage = ref(1);
+const PAGE_SIZE = 10;
 
 interface ChapterNode extends Chapter {
   units: Chapter[];
@@ -148,6 +177,7 @@ const chapterTree = computed<ChapterNode[]>(() => {
     units: sorted.filter((c) => c.level === "unit" && c.parentId === ch.id),
   }));
 });
+
 const kpSources = computed<Record<number, string[]>>(() => {
   const map: Record<number, string[]> = {};
   for (const kp of knowledgePoints.value) {
@@ -157,6 +187,55 @@ const kpSources = computed<Record<number, string[]>>(() => {
       .filter((n): n is string => Boolean(n));
   }
   return map;
+});
+
+// 选中章节下的知识点 id 集合（章包含其下小节）
+function chapterKpIds(chapterId: number): Set<number> {
+  const ch = chapters.value.find((c) => c.id === chapterId);
+  if (!ch) return new Set();
+  const ids = new Set<number>([ch.id]);
+  if (ch.level === "chapter") {
+    for (const u of chapters.value) {
+      if (u.level === "unit" && u.parentId === ch.id) ids.add(u.id);
+    }
+  }
+  return ids;
+}
+
+const filteredKnowledgePoints = computed(() => {
+  let list = knowledgePoints.value;
+  if (selectedChapterId.value !== null) {
+    const ids = chapterKpIds(selectedChapterId.value);
+    list = list.filter((k) => k.chapterId !== null && ids.has(k.chapterId));
+  }
+  const kw = searchKeyword.value.trim().toLowerCase();
+  if (kw) {
+    list = list.filter(
+      (k) => k.name.toLowerCase().includes(kw) || k.content.toLowerCase().includes(kw),
+    );
+  }
+  return list;
+});
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredKnowledgePoints.value.length / PAGE_SIZE)));
+const pagedKnowledgePoints = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE;
+  return filteredKnowledgePoints.value.slice(start, start + PAGE_SIZE);
+});
+
+const selectedChapterName = computed(() => {
+  if (selectedChapterId.value === null) return "";
+  return chapters.value.find((c) => c.id === selectedChapterId.value)?.name ?? "";
+});
+
+const detailChapterName = computed(() => {
+  if (!detailKp.value || detailKp.value.chapterId === null) return "";
+  return chapters.value.find((c) => c.id === detailKp.value!.chapterId)?.name ?? "";
+});
+
+const detailSourceNames = computed(() => {
+  if (!detailKp.value) return [];
+  return kpSources.value[detailKp.value.id] ?? [];
 });
 
 interface ExtractState {
@@ -185,16 +264,14 @@ function toggleChapter(id: number) {
   collapsedChapters.value = s;
 }
 
+function selectChapter(id: number) {
+  selectedChapterId.value = selectedChapterId.value === id ? null : id;
+  currentPage.value = 1;
+}
+
 // 统计某章/节下关联的知识点数量（章包含其下小节）
 function kpCountOf(chapterId: number): number {
-  const ch = chapters.value.find((c) => c.id === chapterId);
-  if (!ch) return 0;
-  const ids = new Set<number>([ch.id]);
-  if (ch.level === "chapter") {
-    for (const u of chapters.value) {
-      if (u.level === "unit" && u.parentId === ch.id) ids.add(u.id);
-    }
-  }
+  const ids = chapterKpIds(chapterId);
   return knowledgePoints.value.filter((k) => k.chapterId !== null && ids.has(k.chapterId)).length;
 }
 
@@ -289,14 +366,22 @@ async function extract(m: Material) {
   }
 }
 
-function editKp(kp: KnowledgePoint) {
-  editingKp.value = kp;
+function viewKp(kp: KnowledgePoint) {
+  detailKp.value = kp;
 }
 
-async function delKp(kp: KnowledgePoint) {
+function editDetailKp() {
+  editingKp.value = detailKp.value;
+  detailKp.value = null;
+}
+
+async function removeDetailKp() {
+  const kp = detailKp.value;
+  if (!kp) return;
   if (!window.confirm(`确定删除知识点「${kp.name}」？`)) return;
   try {
     await deleteKnowledgePoint(kp.id);
+    detailKp.value = null;
     await loadKnowledgePoints();
   } catch (e) {
     console.error("删除知识点失败:", e);
@@ -311,8 +396,18 @@ function formatTime(iso: string): string {
 
 watch(
   () => courseStore.currentCourseId,
-  () => load(),
+  () => {
+    selectedChapterId.value = null;
+    currentPage.value = 1;
+    searchKeyword.value = "";
+    load();
+  },
 );
+
+// 搜索/章节变化时回到第一页
+watch([searchKeyword, selectedChapterId], () => {
+  currentPage.value = 1;
+});
 
 // 资料上传保存在 App 层 modal 完成，监听刷新信号更新资料列表
 watch(
