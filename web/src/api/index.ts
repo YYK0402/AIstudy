@@ -32,8 +32,8 @@ export async function createCourse(input: {
   totalCycle?: string;
 }): Promise<Course> {
   const data = await getData();
-  // 落库思源：开启持久化时建课程顶层文档，否则占位 UUID
-  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`);
+  // 落库思源：开启持久化时建课程顶层文档（path 为父目录，文档名取自 markdown 标题），否则占位 UUID
+  const docId = await persistDocIfEnabled(`# ${input.name}`, `/`);
   const course: Course = {
     id: nextId(data.courses),
     siyuanDocId: docId ?? crypto.randomUUID(),

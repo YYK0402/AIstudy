@@ -117,10 +117,14 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   let markdown = "";
   const headings: ParsedHeading[] = [];
   for (const line of lines) {
-    if (line.height > median * 1.35) {
+    // 层级判断：编号模式（第X章/第X节/X.X）优先，字号启发式兜底
+    const numLevel = detectHeadingLevel(line.text);
+    const sizeLevel = line.height > median * 1.35 ? 1 : line.height > median * 1.12 ? 2 : 0;
+    const level = numLevel || sizeLevel;
+    if (level === 1) {
       markdown += `# ${line.text}\n\n`;
       headings.push({ level: 1, text: line.text });
-    } else if (line.height > median * 1.12) {
+    } else if (level === 2) {
       markdown += `## ${line.text}\n\n`;
       headings.push({ level: 2, text: line.text });
     } else {
