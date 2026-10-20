@@ -75,10 +75,20 @@ async function parseTxt(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   return { markdown: text, headings: extractHeadingsFromMarkdown(text) };
 }
 
+interface PdfLine {
+  text: string;
+  height: number;
+  pageIndex: number;
+  xCenter: number;
+  pageWidth: number;
+  /** 行内文本片段之间的最大 x 间隙（用于识别表格多列） */
+  maxGap: number;
+}
+
 async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  // 聚合所有行：每行 = { 文本, 字号 }（字号用于启发式识别标题）
-  const lines: Array<{ text: string; height: number }> = [];
+  // 聚合所有行：每行 = { 文本, 字号, 页码, 水平中心, 页面宽度 }
+  const lines: PdfLine[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
@@ -88,9 +98,10 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
       height?: number;
       width?: number;
     }>;
-    // 页面尺寸，用于过滤页眉页脚
+    // 页面尺寸，用于过滤页眉页脚与判断居中
     const viewport = page.getViewport({ scale: 1 });
     const pageHeight = viewport.height;
+    const pageWidth = viewport.width;
 
     // 按 y 坐标聚合成行
     const rows: Array<{ y: number; parts: Array<{ x: number; str: string; height: number; width: number }> }> = [];
@@ -116,17 +127,27 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
       // 按 x 间隙补空格（词间距/表格多列），避免文字粘连
       let text = "";
       let prevRight: number | null = null;
+      let minX = Infinity;
       for (const p of row.parts) {
         if (prevRight !== null && p.x - prevRight > 5) {
           text += " ";
         }
         text += p.str;
         prevRight = p.x + p.width;
+        if (p.x < minX) minX = p.x;
       }
       const trimmed = text.trim();
       if (!trimmed) continue;
       const height = Math.max(...row.parts.map((p) => p.height));
-      lines.push({ text: trimmed, height });
+      const right = prevRight ?? minX;
+      const xCenter = (minX + right) / 2;
+      // 计算行内最大 x 间隙（表格多列时间隙大）
+      let maxGap = 0;
+      for (let j = 1; j < row.parts.length; j++) {
+        const gap = row.parts[j].x - (row.parts[j - 1].x + row.parts[j - 1].width);
+        if (gap > maxGap) maxGap = gap;
+      }
+      lines.push({ text: trimmed, height, pageIndex: i, xCenter, pageWidth, maxGap });
     }
   }
 
@@ -137,10 +158,30 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   let markdown = "";
   const headings: ParsedHeading[] = [];
   for (const line of lines) {
-    // 层级判断：编号模式（第X章/第X节/X.X）优先，字号启发式兜底
     const numLevel = detectHeadingLevel(line.text);
     const sizeLevel = line.height > median * 1.35 ? 1 : line.height > median * 1.12 ? 2 : 0;
-    const level = numLevel || sizeLevel;
+    // 居中：行水平中心接近页面中心（容差 15%）
+    const centered = Math.abs(line.xCenter - line.pageWidth / 2) < line.pageWidth * 0.15;
+
+    let level = numLevel || sizeLevel;
+
+    // 封面过滤：第一页无编号、字号明显大 → 文档封面标题，不作为章
+    if (line.pageIndex === 1 && numLevel === 0 && sizeLevel === 1) {
+      level = 0;
+    }
+
+    // 居中特征兜底：无编号、字号=正文、居中且短行 → 节标题（通用：标题常居中，正文常左对齐）
+    // 仅识别纯中文文字标题，排除公式（=×÷β等）、序号（①②③）、选项（B.）、提示（：）、句子（。；）
+    if (level === 0 && centered && line.text.length < 25 && sizeLevel === 0 && line.maxGap < 15) {
+      const isFormulaOrList =
+        /^[①②③④⑤⑥⑦⑧⑨⑩\dA-Za-z（(]/.test(line.text) ||
+        /[=＝×÷β／\/:：]/.test(line.text) ||
+        /[。；]$/.test(line.text);
+      if (!isFormulaOrList) {
+        level = 2;
+      }
+    }
+
     if (level === 1) {
       markdown += `# ${line.text}\n\n`;
       headings.push({ level: 1, text: line.text });
