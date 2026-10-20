@@ -101,6 +101,8 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
       }
       row.parts.push({ x, str: it.str, height });
     }
+    // 按 y 坐标（从上到下）排序，保证行顺序符合视觉顺序（pdfjs 返回的 items 顺序不保证视觉顺序）
+    rows.sort((a, b) => a.y - b.y);
     for (const row of rows) {
       row.parts.sort((a, b) => a.x - b.x);
       const text = row.parts.map((p) => p.str).join("").trim();
