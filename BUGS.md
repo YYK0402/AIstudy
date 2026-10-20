@@ -2,10 +2,31 @@
 
 ## BUG-001 学习首页创建课程后「我的课程」卡片不刷新（生产构建）
 
-- **状态**：未修复（已记录，待根因定位）
+- **状态**：已修复（2026-10-20）
 - **发现**：2026-10-20
 - **严重性**：中（功能可用，切路由回来后数据正确；但 创建后即时反馈缺失）
 - **用户确认的期望行为**：创建课程成功后**保持不切换**当前选中课程（仅列表刷新显示新卡片）
+
+### 根因（已定位）
+
+生产构建下，`courseStore.setCourses` 用**数组整体赋值**（`this.courses = courses`）替换 state，该 SET 操作在 prod + IIFE 组合下**不触发依赖该数组的组件渲染**（v-for / computed 均不响应）；而直接操作 `store.courses` 的元素属性（`store.courses[0].name = x`）或**数组变异方法**（`push` / `splice`）能正常触发。
+
+经排查，`getData()` 返回的是插件数据层的**原始对象**（非 reactive），业务层 `createCourse`/`updateCourse` 直接 mutate 原始对象本就不触发响应式，UI 刷新依赖 `setCourses` 的同步；而 `setCourses` 原先的整体赋值又恰好不触发，导致 UI 永不刷新（切路由重挂载读新值才显示）。
+
+### 修复
+
+`web/src/stores/course.ts` 的 `setCourses` 改为用**数组变异方法 splice + 深拷贝元素**：
+
+```ts
+setCourses(courses: Course[]) {
+  this.courses.splice(0, this.courses.length, ...courses.map((c) => ({ ...c })));
+  if (this.currentCourseId === 0 && courses.length > 0) {
+    this.currentCourseId = courses[0].id;
+  }
+}
+```
+
+splice 触发 length/索引变更，可靠触发响应式；深拷贝避免 store 与 data 共享元素引用。已实测：创建课程、编辑课程均即时刷新（store / data / DOM 三者一致）。
 
 ### 现象
 

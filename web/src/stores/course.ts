@@ -12,7 +12,9 @@ export const useCourseStore = defineStore("course", {
   },
   actions: {
     setCourses(courses: Course[]) {
-      this.courses = courses;
+      // 用 splice 变异替换并深拷贝元素：prod 下数组整体赋值不触发依赖，
+      // 变异方法（length/索引变更）能可靠触发响应式；深拷贝避免 store 与 data 共享元素引用
+      this.courses.splice(0, this.courses.length, ...courses.map((c) => ({ ...c })));
       if (this.currentCourseId === 0 && courses.length > 0) {
         this.currentCourseId = courses[0].id;
       }
