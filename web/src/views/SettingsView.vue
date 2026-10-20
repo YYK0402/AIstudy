@@ -93,6 +93,17 @@
       <div class="s" style="color:var(--as-text-faint);margin-top:4px">
         自动模式：上传 Word/Markdown/PPT 后按标题层级识别章节结构并弹出预览确认；PDF 采用字号启发式识别，可能不精确，可在预览中修正。
       </div>
+      <div class="ta-row" style="margin-top:14px">
+        <span class="t">资料持久化到思源</span>
+        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="togglePersist"></div>
+      </div>
+      <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
+        <span class="t">笔记本名称</span>
+        <input :value="settings.notebookName" placeholder="AI 研习" style="flex:1" @change="onNotebookNameChange" />
+      </div>
+      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+        开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
+      </div>
     </div>
     <div class="card" style="margin-top:14px">
       <h3>最近调用日志</h3>
@@ -136,7 +147,11 @@ import type { AiProvider, AiModel } from "../api";
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
 
-const settings = reactive({ chapterMode: "manual" as "manual" | "auto" });
+const settings = reactive({
+  chapterMode: "manual" as "manual" | "auto",
+  persistToSiyuan: false,
+  notebookName: "AI 研习",
+});
 
 const testingId = ref<number | null>(null);
 const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
@@ -306,6 +321,27 @@ function onChapterModeChange(event: Event) {
   });
 }
 
+function togglePersist() {
+  settings.persistToSiyuan = !settings.persistToSiyuan;
+  updateSettings({ persistToSiyuan: settings.persistToSiyuan }).catch((error) => {
+    console.error("保存持久化设置失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存持久化设置失败");
+  });
+}
+
+function onNotebookNameChange(event: Event) {
+  const value = (event.target as HTMLInputElement).value.trim();
+  if (!value) {
+    settings.notebookName = "AI 研习";
+    return;
+  }
+  settings.notebookName = value;
+  updateSettings({ notebookName: value }).catch((error) => {
+    console.error("保存笔记本名称失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存笔记本名称失败");
+  });
+}
+
 function formatTime(iso: string): string {
   if (!iso) {
     return "";
@@ -322,6 +358,8 @@ onMounted(async () => {
   try {
     const s = await getSettings();
     settings.chapterMode = s.chapterMode;
+    settings.persistToSiyuan = s.persistToSiyuan;
+    settings.notebookName = s.notebookName;
   } catch (error) {
     console.error("加载应用设置失败:", error);
   }
