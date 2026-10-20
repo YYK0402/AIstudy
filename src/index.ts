@@ -41,6 +41,9 @@ interface StudyApi {
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number): void;
+  ensureNotebook(name: string): Promise<string>;
+  createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
+  removeSiyuanDoc(id: string): Promise<void>;
 }
 
 declare global {
@@ -131,7 +134,56 @@ export default class AiStudyPlugin extends Plugin {
       showMessage: (message: string, timeout = 4000) => {
         showMessage(message, timeout, "error");
       },
+      ensureNotebook: async (name: string) => {
+        return await this.handleEnsureNotebook(name);
+      },
+      createSiyuanDoc: async (markdown: string, path: string, notebook: string) => {
+        return await this.handleCreateSiyuanDoc(markdown, path, notebook);
+      },
+      removeSiyuanDoc: async (id: string) => {
+        await this.handleRemoveSiyuanDoc(id);
+      },
     };
+  }
+
+  // 获取或创建思源笔记本，返回笔记本 id
+  private async handleEnsureNotebook(name: string): Promise<string> {
+    const list = (await fetchSyncPost("/api/notebook/lsNotebooks", {})) as {
+      data?: { notebooks?: Array<{ id: string; name: string } | null> | null };
+    };
+    const existing = list.data?.notebooks?.find((n) => n?.name === name);
+    if (existing) {
+      return existing.id;
+    }
+    const created = (await fetchSyncPost("/api/notebook/createNotebook", { name })) as {
+      data?: { notebook?: { id: string } | null };
+    };
+    const id = created.data?.notebook?.id ?? "";
+    if (!id) {
+      throw new Error("创建笔记本失败");
+    }
+    return id;
+  }
+
+  // 在指定笔记本路径下创建 markdown 文档，返回文档 id
+  private async handleCreateSiyuanDoc(
+    markdown: string,
+    path: string,
+    notebook: string,
+  ): Promise<{ id: string }> {
+    const res = (await fetchSyncPost("/api/filetree/createDocWithMd", {
+      notebook,
+      path,
+      markdown,
+    })) as { code: number; data?: string | null; msg?: string };
+    if (res.code !== 0 || !res.data) {
+      throw new Error(`创建思源文档失败: ${res.msg ?? "未知错误"}`);
+    }
+    return { id: res.data };
+  }
+
+  private async handleRemoveSiyuanDoc(id: string): Promise<void> {
+    await fetchSyncPost("/api/filetree/removeDocByID", { id });
   }
 
   private getData(): AppData {

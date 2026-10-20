@@ -84,6 +84,8 @@ export interface Material {
   contentText: string;
   /** 解析出的标题结构（JSON 字符串，ParsedHeading[]），用于自动识别目录 */
   headings: string;
+  /** 落库思源后的文档 id（未开启持久化或未落库时为 null） */
+  siyuanDocId: string | null;
   status: string;
   createTime: string;
 }

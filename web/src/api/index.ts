@@ -32,9 +32,11 @@ export async function createCourse(input: {
   totalCycle?: string;
 }): Promise<Course> {
   const data = await getData();
+  // 落库思源：开启持久化时建课程顶层文档，否则占位 UUID
+  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`);
   const course: Course = {
     id: nextId(data.courses),
-    siyuanDocId: crypto.randomUUID(),
+    siyuanDocId: docId ?? crypto.randomUUID(),
     name: input.name,
     description: input.description ?? "",
     target: input.target ?? "",
@@ -603,6 +605,12 @@ export async function createMaterial(input: {
   headings?: string;
 }): Promise<Material> {
   const data = await getData();
+  const course = data.courses.find((c) => c.id === input.courseId);
+  // 落库思源：资料文档放在课程文档下的「资料库」目录
+  const docId = await persistDocIfEnabled(
+    `# ${input.name}\n\n${input.contentText}`,
+    `/${course?.name ?? "课程"}/资料库`,
+  );
   const material: Material = {
     id: nextId(data.materials),
     courseId: input.courseId,
@@ -611,6 +619,7 @@ export async function createMaterial(input: {
     fileType: input.fileType,
     contentText: input.contentText,
     headings: input.headings ?? "[]",
+    siyuanDocId: docId,
     status: "parsed",
     createTime: now(),
   };
@@ -621,8 +630,12 @@ export async function createMaterial(input: {
 
 export async function deleteMaterial(id: number): Promise<void> {
   const data = await getData();
+  const material = data.materials.find((m) => m.id === id);
   data.materials = data.materials.filter((m) => m.id !== id);
   await saveData(data);
+  if (material?.siyuanDocId) {
+    removeSiyuanDoc(material.siyuanDocId).catch((e) => console.error("删除思源文档失败:", e));
+  }
 }
 
 export async function queryMaterials(courseId: number): Promise<Material[]> {
@@ -819,13 +832,19 @@ export async function createChapter(input: {
   level: Chapter["level"];
 }): Promise<Chapter> {
   const data = await getData();
+  const course = data.courses.find((c) => c.id === input.courseId);
+  // 落库思源：章节文档放在课程文档下的「章节」目录
+  const docId = await persistDocIfEnabled(
+    `# ${input.name}`,
+    `/${course?.name ?? "课程"}/章节`,
+  );
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
   const chapter: Chapter = {
     id: nextId(data.chapters),
     courseId: input.courseId,
     parentId: input.parentId,
-    siyuanBlockId: null,
+    siyuanBlockId: docId,
     name: input.name,
     level: input.level,
     sort,
@@ -848,6 +867,8 @@ export async function importChapterTree(
   nodes: ChapterTreeNode[],
 ): Promise<{ created: number }> {
   const data = await getData();
+  const course = data.courses.find((c) => c.id === courseId);
+  const pathBase = `/${course?.name ?? "课程"}/章节`;
   const existing = data.chapters.filter((c) => c.courseId === courseId);
   let created = 0;
   for (const node of nodes) {
@@ -862,11 +883,13 @@ export async function importChapterTree(
       data.chapters
         .filter((c) => c.courseId === courseId && c.parentId === (parent?.id ?? null))
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
+    // 落库思源章节文档
+    const docId = await persistDocIfEnabled(`# ${name}`, pathBase);
     const chapter: Chapter = {
       id: nextId(data.chapters),
       courseId,
       parentId: parent?.id ?? null,
-      siyuanBlockId: null,
+      siyuanBlockId: docId,
       name,
       level: node.level,
       sort,
@@ -900,6 +923,12 @@ export async function deleteChapter(id: number): Promise<void> {
         removed.add(c.id);
         grew = true;
       }
+    }
+  }
+  // 级联删除思源文档
+  for (const c of data.chapters) {
+    if (removed.has(c.id) && c.siyuanBlockId) {
+      removeSiyuanDoc(c.siyuanBlockId).catch((e) => console.error("删除思源章节文档失败:", e));
     }
   }
   data.chapters = data.chapters.filter((c) => !removed.has(c.id));
@@ -1324,4 +1353,31 @@ export async function updateSettings(input: Partial<AppSettings>): Promise<void>
   }
   Object.assign(data.settings, input);
   await saveData(data);
+}
+
+// ===== 思源落库 =====
+export async function ensureNotebook(name: string): Promise<string> {
+  return window.siyuanAiStudy.ensureNotebook(name);
+}
+
+export async function createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }> {
+  return window.siyuanAiStudy.createSiyuanDoc(markdown, path, notebook);
+}
+
+export async function removeSiyuanDoc(id: string): Promise<void> {
+  await window.siyuanAiStudy.removeSiyuanDoc(id);
+}
+
+/** 开启持久化时落库思源，返回文档 id；未开启或失败时返回 null（不阻塞主流程） */
+async function persistDocIfEnabled(markdown: string, path: string): Promise<string | null> {
+  const settings = await getSettings();
+  if (!settings.persistToSiyuan) return null;
+  try {
+    const notebook = await ensureNotebook(settings.notebookName);
+    const { id } = await createSiyuanDoc(markdown, path, notebook);
+    return id;
+  } catch (e) {
+    console.error("落库思源失败:", e);
+    return null;
+  }
 }

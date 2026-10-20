@@ -33,6 +33,9 @@ export interface SiYuanAiStudyApi {
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number): void;
+  ensureNotebook(name: string): Promise<string>;
+  createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
+  removeSiyuanDoc(id: string): Promise<void>;
 }
 
 declare global {
