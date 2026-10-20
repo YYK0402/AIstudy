@@ -768,15 +768,16 @@ export async function extractKnowledgePoints(
         const existing: KnowledgePoint | undefined = existingKps.find(
           (k) => k.name.trim().toLowerCase() === trimmedName.toLowerCase(),
         );
-        if (item.status === "duplicate" || existing) {
-          duplicateCount++;
-        } else if (item.status === "update" && existing) {
-          (existing as KnowledgePoint).content = (existing as KnowledgePoint).content
-            ? (existing as KnowledgePoint).content + "\n" + item.description
+        if (existing && item.status === "update") {
+          // 对已有知识点补充描述
+          existing.content = existing.content
+            ? existing.content + "\n" + item.description
             : item.description;
           updateCount++;
+        } else if (item.status === "duplicate" || existing) {
+          duplicateCount++;
         } else {
-          data.knowledgePoints.push({
+          const newKp: KnowledgePoint = {
             id: data.knowledgePoints.reduce((m, k) => Math.max(m, k.id), 0) + 1,
             courseId: material.courseId,
             chapterId: blockChapter?.id ?? null,
@@ -788,7 +789,10 @@ export async function extractKnowledgePoints(
             prevKpIds: "",
             sort: 0,
             createTime: new Date().toISOString(),
-          });
+          };
+          data.knowledgePoints.push(newKp);
+          // 加入快照，确保同批后续同名知识点去重
+          existingKps.push(newKp);
           existingNames.push(trimmedName);
           newCount++;
         }
