@@ -40,6 +40,7 @@ interface StudyApi {
   callAi(input: CallAiInput): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
+  showMessage(message: string, timeout?: number): void;
 }
 
 declare global {
@@ -126,6 +127,9 @@ export default class AiStudyPlugin extends Plugin {
       },
       listModels: async (providerId: number) => {
         return await this.handleListModels(providerId);
+      },
+      showMessage: (message: string, timeout = 4000) => {
+        showMessage(message, timeout, "error");
       },
     };
   }

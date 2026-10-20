@@ -56,6 +56,7 @@ async function del(w: { wrong: WrongQuestion }) {
     wrongList.value = wrongList.value.filter((x) => x.wrong.id !== w.wrong.id);
   } catch (e) {
     console.error("移出错题失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "移出错题失败");
   }
 }
 

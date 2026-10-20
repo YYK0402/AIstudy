@@ -364,6 +364,7 @@ async function delQ(q: Question) {
     questions.value = questions.value.filter((x) => x.id !== q.id);
   } catch (e) {
     console.error("删除题目失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除题目失败");
   }
 }
 

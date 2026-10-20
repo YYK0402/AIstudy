@@ -168,6 +168,7 @@ async function toggleTask(t: StudyTask) {
     t.status = t.status === "done" ? "todo" : "done";
   } catch (e) {
     console.error("更新任务状态失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败");
   }
 }
 

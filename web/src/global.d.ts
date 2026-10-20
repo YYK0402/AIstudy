@@ -32,6 +32,7 @@ export interface SiYuanAiStudyApi {
   }): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
+  showMessage(message: string, timeout?: number): void;
 }
 
 declare global {

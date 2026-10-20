@@ -7,9 +7,9 @@
         <router-view />
       </div>
     </main>
-    <NewCourseModal />
-    <NewProviderModal />
-    <UploadMaterialModal />
+    <NewCourseModal v-if="modalStore.newCourseOpen" />
+    <NewProviderModal v-if="modalStore.newProviderOpen" />
+    <UploadMaterialModal v-if="modalStore.uploadMaterialOpen" />
   </div>
 </template>
 
@@ -19,4 +19,7 @@ import Topbar from "./components/Topbar.vue";
 import NewCourseModal from "./components/NewCourseModal.vue";
 import NewProviderModal from "./components/NewProviderModal.vue";
 import UploadMaterialModal from "./components/UploadMaterialModal.vue";
+import { useModalStore } from "./stores/modal";
+
+const modalStore = useModalStore();
 </script>

@@ -112,6 +112,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
         await submitAnswer(item.question, answer.trim());
       } catch (e) {
         console.error("复习中提交作答失败:", e);
+        window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "作答提交失败");
       }
     }
     await submitReview(item.schedule, g);
@@ -121,6 +122,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
     delete essayAnswers[id];
   } catch (e) {
     console.error("提交复习评分失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "提交复习评分失败");
   } finally {
     busy[id] = false;
   }

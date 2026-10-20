@@ -105,6 +105,7 @@ async function save() {
     close();
   } catch (e) {
     console.error("保存知识点失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "保存知识点失败");
   } finally {
     saving.value = false;
   }

@@ -69,6 +69,7 @@ async function save() {
     close();
   } catch (e) {
     console.error("保存章节失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "保存章节失败");
   } finally {
     saving.value = false;
   }

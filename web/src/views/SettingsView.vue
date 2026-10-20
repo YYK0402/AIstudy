@@ -153,6 +153,7 @@ async function toggleProvider(provider: AiProvider) {
     await updateProvider(provider);
   } catch (error) {
     console.error("更新服务商状态失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新服务商状态失败");
   }
 }
 
@@ -182,6 +183,7 @@ async function handleDelete(provider: AiProvider) {
     await providerStore.load();
   } catch (error) {
     console.error("删除服务商失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除服务商失败");
   }
 }
 
@@ -253,6 +255,7 @@ async function addModel(providerId: number) {
     await providerStore.load();
   } catch (error) {
     console.error("添加模型失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "添加模型失败");
   }
 }
 
@@ -262,6 +265,7 @@ async function removeModel(model: AiModel) {
     await providerStore.load();
   } catch (error) {
     console.error("删除模型失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除模型失败");
   }
 }
 
@@ -270,7 +274,10 @@ function onTaskModelChange(taskKey: string, event: Event) {
   const modelId = value === "" ? null : Number(value);
   saveTaskModel(taskKey, modelId)
     .then(() => providerStore.load())
-    .catch((error) => console.error("保存任务分配失败:", error));
+    .catch((error) => {
+      console.error("保存任务分配失败:", error);
+      window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存任务分配失败");
+    });
 }
 
 function formatTime(iso: string): string {

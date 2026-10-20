@@ -91,6 +91,7 @@ watch(
       }
     }
   },
+  { immediate: true },
 );
 
 function close() {
@@ -126,6 +127,7 @@ async function save() {
     emit("saved");
   } catch (error) {
     console.error("保存服务商失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存服务商失败");
   } finally {
     saving.value = false;
   }

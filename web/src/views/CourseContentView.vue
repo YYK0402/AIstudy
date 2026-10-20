@@ -237,6 +237,7 @@ async function delChapter(ch: Chapter) {
     await Promise.all([loadChapters(), loadKnowledgePoints()]);
   } catch (e) {
     console.error("删除章节失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除章节失败");
   }
 }
 
@@ -253,6 +254,7 @@ async function del(m: Material) {
     await load();
   } catch (e) {
     console.error("删除资料失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除资料失败");
   }
 }
 
@@ -286,6 +288,7 @@ async function delKp(kp: KnowledgePoint) {
     await loadKnowledgePoints();
   } catch (e) {
     console.error("删除知识点失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除知识点失败");
   }
 }
 

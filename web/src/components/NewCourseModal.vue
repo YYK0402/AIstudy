@@ -86,6 +86,7 @@ async function create() {
     form.mode = "manual";
   } catch (error) {
     console.error("创建课程失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "创建课程失败");
   } finally {
     creating.value = false;
   }
