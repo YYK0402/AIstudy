@@ -1,7 +1,10 @@
 <template>
   <div class="page">
     <div class="hero">
-      <div class="greet">{{ courseName }}<small>{{ courseDesc || "暂无简介" }}</small></div>
+      <div class="greet">
+        {{ courseName }}<small>{{ courseDesc || "暂无简介" }}</small>
+        <button v-if="courseStore.currentCourse" class="btn sm" style="margin-top:12px" @click="openEdit">✎ 编辑课程信息</button>
+      </div>
       <div class="streak"><div class="num">0</div><div class="lbl">已掌握知识点</div></div>
     </div>
 
@@ -34,8 +37,17 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useCourseStore } from "../stores/course";
+import { useModalStore } from "../stores/modal";
 
 const courseStore = useCourseStore();
+const modalStore = useModalStore();
 const courseName = computed(() => courseStore.currentCourse?.name ?? "课程");
 const courseDesc = computed(() => courseStore.currentCourse?.description ?? "");
+
+function openEdit() {
+  const course = courseStore.currentCourse;
+  if (course) {
+    modalStore.openEditCourse(course);
+  }
+}
 </script>

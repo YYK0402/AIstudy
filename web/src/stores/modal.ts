@@ -1,9 +1,10 @@
 import { defineStore } from "pinia";
-import type { AiProvider } from "../api";
+import type { AiProvider, Course } from "../api";
 
 export const useModalStore = defineStore("modal", {
   state: () => ({
     newCourseOpen: false,
+    editingCourse: null as Course | null,
     newProviderOpen: false,
     editingProvider: null as AiProvider | null,
     uploadMaterialOpen: false,
@@ -11,10 +12,16 @@ export const useModalStore = defineStore("modal", {
   }),
   actions: {
     openNewCourse() {
+      this.editingCourse = null;
+      this.newCourseOpen = true;
+    },
+    openEditCourse(course: Course) {
+      this.editingCourse = course;
       this.newCourseOpen = true;
     },
     closeNewCourse() {
       this.newCourseOpen = false;
+      this.editingCourse = null;
     },
     openNewProvider() {
       this.newProviderOpen = true;

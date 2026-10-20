@@ -47,6 +47,25 @@ export async function createCourse(input: {
   return course;
 }
 
+export async function updateCourse(id: number, input: {
+  name: string;
+  description?: string;
+  target?: string;
+  totalCycle?: string;
+}): Promise<Course> {
+  const data = await getData();
+  const course = data.courses.find((c) => c.id === id);
+  if (!course) {
+    throw new Error("课程不存在，可能已被删除");
+  }
+  course.name = input.name;
+  course.description = input.description ?? "";
+  course.target = input.target ?? "";
+  course.totalCycle = input.totalCycle ?? "";
+  await saveData(data);
+  return course;
+}
+
 // ===== 服务商 CRUD =====
 export async function queryProviders(): Promise<AiProvider[]> {
   const data = await getData();

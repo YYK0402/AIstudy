@@ -1,7 +1,7 @@
 <template>
   <div class="modal-mask" :class="{ open: modalStore.newCourseOpen }" @click.self="close">
     <div class="modal">
-      <h2>新建课程</h2>
+      <h2>{{ isEdit ? "编辑课程" : "新建课程" }}</h2>
       <div class="field">
         <label>课程名称 <span class="req">*</span></label>
         <input v-model="form.name" placeholder="如：高等数学（上）" />
@@ -18,7 +18,7 @@
         <label>预计总周期</label>
         <input v-model="form.totalCycle" placeholder="如：12 周 / 3 个月" />
       </div>
-      <div class="field">
+      <div v-if="!isEdit" class="field">
         <label>目录构建模式</label>
         <div class="mode-grid">
           <div class="mode-card" :class="{ sel: form.mode === 'manual' }" @click="form.mode = 'manual'">
@@ -33,8 +33,8 @@
       </div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>
-        <button class="btn primary" :disabled="!form.name.trim() || creating" @click="create">
-          {{ creating ? "创建中…" : "创建课程" }}
+        <button class="btn primary" :disabled="!form.name.trim() || creating" @click="save">
+          {{ creating ? (isEdit ? "保存中…" : "创建中…") : (isEdit ? "保存" : "创建课程") }}
         </button>
       </div>
     </div>
@@ -42,10 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useCourseStore } from "../stores/course";
-import { createCourse, queryCourses } from "../api";
+import { createCourse, updateCourse, queryCourses } from "../api";
 
 const modalStore = useModalStore();
 const courseStore = useCourseStore();
@@ -60,22 +60,56 @@ const form = reactive({
   mode: "manual" as "manual" | "ai",
 });
 
+const isEdit = computed(() => modalStore.editingCourse !== null);
+
+watch(
+  () => modalStore.newCourseOpen,
+  (open) => {
+    if (!open) return;
+    const editing = modalStore.editingCourse;
+    if (editing) {
+      form.name = editing.name;
+      form.description = editing.description;
+      form.target = editing.target;
+      form.totalCycle = editing.totalCycle;
+      form.mode = "manual";
+    } else {
+      form.name = "";
+      form.description = "";
+      form.target = "";
+      form.totalCycle = "";
+      form.mode = "manual";
+    }
+  },
+  { immediate: true },
+);
+
 function close() {
   modalStore.closeNewCourse();
 }
 
-async function create() {
+async function save() {
   if (!form.name.trim() || creating.value) {
     return;
   }
   creating.value = true;
   try {
-    await createCourse({
-      name: form.name.trim(),
-      description: form.description,
-      target: form.target,
-      totalCycle: form.totalCycle,
-    });
+    const editing = modalStore.editingCourse;
+    if (editing) {
+      await updateCourse(editing.id, {
+        name: form.name.trim(),
+        description: form.description,
+        target: form.target,
+        totalCycle: form.totalCycle,
+      });
+    } else {
+      await createCourse({
+        name: form.name.trim(),
+        description: form.description,
+        target: form.target,
+        totalCycle: form.totalCycle,
+      });
+    }
     const courses = await queryCourses();
     courseStore.setCourses(courses);
     close();
@@ -85,8 +119,8 @@ async function create() {
     form.totalCycle = "";
     form.mode = "manual";
   } catch (error) {
-    console.error("创建课程失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "创建课程失败");
+    console.error("保存课程失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存课程失败");
   } finally {
     creating.value = false;
   }
