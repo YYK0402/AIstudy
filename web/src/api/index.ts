@@ -708,7 +708,13 @@ export async function extractKnowledgePoints(
     );
   }
 
-  const chunks = (await import("../utils/textChunker")).chunkText(material.contentText, 2000);
+  const { chunkText, chunkByMarkdownHeadings } = await import("../utils/textChunker");
+  const headingChunks = chunkByMarkdownHeadings(material.contentText);
+  // 有 ≥2 个标题片段时按标题切分（语义完整、块数少、省 token），否则回退固定字符分块
+  const useHeadings = headingChunks.length >= 2;
+  const blocks: Array<{ title: string; text: string }> = useHeadings
+    ? headingChunks.map((c) => ({ title: c.title, text: c.content }))
+    : chunkText(material.contentText, 2000).map((t) => ({ title: "", text: t }));
   const existingKps: KnowledgePoint[] = data.knowledgePoints.filter((k) => k.courseId === material.courseId);
   const existingNames = existingKps.map((k) => k.name);
 
@@ -717,7 +723,9 @@ export async function extractKnowledgePoints(
   let duplicateCount = 0;
   const errors: string[] = [];
 
-  for (let i = 0; i < chunks.length; i++) {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const locator = block.title ? `章节：${block.title}` : `文本片段（第${i + 1}/${blocks.length}块）`;
     try {
       const res = await window.siyuanAiStudy.callAi({
         providerId: binding.providerId,
@@ -732,7 +740,7 @@ export async function extractKnowledgePoints(
           {
             role: "user",
             content:
-              `已有知识点：${existingNames.join("、") || "无"}\n\n文本片段（第${i+1}/${chunks.length}块）：\n${chunks[i]}`,
+              `已有知识点：${existingNames.join("、") || "无"}\n\n${locator}：\n${block.text}`,
           },
         ],
       });
@@ -775,7 +783,7 @@ export async function extractKnowledgePoints(
   }
 
   await saveData(data);
-  return { newCount, updateCount, duplicateCount, totalChunks: chunks.length, errors };
+  return { newCount, updateCount, duplicateCount, totalChunks: blocks.length, errors };
 }
 
 // ===== 知识点 CRUD =====

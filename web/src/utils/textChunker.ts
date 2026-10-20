@@ -19,3 +19,34 @@ export function chunkText(text: string, maxChars: number = 2000): string[] {
   }
   return chunks;
 }
+
+export interface HeadingChunk {
+  title: string;
+  content: string;
+}
+
+// 按 markdown 一级/二级标题切分，返回 { 标题, 内容 } 片段。
+// 相比固定字符分块，按标题切分语义更完整、块数更少，可显著降低 AI 抽取的 token 消耗。
+export function chunkByMarkdownHeadings(text: string): HeadingChunk[] {
+  const lines = text.split("\n");
+  const chunks: HeadingChunk[] = [];
+  let title = "";
+  let contentLines: string[] = [];
+  const flush = () => {
+    if (title || contentLines.some((l) => l.trim())) {
+      chunks.push({ title, content: contentLines.join("\n").trim() });
+    }
+  };
+  for (const line of lines) {
+    const m = line.match(/^(#{1,2})\s+(.+)$/);
+    if (m) {
+      flush();
+      title = m[2].trim();
+      contentLines = [];
+    } else {
+      contentLines.push(line);
+    }
+  }
+  flush();
+  return chunks;
+}
