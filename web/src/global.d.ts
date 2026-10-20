@@ -16,6 +16,10 @@ export interface TestProviderResult {
   message: string;
 }
 
+export interface ListModelsResult extends TestProviderResult {
+  models: string[];
+}
+
 export interface SiYuanAiStudyApi {
   getData(): AppData;
   saveData(data: AppData): Promise<{ code: number }>;
@@ -27,6 +31,7 @@ export interface SiYuanAiStudyApi {
     taskKey: string;
   }): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
+  listModels(providerId: number): Promise<ListModelsResult>;
 }
 
 declare global {

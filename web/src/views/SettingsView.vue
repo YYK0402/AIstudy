@@ -32,12 +32,29 @@
                   <span v-if="m.maxContext" class="m-id">{{ m.maxContext }} ctx</span>
                   <span class="m-del" @click="removeModel(m)">✕</span>
                 </div>
-                <div v-if="addingModelId === p.id" class="model-item">
-                  <input v-model="newModel.modelId" placeholder="模型 ID" />
-                  <input v-model="newModel.displayName" placeholder="显示名" />
-                  <input v-model="newModel.maxContext" placeholder="上下文" type="number" />
-                  <button class="btn sm" @click="addModel(p.id)">确定</button>
-                </div>
+                <div v-if="fetchingModels" class="s" style="color:var(--as-text-faint)">获取模型列表中…</div>
+                <template v-else-if="addingModelId === p.id && !modelUseManual">
+                  <div class="model-item">
+                    <select v-model="newModel.modelId" @change="pickModel(newModel.modelId)" style="flex:1">
+                      <option value="">选择模型</option>
+                      <option v-for="id in availableModels(p.id)" :key="id" :value="id">{{ id }}</option>
+                    </select>
+                    <input v-model="newModel.displayName" placeholder="显示名（自动预填）" style="flex:0.8" />
+                    <input v-model="newModel.maxContext" placeholder="上下文" type="number" style="width:70px" />
+                    <button class="btn sm" :disabled="!newModel.modelId" @click="addModel(p.id)">确定</button>
+                  </div>
+                  <button class="btn sm ghost" @click="useManualInput()">手动输入模型 ID</button>
+                </template>
+                <template v-else-if="addingModelId === p.id">
+                  <div v-if="modelFetchError" class="s" style="color:var(--as-red);margin:2px 6px">自动获取失败：{{ modelFetchError }}</div>
+                  <div class="model-item">
+                    <input v-model="newModel.modelId" placeholder="模型 ID" />
+                    <input v-model="newModel.displayName" placeholder="显示名" />
+                    <input v-model="newModel.maxContext" placeholder="上下文" type="number" />
+                    <button class="btn sm" @click="addModel(p.id)">确定</button>
+                  </div>
+                  <button class="btn sm ghost" @click="retryFetch(p.id)">重试自动获取</button>
+                </template>
                 <button v-else class="btn sm ghost" @click="startAddModel(p.id)">＋ 添加模型</button>
               </div>
             </div>
@@ -92,6 +109,7 @@ import {
   updateProvider,
   deleteProvider,
   testProvider as testProviderApi,
+  fetchProviderModels,
   createModel,
   deleteModel,
   saveTaskModel,
@@ -107,7 +125,17 @@ const testingId = ref<number | null>(null);
 const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
 const expandedId = ref<number | null>(null);
 const addingModelId = ref<number | null>(null);
-const newModel = reactive({ modelId: "", displayName: "", maxContext: "" });
+const newModel = reactive({
+  modelId: "",
+  displayName: "",
+  maxContext: "",
+  /** 自动获取到的服务商模型 id 列表 */
+  fetched: [] as string[],
+});
+const fetchingModels = ref(false);
+const modelFetchError = ref("");
+/** true = /models 获取失败，回退手动输入 */
+const modelUseManual = ref(true);
 
 const tasks = AI_TASKS;
 const taskModelMap = computed(() => providerStore.taskModelMap);
@@ -162,6 +190,52 @@ function startAddModel(providerId: number) {
   newModel.modelId = "";
   newModel.displayName = "";
   newModel.maxContext = "";
+  void fetchModelList(providerId);
+}
+
+/** 自动获取服务商可用模型；失败回退手动输入。 */
+async function fetchModelList(providerId: number) {
+  fetchingModels.value = true;
+  modelFetchError.value = "";
+  modelUseManual.value = false;
+  newModel.fetched = [];
+  try {
+    const { ok, message, models } = await fetchProviderModels(providerId);
+    if (ok && models.length) {
+      newModel.fetched = models;
+    } else {
+      modelUseManual.value = true;
+      if (message) {
+        modelFetchError.value = message;
+      }
+    }
+  } catch (error) {
+    modelUseManual.value = true;
+    console.error("获取模型列表失败:", error);
+  } finally {
+    fetchingModels.value = false;
+  }
+}
+
+/** 已添加过的 modelId 不再出现在下拉里 */
+function availableModels(providerId: number): string[] {
+  const added = new Set(modelsOf(providerId).map((m) => m.modelId));
+  return newModel.fetched.filter((id) => !added.has(id));
+}
+
+function pickModel(id: string) {
+  newModel.modelId = id;
+  if (!newModel.displayName.trim()) {
+    newModel.displayName = id;
+  }
+}
+
+function retryFetch(providerId: number) {
+  void fetchModelList(providerId);
+}
+
+function useManualInput() {
+  modelUseManual.value = true;
 }
 
 async function addModel(providerId: number) {

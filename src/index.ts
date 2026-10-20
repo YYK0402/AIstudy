@@ -28,6 +28,10 @@ interface TestProviderResult {
   message: string;
 }
 
+interface ListModelsResult extends TestProviderResult {
+  models: string[];
+}
+
 // 暴露给前端（同渲染进程直接挂载）的数据/内核 API
 interface StudyApi {
   getData(): AppData;
@@ -35,6 +39,7 @@ interface StudyApi {
   querySql(stmt: string): Promise<unknown>;
   callAi(input: CallAiInput): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
+  listModels(providerId: number): Promise<ListModelsResult>;
 }
 
 declare global {
@@ -118,6 +123,9 @@ export default class AiStudyPlugin extends Plugin {
       },
       testProvider: async (providerId: number) => {
         return await this.handleTestProvider(providerId);
+      },
+      listModels: async (providerId: number) => {
+        return await this.handleListModels(providerId);
       },
     };
   }
@@ -225,6 +233,48 @@ export default class AiStudyPlugin extends Plugin {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, message };
+    }
+  }
+
+  // 拉取服务商可用模型列表（OpenAI 兼容 GET {baseUrl}/models）
+  private async handleListModels(providerId: number): Promise<ListModelsResult> {
+    const data = this.getData();
+    const provider = data.providers.find((p) => p.id === providerId);
+    if (!provider) {
+      return { ok: false, message: "服务商不存在", models: [] };
+    }
+    const url = provider.baseUrl.replace(/\/$/, "") + "/models";
+    try {
+      const res = await forwardProxyRequest({
+        url,
+        method: "GET",
+        headers: [{ Authorization: `Bearer ${provider.apiKey}` }],
+        timeout: 15000,
+      });
+      if (res.code !== 0 || !res.data) {
+        return { ok: false, message: res.msg, models: [] };
+      }
+      if (res.data.status < 200 || res.data.status >= 300) {
+        return { ok: false, message: `HTTP ${res.data.status}: ${res.data.body.slice(0, 200)}`, models: [] };
+      }
+      const body = JSON.parse(res.data.body) as
+        | { data?: Array<{ id?: string }> }
+        | Array<{ id?: string }>;
+      const raw = Array.isArray(body) ? body : body.data ?? [];
+      const models = [
+        ...new Set(
+          raw
+            .map((m) => m?.id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      ].sort((a, b) => a.localeCompare(b));
+      if (models.length === 0) {
+        return { ok: false, message: "服务商返回的模型列表为空（可能不支持 /models 接口）", models: [] };
+      }
+      return { ok: true, message: `获取到 ${models.length} 个模型`, models };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, message, models: [] };
     }
   }
 

@@ -106,6 +106,7 @@ const navGroups = [
     items: [
       { to: "/quiz", icon: "quiz", label: "刷题练习" },
       { to: "/wrong", icon: "wrong", label: "错题本", badge: "12" },
+      { to: "/review", icon: "repeat", label: "复习计划" },
       { to: "/graph", icon: "graph", label: "知识图谱" },
     ],
   },
@@ -123,6 +124,7 @@ const icons: Record<string, string> = {
   study: '<path d="M12 6.5C10 4.5 7 4.5 5 6.5v11c2-2 5-2 7 0 2-2 5-2 7 0v-11c-2-2-5-2-7 0z"/><path d="M12 6.5V17.5"/>',
   quiz: '<path d="M4 4h16v16H4z"/><path d="M8 10h8M8 14h8"/><path d="M12 4v16"/>',
   wrong: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M12 8v4M12 16h.01"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/>',
   graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l7-1M7.5 8l3.5 8M16.5 8l-3.5 8"/>',
   report: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
   settings:
