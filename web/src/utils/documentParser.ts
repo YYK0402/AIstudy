@@ -28,6 +28,21 @@ interface ParsedContent {
   headings: ParsedHeading[];
 }
 
+/** 判断标题层级：1=章，2=节，0=非标题（支持编号模式：第X章/X章、第X节、X.X、一、、（一）） */
+function detectHeadingLevel(text: string): number {
+  // 章：第X章 / 第X部 / 第X编
+  if (/^第[一二三四五六七八九十百\d]+[章部编]/.test(text)) return 1;
+  // 节：第X节
+  if (/^第[一二三四五六七八九十百\d]+节/.test(text)) return 2;
+  // 节：X.X / X.X.X
+  if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(text)) return 2;
+  // 节：一、 / 二． 等中文数字序号
+  if (/^[一二三四五六七八九十]+[、．.]/.test(text)) return 2;
+  // 节：（一）/（1）
+  if (/^[（(][一二三四五六七八九十\d]+[)）]/.test(text)) return 2;
+  return 0;
+}
+
 /** 从 markdown 中提取一级/二级标题（### 及更深层级忽略）。支持编号模式识别（无 # 标记的纯文本标题）。 */
 function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
   const headings: ParsedHeading[] = [];
@@ -38,15 +53,8 @@ function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
     const markLevel = m ? m[1].length : 0;
     const text = m ? m[2].trim() : trimmed;
     if (!text || text.length > 40) continue;
-    // 层级判断：编号模式优先（第X章→章、X.X→节），其次 markdown 标记
-    let level = 0;
-    if (/^第[一二三四五六七八九十百\d]+[章节部]/.test(text)) {
-      level = 1;
-    } else if (/^\d+(\.\d+){1,2}[\s、．.．]+/.test(text)) {
-      level = 2;
-    } else if (markLevel > 0) {
-      level = markLevel;
-    }
+    // 层级判断：编号模式优先，其次 markdown 标记
+    const level = detectHeadingLevel(text) || markLevel;
     if (level > 0) {
       headings.push({ level, text });
     }
