@@ -929,9 +929,14 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
 }
 
 export async function deleteChapter(id: number): Promise<void> {
+  await deleteChapters([id]);
+}
+
+/** 批量删除章节（级联删除子孙章节与思源文档，知识点归属刷新为未分配） */
+export async function deleteChapters(ids: number[]): Promise<void> {
   const data = await getData();
   // 收集自身及所有子孙章节 id
-  const removed = new Set<number>([id]);
+  const removed = new Set<number>(ids);
   let grew = true;
   while (grew) {
     grew = false;

@@ -7,6 +7,8 @@
       <div class="card">
         <h3>目录结构
           <button class="btn sm ghost" :disabled="!currentCourseId()" @click="reidentifyChapters">🔄 重新识别目录</button>
+          <button v-if="!batchMode" class="btn sm ghost" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode">☑ 批量删除</button>
+          <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           <button class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
@@ -17,26 +19,33 @@
         </div>
         <div v-else class="tree">
           <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: !collapsedChapters.has(ch.id) }">
-            <div class="row" :class="{ active: selectedChapterId === ch.id }" @click="selectChapter(ch.id)">
+            <div class="row" :class="{ active: selectedChapterId === ch.id }" @click="batchMode ? toggleSelect(ch.id) : selectChapter(ch.id)">
+              <input v-if="batchMode" type="checkbox" class="tp-check" :checked="selectedChapterIds.has(ch.id)" @click.stop @change="toggleSelect(ch.id)" />
               <span class="tgl" @click.stop="toggleChapter(ch.id)">▶</span>
               <span class="name">{{ ch.name }}</span>
               <span class="count">{{ kpCountOf(ch.id) }}</span>
-              <button class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
-              <button class="btn sm ghost" @click.stop="editChapter(ch)">编辑</button>
-              <button class="btn sm ghost" @click.stop="delChapter(ch)">删除</button>
+              <button v-if="!batchMode" class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
+              <button v-if="!batchMode" class="btn sm ghost" @click.stop="editChapter(ch)">编辑</button>
+              <button v-if="!batchMode" class="btn sm ghost" @click.stop="delChapter(ch)">删除</button>
             </div>
             <div class="tree-children">
               <div v-for="u in ch.units" :key="u.id" class="tree-node">
-                <div class="row" :class="{ active: selectedChapterId === u.id }" @click="selectChapter(u.id)">
+                <div class="row" :class="{ active: selectedChapterId === u.id }" @click="batchMode ? toggleSelect(u.id) : selectChapter(u.id)">
+                  <input v-if="batchMode" type="checkbox" class="tp-check" :checked="selectedChapterIds.has(u.id)" @click.stop @change="toggleSelect(u.id)" />
                   <span class="tgl" style="opacity:0">▶</span>
                   <span class="name">{{ u.name }}</span>
                   <span class="count">{{ kpCountOf(u.id) }}</span>
-                  <button class="btn sm ghost" @click.stop="editChapter(u)">编辑</button>
-                  <button class="btn sm ghost" @click.stop="delChapter(u)">删除</button>
+                  <button v-if="!batchMode" class="btn sm ghost" @click.stop="editChapter(u)">编辑</button>
+                  <button v-if="!batchMode" class="btn sm ghost" @click.stop="delChapter(u)">删除</button>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+        <div v-if="batchMode && chapters.length > 0" class="batch-bar">
+          <button class="btn sm ghost" @click="selectAll">全选</button>
+          <span class="s" style="color:var(--as-text-faint)">已选 {{ selectedChapterIds.size }} 项</span>
+          <button class="btn sm danger" :disabled="selectedChapterIds.size === 0" @click="batchDelete">删除选中</button>
         </div>
       </div>
 
@@ -142,6 +151,7 @@ import {
   deleteKnowledgePoint,
   queryChapters,
   deleteChapter,
+  deleteChapters,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
@@ -163,6 +173,8 @@ const selectedChapterId = ref<number | null>(null);
 const searchKeyword = ref("");
 const currentPage = ref(1);
 const PAGE_SIZE = 10;
+const batchMode = ref(false);
+const selectedChapterIds = ref<Set<number>>(new Set());
 
 interface ChapterNode extends Chapter {
   units: Chapter[];
@@ -357,6 +369,50 @@ async function delChapter(ch: Chapter) {
   } catch (e) {
     console.error("删除章节失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除章节失败");
+  }
+}
+
+function enterBatchMode() {
+  batchMode.value = true;
+  selectedChapterIds.value = new Set();
+}
+
+function exitBatchMode() {
+  batchMode.value = false;
+  selectedChapterIds.value = new Set();
+}
+
+function toggleSelect(id: number) {
+  const s = new Set(selectedChapterIds.value);
+  if (s.has(id)) {
+    s.delete(id);
+  } else {
+    s.add(id);
+  }
+  selectedChapterIds.value = s;
+}
+
+function selectAll() {
+  const all = chapters.value.map((c) => c.id);
+  if (selectedChapterIds.value.size === all.length) {
+    selectedChapterIds.value = new Set();
+  } else {
+    selectedChapterIds.value = new Set(all);
+  }
+}
+
+async function batchDelete() {
+  const ids = [...selectedChapterIds.value];
+  if (ids.length === 0) return;
+  if (!window.confirm(`确定删除选中的 ${ids.length} 个章节？其下小节将一并删除，关联知识点归类改为「未分配」。`)) return;
+  try {
+    await deleteChapters(ids);
+    exitBatchMode();
+    await Promise.all([loadChapters(), loadKnowledgePoints()]);
+    window.siyuanAiStudy.showMessage(`已删除 ${ids.length} 个章节`);
+  } catch (e) {
+    console.error("批量删除章节失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "批量删除章节失败");
   }
 }
 

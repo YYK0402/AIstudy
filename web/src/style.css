@@ -408,6 +408,12 @@
 .tp-input { flex: 1; padding: 8px 12px; background: var(--as-bg-elev2); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); color: var(--as-text); font-size: 13px; outline: none; transition: border-color .15s; }
 .tp-input:focus { border-color: var(--as-accent); }
 
+/* 目录批量删除 */
+.tp-check { flex-shrink: 0; width: 15px; height: 15px; cursor: pointer; accent-color: var(--as-accent); }
+.batch-bar { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--as-border-soft); }
+.btn.danger { color: var(--as-red); border-color: currentColor; }
+.btn.danger:hover { background: var(--as-red-soft, rgba(220, 90, 90, 0.1)); }
+
 /* ===== 学习计划时间线 ===== */
 .timeline { position: relative; padding-left: 24px; }
 .timeline::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--as-border); }
