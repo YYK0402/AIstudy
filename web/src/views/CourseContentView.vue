@@ -4,11 +4,11 @@
 
     <div class="card">
       <h3>资料库
-        <button class="btn primary sm" :disabled="!currentCourseId" @click="openUpload" style="margin-left:auto">
+        <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload" style="margin-left:auto">
           ＋ 上传资料
         </button>
       </h3>
-      <div v-if="!currentCourseId" class="empty-state" style="padding:24px 0">
+      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
         <span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程
       </div>
       <div v-else-if="materials.length === 0" class="empty-state" style="padding:24px 0">
@@ -39,11 +39,11 @@
 
     <div class="card" style="margin-top:14px">
       <h3>章节目录
-        <button class="btn primary sm" :disabled="!currentCourseId" @click="addTopChapter" style="margin-left:auto">
+        <button class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">
           ＋ 添加章节
         </button>
       </h3>
-      <div v-if="!currentCourseId" class="empty-state" style="padding:24px 0">
+      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
         <span class="ico">📭</span> 请先选择课程
       </div>
       <div v-else-if="chapters.length === 0" class="empty-state" style="padding:24px 0">
@@ -79,7 +79,7 @@
       <h3>知识点
         <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ knowledgePoints.length }} 个</span>
       </h3>
-      <div v-if="!currentCourseId" class="empty-state" style="padding:24px 0">
+      <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
         <span class="ico">📭</span> 请先选择课程
       </div>
       <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:24px 0">

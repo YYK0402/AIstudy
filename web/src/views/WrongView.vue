@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-title"><h1>错题本</h1><div class="desc">答错自动归集 · 反复训练</div></div>
 
-    <div v-if="!currentCourseId" class="card">
+    <div v-if="!currentCourseId()" class="card">
       <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 

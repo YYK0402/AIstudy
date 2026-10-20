@@ -2,7 +2,7 @@
   <div class="page">
     <div class="page-title"><h1>开始学习</h1><div class="desc">冯诺依曼输出式学习 · 讲解 → 评估 → 补强</div></div>
 
-    <div v-if="!currentCourseId" class="card">
+    <div v-if="!currentCourseId()" class="card">
       <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 

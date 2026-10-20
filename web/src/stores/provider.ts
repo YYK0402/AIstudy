@@ -12,9 +12,10 @@ export const useProviderStore = defineStore("provider", {
   actions: {
     async load() {
       const data = await getData();
-      this.providers = data.providers;
-      this.models = data.models;
-      this.logs = data.logs;
+      // 深拷贝，避免 store 直接持有插件数据的引用，防止被意外原地修改污染真相源
+      this.providers = structuredClone(data.providers);
+      this.models = structuredClone(data.models);
+      this.logs = structuredClone(data.logs);
       this.taskModelMap = await getTaskModelMap();
     },
   },

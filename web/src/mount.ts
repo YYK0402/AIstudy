@@ -1,9 +1,11 @@
-import { createApp } from "vue";
+import { createApp, type App as VueApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 import { useThemeStore } from "./stores/theme";
 import cssText from "./style.css?inline";
+
+let app: VueApp | null = null;
 
 // 前端入口：由插件主入口动态加载后，调用 mount 挂载到页签元素
 export function mount(el: Element): void {
@@ -14,7 +16,7 @@ export function mount(el: Element): void {
     document.head.appendChild(style);
   }
 
-  const app = createApp(App);
+  app = createApp(App);
   const pinia = createPinia();
   app.use(pinia);
   app.use(router);
@@ -24,6 +26,10 @@ export function mount(el: Element): void {
 }
 
 export function unmount(): void {
+  if (app) {
+    app.unmount();
+    app = null;
+  }
   const style = document.getElementById("ai-study-style");
   if (style) {
     style.remove();

@@ -191,9 +191,8 @@ export async function deleteQuestion(id: number): Promise<void> {
   const data = await getData();
   data.questions = data.questions.filter((q) => q.id !== id);
   // 同步清理答题记录与错题，避免悬挂引用
-  const removedRecords = new Set(data.answerRecords.filter((r) => r.qId === id).map((r) => r.id));
   data.answerRecords = data.answerRecords.filter((r) => r.qId !== id);
-  data.wrongQuestions = data.wrongQuestions.filter((w) => w.qId !== id && !removedRecords.has(w.qId));
+  data.wrongQuestions = data.wrongQuestions.filter((w) => w.qId !== id);
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId !== id);
   await saveData(data);
 }
@@ -517,9 +516,10 @@ export async function generateQuestions(
   const kpIdSet = new Set(input.kpIds);
 
   const questions: Question[] = [];
+  let nextQuestionId = nextId(data.questions);
   for (const item of items) {
     questions.push({
-      id: nextId(data.questions),
+      id: nextQuestionId++,
       courseId,
       kpIds: item.kpIds.filter((n) => kpIdSet.has(n)).join(","),
       title: item.title,
@@ -845,10 +845,18 @@ export type ReviewGrade = "forgotten" | "vague" | "solid";
 /** 自研 SM2：评分档位映射质量分 n（0 忘了 / 3 模糊 / 5 牢固） */
 const REVIEW_GRADE_TO_N: Record<ReviewGrade, number> = { forgotten: 0, vague: 3, solid: 5 };
 
+/** 按本地时区格式化为 YYYY-MM-DD，避免 toISOString 的 UTC 偏移导致跨时区错一天 */
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function reviewNextDue(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + Math.max(1, days));
-  return d.toISOString().slice(0, 10);
+  return formatLocalDate(d);
 }
 
 function ensureReviewTouchpointInData(data: AppData, kpId: number): void {
@@ -941,7 +949,7 @@ export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade)
       2.8,
       Math.max(1.3, target.easeFactor + (0.1 - (5 - n) * (0.08 + (5 - n) * 0.02))),
     );
-    target.intervalDays = target.stage === 1 ? 1 : Math.max(target.intervalDays, Math.round(target.intervalDays * target.easeFactor));
+    target.intervalDays = target.stage === 1 ? 1 : Math.round(target.intervalDays * target.easeFactor);
     target.stage = Math.min(8, target.stage + 1);
   }
   target.dueTime = reviewNextDue(target.intervalDays);
@@ -1040,7 +1048,7 @@ export async function generateStudyPlan(
     throw new Error("未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「gen_plan」任务或「全局默认模型」");
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDate(new Date());
   const chapterLines = chapters
     .map((ch) => {
       const kps = data.knowledgePoints

@@ -3,7 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth/mammoth.browser";
 import JSZip from "jszip";
 
-// pdfjs-dist 4.x 需要设置 worker 路径
+// pdfjs-dist 需要设置 worker 路径；经 vite 构建后 worker 会被内联为 data URL
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
