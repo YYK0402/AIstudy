@@ -25,14 +25,12 @@ export interface HeadingChunk {
   content: string;
 }
 
-// 判断一行是否为标题（markdown #/## 或编号模式：第X章/第X节/X.X/一、/（一））
+// 判断一行是否为标题（markdown #/## 或编号模式：第X章/第X节/X.X）
 function isHeadingLine(line: string): boolean {
   if (!line || line.length > 40) return false;
   if (/^#{1,2}\s+/.test(line)) return true;
   if (/^第[一二三四五六七八九十百\d]+[章节部编]/.test(line)) return true;
   if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(line)) return true;
-  if (/^[一二三四五六七八九十]+[、．.]/.test(line)) return true;
-  if (/^[（(][一二三四五六七八九十\d]+[)）]/.test(line)) return true;
   return false;
 }
 

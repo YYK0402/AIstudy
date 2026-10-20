@@ -28,7 +28,7 @@ interface ParsedContent {
   headings: ParsedHeading[];
 }
 
-/** 判断标题层级：1=章，2=节，0=非标题（支持编号模式：第X章/X章、第X节、X.X、一、、（一）） */
+/** 判断标题层级：1=章，2=节，0=非标题。只识别明确的章/节编号（第X章/第X节/X.X），避免误判三级标题 */
 function detectHeadingLevel(text: string): number {
   // 章：第X章 / 第X部 / 第X编
   if (/^第[一二三四五六七八九十百\d]+[章部编]/.test(text)) return 1;
@@ -36,10 +36,6 @@ function detectHeadingLevel(text: string): number {
   if (/^第[一二三四五六七八九十百\d]+节/.test(text)) return 2;
   // 节：X.X / X.X.X
   if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(text)) return 2;
-  // 节：一、 / 二． 等中文数字序号
-  if (/^[一二三四五六七八九十]+[、．.]/.test(text)) return 2;
-  // 节：（一）/（1）
-  if (/^[（(][一二三四五六七八九十\d]+[)）]/.test(text)) return 2;
   return 0;
 }
 
