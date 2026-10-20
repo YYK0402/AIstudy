@@ -32,8 +32,8 @@ export async function createCourse(input: {
   totalCycle?: string;
 }): Promise<Course> {
   const data = await getData();
-  // 落库思源：开启持久化时建课程顶层文档（path 为父目录，文档名取自 markdown 标题），否则占位 UUID
-  const docId = await persistDocIfEnabled(`# ${input.name}`, `/`);
+  // 落库思源：开启持久化时建课程顶层文档（path 含文档名），否则占位 UUID
+  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`);
   const course: Course = {
     id: nextId(data.courses),
     siyuanDocId: docId ?? crypto.randomUUID(),
@@ -606,10 +606,10 @@ export async function createMaterial(input: {
 }): Promise<Material> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === input.courseId);
-  // 落库思源：资料文档放在课程文档下的「资料库」目录
+  // 落库思源：资料文档放在课程文档下的「资料库」目录（path 含文档名）
   const docId = await persistDocIfEnabled(
     `# ${input.name}\n\n${input.contentText}`,
-    `/${course?.name ?? "课程"}/资料库`,
+    `/${course?.name ?? "课程"}/资料库/${input.name}`,
   );
   const material: Material = {
     id: nextId(data.materials),
@@ -846,10 +846,10 @@ export async function createChapter(input: {
   const data = await getData();
   const course = data.courses.find((c) => c.id === input.courseId);
   const parentChapter = input.parentId ? data.chapters.find((c) => c.id === input.parentId) : null;
-  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档
+  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名）
   const path = parentChapter
-    ? `/${course?.name ?? "课程"}/${parentChapter.name}`
-    : `/${course?.name ?? "课程"}`;
+    ? `/${course?.name ?? "课程"}/${parentChapter.name}/${input.name}`
+    : `/${course?.name ?? "课程"}/${input.name}`;
   const docId = await persistDocIfEnabled(`# ${input.name}`, path);
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
@@ -896,8 +896,8 @@ export async function importChapterTree(
       data.chapters
         .filter((c) => c.courseId === courseId && c.parentId === (parent?.id ?? null))
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
-    // 落库思源：章作为课程子文档，节作为父章子文档
-    const path = parent ? `${coursePath}/${parent.name}` : coursePath;
+    // 落库思源：章作为课程子文档，节作为父章子文档（path 含文档名）
+    const path = parent ? `${coursePath}/${parent.name}/${name}` : `${coursePath}/${name}`;
     const docId = await persistDocIfEnabled(`# ${name}`, path);
     const chapter: Chapter = {
       id: nextId(data.chapters),
