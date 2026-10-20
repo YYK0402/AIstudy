@@ -640,7 +640,10 @@ export async function deleteMaterial(id: number): Promise<void> {
 
 export async function queryMaterials(courseId: number): Promise<Material[]> {
   const data = await getData();
-  return data.materials.filter((m) => m.courseId === courseId);
+  // 按名称自然排序（数字感知），保证资料顺序稳定、目录识别按资料顺序
+  return data.materials
+    .filter((m) => m.courseId === courseId)
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }));
 }
 
 // ===== AI 知识点抽取 =====
