@@ -82,10 +82,14 @@
       </div>
     </div>
     <div class="card" style="margin-top:14px">
-      <h3>数据与存储</h3>
+      <h3>数据与存储
+        <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings" style="margin-left:auto">
+          {{ settingsSaving ? "保存中…" : "保存" }}
+        </button>
+      </h3>
       <div class="ta-row">
         <span class="t">章节识别方式</span>
-        <select :value="settings.chapterMode" @change="onChapterModeChange">
+        <select v-model="settings.chapterMode">
           <option value="manual">手动（上传后不自动建目录）</option>
           <option value="auto">自动（上传资料后按标题识别目录）</option>
         </select>
@@ -95,11 +99,11 @@
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">资料持久化到思源</span>
-        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="togglePersist"></div>
+        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="settings.persistToSiyuan = !settings.persistToSiyuan"></div>
       </div>
       <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
         <span class="t">笔记本名称</span>
-        <input :value="settings.notebookName" placeholder="AI 研习" style="flex:1" @change="onNotebookNameChange" />
+        <input v-model="settings.notebookName" placeholder="AI 研习" style="flex:1" />
       </div>
       <div class="s" style="color:var(--as-text-faint);margin-top:6px">
         开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
@@ -111,16 +115,23 @@
         <span class="ico">📜</span>
         暂无调用记录
       </div>
-      <table v-else class="log-table">
-        <tr><th>任务</th><th>模型</th><th>Token</th><th>状态</th><th>时间</th></tr>
-        <tr v-for="log in providerStore.logs" :key="log.id">
-          <td>{{ log.taskKey }}</td>
-          <td class="mono">{{ log.modelName }}</td>
-          <td class="mono">{{ log.tokenIn + log.tokenOut }}</td>
-          <td><span class="status-dot" :class="log.status === 'success' ? 'ok' : 'bad'"></span> {{ log.status }}</td>
-          <td class="mono">{{ formatTime(log.createTime) }}</td>
-        </tr>
-      </table>
+      <template v-else>
+        <table class="log-table">
+          <tr><th>任务</th><th>模型</th><th>Token</th><th>状态</th><th>时间</th></tr>
+          <tr v-for="log in pagedLogs" :key="log.id">
+            <td>{{ log.taskKey }}</td>
+            <td class="mono">{{ log.modelName }}</td>
+            <td class="mono">{{ log.tokenIn + log.tokenOut }}</td>
+            <td><span class="status-dot" :class="log.status === 'success' ? 'ok' : 'bad'"></span> {{ log.status }}</td>
+            <td class="mono">{{ formatTime(log.createTime) }}</td>
+          </tr>
+        </table>
+        <div v-if="logTotalPages > 1" class="pagination">
+          <button class="btn sm ghost" :disabled="logPage === 1" @click="logPage--">‹ 上一页</button>
+          <span class="pg-info">{{ logPage }} / {{ logTotalPages }}</span>
+          <button class="btn sm ghost" :disabled="logPage === logTotalPages" @click="logPage++">下一页 ›</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -152,6 +163,16 @@ const settings = reactive({
   persistToSiyuan: false,
   notebookName: "AI 研习",
 });
+const settingsSaving = ref(false);
+const logPage = ref(1);
+const LOG_PAGE_SIZE = 10;
+
+const pagedLogs = computed(() => {
+  const sorted = [...providerStore.logs].sort((a, b) => b.id - a.id);
+  const start = (logPage.value - 1) * LOG_PAGE_SIZE;
+  return sorted.slice(start, start + LOG_PAGE_SIZE);
+});
+const logTotalPages = computed(() => Math.max(1, Math.ceil(providerStore.logs.length / LOG_PAGE_SIZE)));
 
 const testingId = ref<number | null>(null);
 const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
@@ -312,34 +333,22 @@ function onTaskModelChange(taskKey: string, event: Event) {
     });
 }
 
-function onChapterModeChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as "manual" | "auto";
-  settings.chapterMode = value;
-  updateSettings({ chapterMode: value }).catch((error) => {
-    console.error("保存章节识别方式失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存章节识别方式失败");
-  });
-}
-
-function togglePersist() {
-  settings.persistToSiyuan = !settings.persistToSiyuan;
-  updateSettings({ persistToSiyuan: settings.persistToSiyuan }).catch((error) => {
-    console.error("保存持久化设置失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存持久化设置失败");
-  });
-}
-
-function onNotebookNameChange(event: Event) {
-  const value = (event.target as HTMLInputElement).value.trim();
-  if (!value) {
-    settings.notebookName = "AI 研习";
-    return;
+async function saveSettings() {
+  settingsSaving.value = true;
+  try {
+    await updateSettings({
+      chapterMode: settings.chapterMode,
+      persistToSiyuan: settings.persistToSiyuan,
+      notebookName: settings.notebookName.trim() || "AI 研习",
+    });
+    settings.notebookName = settings.notebookName.trim() || "AI 研习";
+    window.siyuanAiStudy.showMessage("设置已保存");
+  } catch (error) {
+    console.error("保存应用设置失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存应用设置失败");
+  } finally {
+    settingsSaving.value = false;
   }
-  settings.notebookName = value;
-  updateSettings({ notebookName: value }).catch((error) => {
-    console.error("保存笔记本名称失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存笔记本名称失败");
-  });
 }
 
 function formatTime(iso: string): string {
