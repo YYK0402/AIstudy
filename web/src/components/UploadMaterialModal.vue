@@ -32,7 +32,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
-import { createMaterial, getSettings } from "../api";
+import { createMaterial, getSettings, uploadAsset } from "../api";
 import { parseDocument, parseTextInput, type ParsedDocument } from "../utils/documentParser";
 
 const modalStore = useModalStore();
@@ -88,12 +88,22 @@ async function save() {
   saving.value = true;
   try {
     const courseId = modalStore.uploadMaterialCourseId;
+    // 有原始文件时上传到思源资源目录，便于后续「重新解析」
+    let assetPath = "";
+    if (selectedFile.value) {
+      try {
+        assetPath = await uploadAsset(selectedFile.value);
+      } catch (e) {
+        console.error("上传资源文件失败（不影响资料保存）:", e);
+      }
+    }
     await createMaterial({
       courseId,
       name: result.value.name,
       fileType: result.value.fileType,
       contentText: result.value.contentText,
       headings: JSON.stringify(result.value.headings),
+      assetPath,
     });
     const headings = result.value.headings;
     close();

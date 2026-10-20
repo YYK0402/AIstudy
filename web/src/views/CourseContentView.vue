@@ -146,6 +146,7 @@ import { useModalStore } from "../stores/modal";
 import {
   queryMaterials,
   deleteMaterial,
+  reparseMaterial,
   extractKnowledgePoints,
   queryKnowledgePoints,
   deleteKnowledgePoint,
@@ -321,8 +322,20 @@ function addTopChapter() {
 }
 
 // 聚合所有资料的标题结构，重新识别目录（后续资料多了可重新生成完整目录）
-function reidentifyChapters() {
+async function reidentifyChapters() {
   if (!currentCourseId()) return;
+  // 先对有源文件的资料重新解析（用最新解析器更新 headings，避免旧资料标题乱序）
+  const reparseList = materials.value.filter((m) => m.assetPath);
+  for (const m of reparseList) {
+    try {
+      await reparseMaterial(m.id);
+    } catch (e) {
+      console.error("重新解析资料失败:", e);
+    }
+  }
+  if (reparseList.length > 0) {
+    await loadMaterials();
+  }
   const allHeadings: ParsedHeading[] = [];
   for (const m of materials.value) {
     try {

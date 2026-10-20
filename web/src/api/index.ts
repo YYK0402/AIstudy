@@ -628,6 +628,34 @@ export async function createMaterial(input: {
   return material;
 }
 
+// 上传文件到思源资源目录，返回 asset 路径（用于重新解析）
+export async function uploadAsset(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file[]", file);
+  const res = await fetch("/api/asset/upload", { method: "POST", body: formData });
+  const json = (await res.json()) as { code: number; data?: { succMap?: Record<string, string> | null } };
+  const path = Object.values(json?.data?.succMap ?? {})[0] ?? "";
+  if (!path) throw new Error("上传资源文件失败");
+  return path;
+}
+
+// 重新解析资料：读取源文件，用最新解析器更新 contentText 与 headings
+export async function reparseMaterial(materialId: number): Promise<void> {
+  const data = await getData();
+  const material = data.materials.find((m) => m.id === materialId);
+  if (!material) throw new Error("资料不存在");
+  if (!material.assetPath) throw new Error("资料缺少源文件，无法重新解析");
+  const res = await fetch(material.assetPath);
+  if (!res.ok) throw new Error("读取源文件失败");
+  const blob = await res.blob();
+  const file = new File([blob], material.name);
+  const { parseDocument } = await import("../utils/documentParser");
+  const parsed = await parseDocument(file);
+  material.contentText = parsed.contentText;
+  material.headings = JSON.stringify(parsed.headings);
+  await saveData(data);
+}
+
 export async function deleteMaterial(id: number): Promise<void> {
   const data = await getData();
   const material = data.materials.find((m) => m.id === id);
