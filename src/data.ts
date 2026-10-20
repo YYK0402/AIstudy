@@ -71,6 +71,8 @@ export interface KnowledgePoint {
   mastery: Mastery;
   sourceAssetIds: string;
   prevKpIds: string;
+  /** 抽取时所属的章节标题（用于章节后建时重新绑定） */
+  chapterName: string;
   sort: number;
   createTime: string;
 }

@@ -780,9 +780,11 @@ export async function extractKnowledgePoints(
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    // 根据块的章节标题查找已建立的章节，用于绑定知识点归属
+    // 根据块的章节标题查找已建立的章节（归一化匹配，容忍空格/标点差异），用于绑定知识点归属
     const blockChapter = block.title
-      ? data.chapters.find((c) => c.courseId === material.courseId && c.name === block.title)
+      ? data.chapters.find(
+          (c) => c.courseId === material.courseId && normalizeKpName(c.name) === normalizeKpName(block.title),
+        )
       : null;
     const locator = block.title ? `章节：${block.title}` : `文本片段（第${i + 1}/${blocks.length}块）`;
     try {
@@ -823,6 +825,7 @@ export async function extractKnowledgePoints(
             mastery: "unlearn",
             sourceAssetIds: String(materialId),
             prevKpIds: "",
+            chapterName: block.title,
             sort: 0,
             createTime: new Date().toISOString(),
           };
@@ -942,6 +945,16 @@ export async function importChapterTree(
     data.chapters.push(chapter);
     existing.push(chapter);
     created++;
+  }
+  // 章节后建时，把未绑定的知识点按 chapterName 重新绑定到章节
+  for (const kp of data.knowledgePoints) {
+    if (kp.courseId !== courseId || kp.chapterId !== null || !kp.chapterName) continue;
+    const ch = data.chapters.find(
+      (c) => c.courseId === courseId && normalizeKpName(c.name) === normalizeKpName(kp.chapterName),
+    );
+    if (ch) {
+      kp.chapterId = ch.id;
+    }
   }
   await saveData(data);
   return { created };
