@@ -1,6 +1,6 @@
 <template>
   <div class="modal-mask" :class="{ open: modalStore.chapterPreviewOpen }" @click.self="close">
-    <div class="modal">
+    <div class="modal tp-modal">
       <h2>目录预览</h2>
       <div class="s" style="color:var(--as-text-faint);margin-bottom:14px">识别到以下章节结构，可编辑后确认生成目录</div>
       <div class="tp-list">
@@ -8,6 +8,7 @@
           未识别到标题结构，可手动「添加章节」
         </div>
         <div v-for="node in chapterNodes" :key="node.id" class="tp-node" :class="{ unit: node.level === 'unit' }">
+          <span class="tp-tag" :class="node.level">{{ node.level === "chapter" ? "章" : "节" }}</span>
           <input v-model="node.name" class="tp-input" :placeholder="node.level === 'chapter' ? '章节名称' : '小节名称'" />
           <button v-if="node.level === 'chapter'" class="btn sm ghost" @click="addUnit(node)">＋节</button>
           <button class="btn sm ghost" @click="removeNode(node)">删除</button>
