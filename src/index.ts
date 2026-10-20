@@ -44,6 +44,7 @@ interface StudyApi {
   ensureNotebook(name: string): Promise<string>;
   createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
   removeSiyuanDoc(id: string): Promise<void>;
+  updateSiyuanDoc(id: string, markdown: string): Promise<void>;
 }
 
 declare global {
@@ -143,6 +144,9 @@ export default class AiStudyPlugin extends Plugin {
       removeSiyuanDoc: async (id: string) => {
         await this.handleRemoveSiyuanDoc(id);
       },
+      updateSiyuanDoc: async (id: string, markdown: string) => {
+        await this.handleUpdateSiyuanDoc(id, markdown);
+      },
     };
   }
 
@@ -184,6 +188,22 @@ export default class AiStudyPlugin extends Plugin {
 
   private async handleRemoveSiyuanDoc(id: string): Promise<void> {
     await fetchSyncPost("/api/filetree/removeDocByID", { id });
+  }
+
+  // 更新思源文档的 markdown 内容（用于资料重新解析后同步更新笔记）
+  private async handleUpdateSiyuanDoc(id: string, markdown: string): Promise<void> {
+    const doc = (await fetchSyncPost("/api/filetree/getDoc", { id })) as {
+      data?: { rootID?: string };
+    };
+    const rootId = doc.data?.rootID;
+    if (!rootId) {
+      throw new Error("获取文档根块失败");
+    }
+    await fetchSyncPost("/api/block/updateBlock", {
+      id: rootId,
+      data: markdown,
+      dataType: "markdown",
+    });
   }
 
   private getData(): AppData {

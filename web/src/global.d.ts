@@ -36,6 +36,7 @@ export interface SiYuanAiStudyApi {
   ensureNotebook(name: string): Promise<string>;
   createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
   removeSiyuanDoc(id: string): Promise<void>;
+  updateSiyuanDoc(id: string, markdown: string): Promise<void>;
 }
 
 declare global {

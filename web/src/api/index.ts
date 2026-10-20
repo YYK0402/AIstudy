@@ -654,6 +654,17 @@ export async function reparseMaterial(materialId: number): Promise<void> {
   material.contentText = parsed.contentText;
   material.headings = JSON.stringify(parsed.headings);
   await saveData(data);
+  // 资料已落库思源时，同步更新思源笔记内容
+  if (material.siyuanDocId) {
+    try {
+      await window.siyuanAiStudy.updateSiyuanDoc(
+        material.siyuanDocId,
+        `# ${material.name}\n\n${parsed.contentText}`,
+      );
+    } catch (e) {
+      console.error("更新思源笔记失败:", e);
+    }
+  }
 }
 
 export async function deleteMaterial(id: number): Promise<void> {
