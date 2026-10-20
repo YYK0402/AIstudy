@@ -833,11 +833,12 @@ export async function createChapter(input: {
 }): Promise<Chapter> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === input.courseId);
-  // 落库思源：章节文档放在课程文档下的「章节」目录
-  const docId = await persistDocIfEnabled(
-    `# ${input.name}`,
-    `/${course?.name ?? "课程"}/章节`,
-  );
+  const parentChapter = input.parentId ? data.chapters.find((c) => c.id === input.parentId) : null;
+  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档
+  const path = parentChapter
+    ? `/${course?.name ?? "课程"}/${parentChapter.name}`
+    : `/${course?.name ?? "课程"}`;
+  const docId = await persistDocIfEnabled(`# ${input.name}`, path);
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
   const chapter: Chapter = {
@@ -868,7 +869,7 @@ export async function importChapterTree(
 ): Promise<{ created: number }> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === courseId);
-  const pathBase = `/${course?.name ?? "课程"}/章节`;
+  const coursePath = `/${course?.name ?? "课程"}`;
   const existing = data.chapters.filter((c) => c.courseId === courseId);
   let created = 0;
   for (const node of nodes) {
@@ -883,8 +884,9 @@ export async function importChapterTree(
       data.chapters
         .filter((c) => c.courseId === courseId && c.parentId === (parent?.id ?? null))
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
-    // 落库思源章节文档
-    const docId = await persistDocIfEnabled(`# ${name}`, pathBase);
+    // 落库思源：章作为课程子文档，节作为父章子文档
+    const path = parent ? `${coursePath}/${parent.name}` : coursePath;
+    const docId = await persistDocIfEnabled(`# ${name}`, path);
     const chapter: Chapter = {
       id: nextId(data.chapters),
       courseId,
