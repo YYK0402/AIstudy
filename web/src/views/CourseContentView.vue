@@ -74,16 +74,13 @@
           <span class="pg-info">{{ currentPage }} / {{ totalPages }}</span>
           <button class="btn sm ghost" :disabled="currentPage === totalPages" @click="currentPage++">下一页 ›</button>
         </div>
-        <div style="margin-top:16px;display:flex;gap:8px">
-          <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload">＋ 上传资料</button>
-        </div>
       </div>
     </div>
 
     <!-- 资料库 -->
     <div class="card" style="margin-top:14px">
       <h3>资料库
-        <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">上传资料后点击「抽取知识点」生成</span>
+        <button class="btn primary sm" :disabled="!currentCourseId()" @click="openUpload" style="margin-left:auto">＋ 上传资料</button>
       </h3>
       <div v-if="materials.length === 0" class="empty-state" style="padding:24px 0">
         <span class="ico">📚</span> 暂无资料，点击右上「＋ 上传资料」导入讲义 / Word / PDF / PPT
