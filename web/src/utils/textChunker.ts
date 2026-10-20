@@ -25,7 +25,16 @@ export interface HeadingChunk {
   content: string;
 }
 
-// 按 markdown 一级/二级标题切分，返回 { 标题, 内容 } 片段。
+// 判断一行是否为标题（markdown #/## 或编号模式：第X章 / X.X）
+function isHeadingLine(line: string): boolean {
+  if (!line || line.length > 40) return false;
+  if (/^#{1,2}\s+/.test(line)) return true;
+  if (/^第[一二三四五六七八九十百\d]+[章节部]/.test(line)) return true;
+  if (/^\d+(\.\d+){1,2}[\s、．.．]+/.test(line)) return true;
+  return false;
+}
+
+// 按标题（markdown 或编号模式）切分，返回 { 标题, 内容 } 片段。
 // 相比固定字符分块，按标题切分语义更完整、块数更少，可显著降低 AI 抽取的 token 消耗。
 export function chunkByMarkdownHeadings(text: string): HeadingChunk[] {
   const lines = text.split("\n");
@@ -38,10 +47,10 @@ export function chunkByMarkdownHeadings(text: string): HeadingChunk[] {
     }
   };
   for (const line of lines) {
-    const m = line.match(/^(#{1,2})\s+(.+)$/);
-    if (m) {
+    const trimmed = line.trim();
+    if (isHeadingLine(trimmed)) {
       flush();
-      title = m[2].trim();
+      title = trimmed.replace(/^#{1,2}\s+/, "");
       contentLines = [];
     } else {
       contentLines.push(line);

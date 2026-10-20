@@ -738,6 +738,10 @@ export async function extractKnowledgePoints(
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
+    // 根据块的章节标题查找已建立的章节，用于绑定知识点归属
+    const blockChapter = block.title
+      ? data.chapters.find((c) => c.courseId === material.courseId && c.name === block.title)
+      : null;
     const locator = block.title ? `章节：${block.title}` : `文本片段（第${i + 1}/${blocks.length}块）`;
     try {
       const res = await window.siyuanAiStudy.callAi({
@@ -775,7 +779,7 @@ export async function extractKnowledgePoints(
           data.knowledgePoints.push({
             id: data.knowledgePoints.reduce((m, k) => Math.max(m, k.id), 0) + 1,
             courseId: material.courseId,
-            chapterId: null,
+            chapterId: blockChapter?.id ?? null,
             blockId: null,
             name: trimmedName,
             content: item.description,
