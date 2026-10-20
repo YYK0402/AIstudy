@@ -82,6 +82,19 @@
       </div>
     </div>
     <div class="card" style="margin-top:14px">
+      <h3>数据与存储</h3>
+      <div class="ta-row">
+        <span class="t">章节识别方式</span>
+        <select :value="settings.chapterMode" @change="onChapterModeChange">
+          <option value="manual">手动（上传后不自动建目录）</option>
+          <option value="auto">自动（上传资料后按标题识别目录）</option>
+        </select>
+      </div>
+      <div class="s" style="color:var(--as-text-faint);margin-top:4px">
+        自动模式：上传 Word/Markdown/PPT 后按标题层级识别章节结构并弹出预览确认；PDF 采用字号启发式识别，可能不精确，可在预览中修正。
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
       <h3>最近调用日志</h3>
       <div v-if="providerStore.logs.length === 0" class="empty-state" style="padding:24px 0">
         <span class="ico">📜</span>
@@ -113,6 +126,8 @@ import {
   createModel,
   deleteModel,
   saveTaskModel,
+  getSettings,
+  updateSettings,
   AI_TASKS,
   GLOBAL_DEFAULT_KEY,
 } from "../api";
@@ -120,6 +135,8 @@ import type { AiProvider, AiModel } from "../api";
 
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
+
+const settings = reactive({ chapterMode: "manual" as "manual" | "auto" });
 
 const testingId = ref<number | null>(null);
 const testResults = reactive<Record<number, { ok: boolean; message: string }>>({});
@@ -280,6 +297,15 @@ function onTaskModelChange(taskKey: string, event: Event) {
     });
 }
 
+function onChapterModeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as "manual" | "auto";
+  settings.chapterMode = value;
+  updateSettings({ chapterMode: value }).catch((error) => {
+    console.error("保存章节识别方式失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存章节识别方式失败");
+  });
+}
+
 function formatTime(iso: string): string {
   if (!iso) {
     return "";
@@ -292,6 +318,12 @@ onMounted(async () => {
     await providerStore.load();
   } catch (error) {
     console.error("加载模型配置失败:", error);
+  }
+  try {
+    const s = await getSettings();
+    settings.chapterMode = s.chapterMode;
+  } catch (error) {
+    console.error("加载应用设置失败:", error);
   }
 });
 </script>

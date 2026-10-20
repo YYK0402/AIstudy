@@ -18,5 +18,6 @@ export type {
   ReviewSchedule,
   StudyLog,
   AppData,
+  AppSettings,
   Mastery,
 } from "../../../src/data";

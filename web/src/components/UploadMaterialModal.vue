@@ -32,7 +32,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
-import { createMaterial } from "../api";
+import { createMaterial, getSettings } from "../api";
 import { parseDocument, parseTextInput, type ParsedDocument } from "../utils/documentParser";
 
 const modalStore = useModalStore();
@@ -87,14 +87,22 @@ async function save() {
   if (!canSave.value || !result.value) return;
   saving.value = true;
   try {
+    const courseId = modalStore.uploadMaterialCourseId;
     await createMaterial({
-      courseId: modalStore.uploadMaterialCourseId,
+      courseId,
       name: result.value.name,
       fileType: result.value.fileType,
       contentText: result.value.contentText,
+      headings: JSON.stringify(result.value.headings),
     });
+    const headings = result.value.headings;
     close();
     modalStore.notifyMaterialSaved();
+    // 自动模式下，识别到标题结构则弹出目录预览
+    const settings = await getSettings();
+    if (settings.chapterMode === "auto" && headings.length > 0) {
+      modalStore.openChapterPreview(courseId, headings);
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {

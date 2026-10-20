@@ -82,6 +82,8 @@ export interface Material {
   assetPath: string;
   fileType: string;
   contentText: string;
+  /** 解析出的标题结构（JSON 字符串，ParsedHeading[]），用于自动识别目录 */
+  headings: string;
   status: string;
   createTime: string;
 }
@@ -175,6 +177,15 @@ export interface StudyLog {
   createTime: string;
 }
 
+export interface AppSettings {
+  /** 章节识别方式：manual 手动 / auto 上传后按标题自动建目录 */
+  chapterMode: "manual" | "auto";
+  /** 是否将资料/章节/知识点持久化到思源笔记 */
+  persistToSiyuan: boolean;
+  /** 思源笔记本名称 */
+  notebookName: string;
+}
+
 export interface AppData {
   providers: AiProvider[];
   models: AiModel[];
@@ -193,6 +204,7 @@ export interface AppData {
   explainRecords: ExplainRecord[];
   reviewSchedules: ReviewSchedule[];
   studyLogs: StudyLog[];
+  settings: AppSettings;
 }
 
 export function createEmptyData(): AppData {
@@ -214,5 +226,10 @@ export function createEmptyData(): AppData {
     explainRecords: [],
     reviewSchedules: [],
     studyLogs: [],
+    settings: {
+      chapterMode: "manual",
+      persistToSiyuan: false,
+      notebookName: "AI 研习",
+    },
   };
 }

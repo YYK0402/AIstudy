@@ -1,6 +1,6 @@
 // 重新导出所有数据类型
-import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, Mastery } from "../types/appData";
-export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, Mastery };
+import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery } from "../types/appData";
+export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery };
 // ===== 底层数据读写（直接调用主窗口暴露的 Plugin 实例 API） =====
 export async function getData(): Promise<AppData> {
   return window.siyuanAiStudy.getData();
@@ -600,6 +600,7 @@ export async function createMaterial(input: {
   fileType: string;
   contentText: string;
   assetPath?: string;
+  headings?: string;
 }): Promise<Material> {
   const data = await getData();
   const material: Material = {
@@ -609,6 +610,7 @@ export async function createMaterial(input: {
     assetPath: input.assetPath ?? "",
     fileType: input.fileType,
     contentText: input.contentText,
+    headings: input.headings ?? "[]",
     status: "parsed",
     createTime: now(),
   };
@@ -823,6 +825,50 @@ export async function createChapter(input: {
   data.chapters.push(chapter);
   await saveData(data);
   return chapter;
+}
+
+export interface ChapterTreeNode {
+  name: string;
+  level: Chapter["level"];
+  /** 父章名称（unit 指向 chapter） */
+  parentName: string | null;
+}
+
+/** 从标题结构批量导入章节树（幂等：同名章节不重复创建）。nodes 需保证父章在子节之前。 */
+export async function importChapterTree(
+  courseId: number,
+  nodes: ChapterTreeNode[],
+): Promise<{ created: number }> {
+  const data = await getData();
+  const existing = data.chapters.filter((c) => c.courseId === courseId);
+  let created = 0;
+  for (const node of nodes) {
+    const name = node.name.trim();
+    if (!name) continue;
+    const dup = existing.find((c) => c.name === name);
+    if (dup) continue;
+    const parent = node.parentName
+      ? existing.find((c) => c.level === "chapter" && c.name === node.parentName)
+      : null;
+    const sort =
+      data.chapters
+        .filter((c) => c.courseId === courseId && c.parentId === (parent?.id ?? null))
+        .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
+    const chapter: Chapter = {
+      id: nextId(data.chapters),
+      courseId,
+      parentId: parent?.id ?? null,
+      siyuanBlockId: null,
+      name,
+      level: node.level,
+      sort,
+    };
+    data.chapters.push(chapter);
+    existing.push(chapter);
+    created++;
+  }
+  await saveData(data);
+  return { created };
 }
 
 export async function updateChapter(chapter: Chapter): Promise<void> {
@@ -1251,4 +1297,23 @@ export async function generateCourseReport(course: Course, stats: CourseStats): 
     throw new Error("AI 返回的报告内容为空，请重试");
   }
   return text;
+}
+
+// ===== 应用设置 =====
+export async function getSettings(): Promise<AppSettings> {
+  const data = await getData();
+  return {
+    chapterMode: data.settings?.chapterMode ?? "manual",
+    persistToSiyuan: data.settings?.persistToSiyuan ?? false,
+    notebookName: data.settings?.notebookName ?? "AI 研习",
+  };
+}
+
+export async function updateSettings(input: Partial<AppSettings>): Promise<void> {
+  const data = await getData();
+  if (!data.settings) {
+    data.settings = { chapterMode: "manual", persistToSiyuan: false, notebookName: "AI 研习" };
+  }
+  Object.assign(data.settings, input);
+  await saveData(data);
 }

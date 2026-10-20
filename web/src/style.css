@@ -392,6 +392,13 @@
 .kd-content { padding: 10px 14px; background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); line-height: 1.7; color: var(--as-text-dim); white-space: pre-wrap; word-break: break-word; }
 .kd-text { font-size: 13px; color: var(--as-text-dim); }
 
+/* 目录预览弹窗 */
+.tp-list { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.tp-node { display: flex; align-items: center; gap: 8px; }
+.tp-node.unit { margin-left: 22px; }
+.tp-input { flex: 1; padding: 8px 12px; background: var(--as-bg-elev2); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); color: var(--as-text); font-size: 13px; outline: none; transition: border-color .15s; }
+.tp-input:focus { border-color: var(--as-accent); }
+
 /* ===== 学习计划时间线 ===== */
 .timeline { position: relative; padding-left: 24px; }
 .timeline::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--as-border); }

@@ -415,5 +415,11 @@ watch(
   () => loadMaterials(),
 );
 
+// 目录预览确认导入章节后，监听刷新信号更新目录树
+watch(
+  () => modalStore.chapterVersion,
+  () => loadChapters(),
+);
+
 onMounted(load);
 </script>
