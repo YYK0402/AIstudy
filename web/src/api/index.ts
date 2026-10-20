@@ -655,8 +655,6 @@ export interface ExtractKpResult {
 interface AiKpItem {
   name: string;
   description: string;
-  status: "new" | "update" | "duplicate";
-  duplicateOf?: string;
 }
 
 function parseAiKpResponse(content: string): AiKpItem[] {
@@ -678,6 +676,21 @@ function parseAiKpResponse(content: string): AiKpItem[] {
     // ignore
   }
   return [];
+}
+
+// 归一化知识点名：小写、去掉空白与标点，用于本地去重
+function normalizeKpName(s: string): string {
+  return s.toLowerCase().replace(/[\s、，。；：（）()【】\[\]'"“”‘’·\-—/\\,.]/g, "");
+}
+
+// 本地判断两个知识点名是否重复（精确/归一化后相同，或相互包含）
+function isDuplicateKpName(a: string, b: string): boolean {
+  const na = normalizeKpName(a);
+  const nb = normalizeKpName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
 }
 
 function findTaskBinding(
@@ -729,10 +742,8 @@ export async function extractKnowledgePoints(
     ? headingChunks.map((c) => ({ title: c.title, text: c.content }))
     : chunkText(material.contentText, 2000).map((t) => ({ title: "", text: t }));
   const existingKps: KnowledgePoint[] = data.knowledgePoints.filter((k) => k.courseId === material.courseId);
-  const existingNames = existingKps.map((k) => k.name);
 
   let newCount = 0;
-  let updateCount = 0;
   let duplicateCount = 0;
   const errors: string[] = [];
 
@@ -752,12 +763,12 @@ export async function extractKnowledgePoints(
           {
             role: "system",
             content:
-              "你是知识抽取助手。从给定文本中提取关键知识点（概念/定义/原理/公式/考点）。输出 JSON 数组，每项含 name、description、status 三个字段。status 取值：'new' 全新、'update' 对已有知识点的补充、'duplicate' 与已有知识点重复。如标 duplicate 则填 duplicateOf 为已有知识点名称。只返回 JSON，不要任何其他文字。",
+              "你是知识抽取助手。从给定文本中提取关键知识点（概念/定义/原理/公式/考点）。输出 JSON 数组，每项含 name、description 两个字段。只返回 JSON，不要任何其他文字。",
           },
           {
             role: "user",
             content:
-              `已有知识点：${existingNames.join("、") || "无"}\n\n${locator}：\n${block.text}`,
+              `${locator}：\n${block.text}`,
           },
         ],
       });
@@ -766,15 +777,9 @@ export async function extractKnowledgePoints(
         const trimmedName = item.name.trim();
         if (!trimmedName) continue;
         const existing: KnowledgePoint | undefined = existingKps.find(
-          (k) => k.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+          (k) => isDuplicateKpName(k.name, trimmedName),
         );
-        if (existing && item.status === "update") {
-          // 对已有知识点补充描述
-          existing.content = existing.content
-            ? existing.content + "\n" + item.description
-            : item.description;
-          updateCount++;
-        } else if (item.status === "duplicate" || existing) {
+        if (existing) {
           duplicateCount++;
         } else {
           const newKp: KnowledgePoint = {
@@ -793,7 +798,6 @@ export async function extractKnowledgePoints(
           data.knowledgePoints.push(newKp);
           // 加入快照，确保同批后续同名知识点去重
           existingKps.push(newKp);
-          existingNames.push(trimmedName);
           newCount++;
         }
       }
@@ -804,7 +808,7 @@ export async function extractKnowledgePoints(
   }
 
   await saveData(data);
-  return { newCount, updateCount, duplicateCount, totalChunks: blocks.length, errors };
+  return { newCount, updateCount: 0, duplicateCount, totalChunks: blocks.length, errors };
 }
 
 // ===== 知识点 CRUD =====
