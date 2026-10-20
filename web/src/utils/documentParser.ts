@@ -86,29 +86,47 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
       str?: string;
       transform?: number[];
       height?: number;
+      width?: number;
     }>;
+    // 页面尺寸，用于过滤页眉页脚
+    const viewport = page.getViewport({ scale: 1 });
+    const pageHeight = viewport.height;
+
     // 按 y 坐标聚合成行
-    const rows: Array<{ y: number; parts: Array<{ x: number; str: string; height: number }> }> = [];
+    const rows: Array<{ y: number; parts: Array<{ x: number; str: string; height: number; width: number }> }> = [];
     for (const it of items) {
       if (!it.str || !it.str.trim()) continue;
       const y = it.transform?.[5] ?? 0;
       const x = it.transform?.[4] ?? 0;
       const height = Math.abs(it.transform?.[3] ?? it.height ?? 12);
+      const width = it.width ?? 0;
+      // 过滤页眉页脚（顶部/底部固定区域的重复文本）
+      if (y > pageHeight - 70 || y < 70) continue;
       let row = rows.find((r) => Math.abs(r.y - y) < 3);
       if (!row) {
         row = { y, parts: [] };
         rows.push(row);
       }
-      row.parts.push({ x, str: it.str, height });
+      row.parts.push({ x, str: it.str, height, width });
     }
-    // 按 y 坐标（从上到下）排序，保证行顺序符合视觉顺序（pdfjs 返回的 items 顺序不保证视觉顺序）
-    rows.sort((a, b) => a.y - b.y);
+    // pdfjs 的 y 坐标从下往上（原点在左下角），降序排序 = 从上往下的视觉顺序
+    rows.sort((a, b) => b.y - a.y);
     for (const row of rows) {
       row.parts.sort((a, b) => a.x - b.x);
-      const text = row.parts.map((p) => p.str).join("").trim();
-      if (!text) continue;
+      // 按 x 间隙补空格（词间距/表格多列），避免文字粘连
+      let text = "";
+      let prevRight: number | null = null;
+      for (const p of row.parts) {
+        if (prevRight !== null && p.x - prevRight > 5) {
+          text += " ";
+        }
+        text += p.str;
+        prevRight = p.x + p.width;
+      }
+      const trimmed = text.trim();
+      if (!trimmed) continue;
       const height = Math.max(...row.parts.map((p) => p.height));
-      lines.push({ text, height });
+      lines.push({ text: trimmed, height });
     }
   }
 
