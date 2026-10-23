@@ -26,7 +26,7 @@
           <span class="ico">🗂️</span> 暂无章节，点击「添加章节」搭建目录
         </div>
         <div v-else class="tree">
-          <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: !collapsedChapters.has(ch.id) }">
+          <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: expandedChapters.has(ch.id) }">
             <div
               class="row"
               :class="[{ active: selectedChapterId === ch.id }, rowDropClass(ch.id)]"
@@ -116,7 +116,7 @@
           >
             <input v-if="kpBatchMode" type="checkbox" class="tp-check" :checked="selectedKpIds.has(kp.id)" @click.stop @change="toggleKpSelect(kp.id)" />
             <span class="idx">{{ String((currentPage - 1) * PAGE_SIZE + i + 1).padStart(2, "0") }}</span>
-            <span class="nm">{{ kp.name }}</span>
+            <span class="nm">{{ kp.name }}<span v-if="searchKeyword.trim()" class="kp-path">{{ kpChapterPath(kp) }}</span></span>
             <span v-if="kp.tags && kp.tags.length" class="kp-tags">
               <span v-for="t in (kp.tags ?? []).slice(0, 2)" :key="t" class="tag-chip">{{ t }}</span>
               <span v-if="kp.tags.length > 2" class="tag-chip">+{{ kp.tags.length - 2 }}</span>
@@ -282,9 +282,8 @@ const detailKp = ref<KnowledgePoint | null>(null);
 const chapters = ref<Chapter[]>([]);
 const chapterModal = ref<"edit" | "top" | "unit" | null>(null);
 const editingChapter = ref<Chapter | null>(null);
-const collapsedChapters = ref<Set<number>>(new Set());
-// 已应用「默认全收起」的课程 id（组件级：重进页面后重新默认全收起）
-let collapseDefaultedFor: number | null = null;
+// 展开的章节 id 集合（空 = 全部收起；重进页面/切换课程后自然回到默认全收起）
+const expandedChapters = ref<Set<number>>(new Set());
 const selectedChapterId = ref<number | null>(null);
 const showUnassigned = ref(false);
 const relinking = ref(false);
@@ -325,6 +324,18 @@ const kpSources = computed<Record<number, string[]>>(() => {
 // 选中章节下的知识点 id 集合（章包含其下小节）
 function chapterKpIds(chapterId: number): Set<number> {
   return expandChapterNodeIds(chapters.value, chapterId);
+}
+
+/** 知识点所属「章 / 节」路径（搜索结果展示归属用） */
+function kpChapterPath(kp: KnowledgePoint): string {
+  if (kp.chapterId == null) return "未分配";
+  const c = chapters.value.find((x) => x.id === kp.chapterId);
+  if (!c) return "";
+  if (c.level === "unit" && c.parentId != null) {
+    const parent = chapters.value.find((x) => x.id === c.parentId);
+    return parent ? `${parent.name} / ${c.name}` : c.name;
+  }
+  return c.name;
 }
 
 // 章节复盘弹层
@@ -522,13 +533,13 @@ const masteryLabel = (m: Mastery): string => {
 };
 
 function toggleChapter(id: number) {
-  const s = new Set(collapsedChapters.value);
+  const s = new Set(expandedChapters.value);
   if (s.has(id)) {
     s.delete(id);
   } else {
     s.add(id);
   }
-  collapsedChapters.value = s;
+  expandedChapters.value = s;
 }
 
 function selectChapter(id: number) {
@@ -598,16 +609,9 @@ async function loadChapters() {
     return;
   }
   chapters.value = await queryChapters(currentCourseId());
-  const cid = currentCourseId();
+  // 只保留仍存在的章节：重进页面/切换课程时展开集合自然清空（默认全收起），同会话重载保留用户状态
   const existing = new Set(chapters.value.map((c) => c.id));
-  if (collapseDefaultedFor !== cid) {
-    // 首次进入 / 切换课程 / 重进页面：目录默认全部收起
-    collapsedChapters.value = new Set(existing);
-    collapseDefaultedFor = cid;
-  } else {
-    // 同会话内重载（拖拽、导入等）：保留用户展开/折叠状态，剪掉已删除的章节
-    collapsedChapters.value = new Set([...collapsedChapters.value].filter((id) => existing.has(id)));
-  }
+  expandedChapters.value = new Set([...expandedChapters.value].filter((id) => existing.has(id)));
 }
 
 async function load() {
