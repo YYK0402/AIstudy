@@ -37,9 +37,9 @@ export async function queryCourses(): Promise<Course[]> {
   return data.courses;
 }
 
-// 思源文档 id 形如 15 位时间戳 + "-" + 16 位小写字母数字，用于识别已落库的有效文档
+// 思源文档 id 形如 14 位时间戳（YYYYMMDDHHMMSS）+ "-" + 7 位小写字母数字，用于识别已落库的有效文档
 function isSiyuanDocId(id: string): boolean {
-  return /^\d{15}-[0-9a-z]{16}$/.test(id);
+  return /^\d{14}-[0-9a-z]{7}$/.test(id);
 }
 
 export async function createCourse(input: {
@@ -1646,16 +1646,19 @@ async function runOrganizeTask(
     mat.contentText = res.content;
     mat.headings = JSON.stringify(headings);
     await saveData(latest);
+    let siyuanSyncFailed = false;
     if (mat.siyuanDocId && isSiyuanDocId(mat.siyuanDocId)) {
       try {
         await window.siyuanAiStudy.updateSiyuanDoc(mat.siyuanDocId, `# ${mat.name}\n\n${res.content}`);
       } catch (e) {
+        siyuanSyncFailed = true;
         console.error("同步梳理结果到思源失败:", e);
       }
     }
     const chCount = headings.filter((h) => h.level === 1).length;
     let msg = `梳理完成：识别 ${chCount} 章 ${headings.length - chCount} 节`;
     if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
+    if (siyuanSyncFailed) msg += "；同步思源文档失败";
     notify.patchTask(materialId, { status: "done", unread: true, finishedAt: now(), message: msg });
   } catch (e) {
     notify.patchTask(materialId, {
