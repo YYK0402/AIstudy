@@ -10,6 +10,10 @@
           <input type="checkbox" v-model="useOcr" :disabled="parsing" />
           OCR 识别扫描件（纯图片 PDF，耗时较长，使用思源内核 OCR）
         </label>
+        <label class="s" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
+          <input type="checkbox" v-model="useAiOrganize" :disabled="parsing || sySel !== null" />
+          AI 梳理结构与识别章节（保存后后台运行，进度见右上铃铛）
+        </label>
       </div>
       <div class="field">
         <label>或粘贴文本</label>
@@ -48,6 +52,7 @@ import {
   createMaterial,
   getSettings,
   uploadAsset,
+  startOrganizeTask,
   type SiyuanDocSelection,
 } from "../api";
 import { parseDocument, parseTextInput, type ParsedDocument } from "../utils/documentParser";
@@ -61,6 +66,7 @@ const pastedText = ref("");
 const parsing = ref(false);
 const saving = ref(false);
 const useOcr = ref(false);
+const useAiOrganize = ref(false);
 const ocrStatus = ref("");
 const result = ref<ParsedDocument | null>(null);
 const error = ref("");
@@ -90,6 +96,7 @@ function reset() {
   result.value = null;
   error.value = "";
   useOcr.value = false;
+  useAiOrganize.value = false;
   ocrStatus.value = "";
   sySel.value = null;
   if (fileInput.value) fileInput.value.value = "";
@@ -101,6 +108,7 @@ watch(sySel, async (sel) => {
   selectedFile.value = null;
   if (fileInput.value) fileInput.value.value = "";
   pastedText.value = "";
+  useAiOrganize.value = false;
   parsing.value = true;
   error.value = "";
   try {
@@ -140,14 +148,16 @@ async function onFile(e: Event) {
   pastedText.value = "";
   result.value = null;
   error.value = "";
-  ocrStatus.value = "";
-  parsing.value = true;
-  try {
-    const doc = await parseDocument(file);
-    result.value = doc;
-    if (useOcr.value && isPdf.value) {
-      await runOcr(file, doc);
-    }
+    ocrStatus.value = "";
+    parsing.value = true;
+    try {
+      const doc = await parseDocument(file);
+      result.value = doc;
+      // PDF 结构信息依赖启发式解析，默认走 AI 梳理；其余格式已有结构
+      useAiOrganize.value = doc.fileType === "pdf";
+      if (useOcr.value && isPdf.value) {
+        await runOcr(file, doc);
+      }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -185,7 +195,7 @@ async function save() {
         console.error("上传资源文件失败（不影响资料保存）:", e);
       }
     }
-    await createMaterial({
+    const material = await createMaterial({
       courseId,
       name: result.value.name,
       fileType: result.value.fileType,
@@ -195,9 +205,15 @@ async function save() {
       source: sySel.value ? "siyuan" : selectedFile.value ? "upload" : "paste",
       siyuanDocId: sySel.value?.docId,
     });
+    const aiOrganize = useAiOrganize.value;
+    const contentText = result.value.contentText;
     const headings = result.value.headings;
     close();
     modalStore.notifyMaterialSaved();
+    if (aiOrganize) {
+      startOrganizeTask(material.id, courseId, contentText);
+      window.siyuanAiStudy.showMessage("已保存，AI 梳理任务已后台启动（进度见右上铃铛）", 4000);
+    }
     // 自动模式下，识别到标题结构则弹出目录预览
     const settings = await getSettings();
     if (settings.chapterMode === "auto" && headings.length > 0) {
@@ -217,9 +233,10 @@ watch(pastedText, async (text) => {
     result.value = null;
     return;
   }
-  sySel.value = null;
-  selectedFile.value = null;
-  if (fileInput.value) fileInput.value.value = "";
-  result.value = await parseTextInput(text);
+    sySel.value = null;
+    selectedFile.value = null;
+    if (fileInput.value) fileInput.value.value = "";
+    result.value = await parseTextInput(text);
+    useAiOrganize.value = true;
 });
 </script>

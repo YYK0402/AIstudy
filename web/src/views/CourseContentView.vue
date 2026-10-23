@@ -170,6 +170,14 @@
               <span class="src-tag">{{ materialSourceLabel(m) }}</span>
             </div>
             <div class="m-meta">.{{ m.fileType }} · {{ m.contentText.length }} 字 · {{ formatTime(m.createTime) }}</div>
+            <div v-if="orgTaskOf(m)" class="s" style="margin-top:4px">
+              <span v-if="orgTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
+                🔄 {{ orgTaskOf(m)!.message }}
+              </span>
+              <span v-else-if="orgTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ orgTaskOf(m)!.message }}</span>
+              <span v-else-if="orgTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ orgTaskOf(m)!.message }}</span>
+              <span v-else class="muted">{{ orgTaskOf(m)!.message }}</span>
+            </div>
             <div v-if="extractState[m.id]?.status === 'loading'" class="s" style="color:var(--as-accent-strong);margin-top:4px">
               {{ extractLoadingLabel(m.id) }}
             </div>
@@ -194,6 +202,9 @@
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn sm ghost" @click="previewMaterial = m">预览</button>
             <template v-if="!archived">
+              <button class="btn sm ghost" :disabled="orgTaskOf(m)?.status === 'running'" @click="startOrganize(m)">
+                {{ orgTaskOf(m)?.status === "running" ? "梳理中…" : "🤖 AI 梳理" }}
+              </button>
               <button class="btn sm ghost" :disabled="extractState[m.id]?.status === 'loading'" @click="extract(m)">
                 {{ extractState[m.id]?.status === "loading" ? "抽取中…" : "抽取知识点" }}
               </button>
@@ -235,13 +246,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
 import {
   queryMaterials,
   deleteMaterial,
-  reparseMaterial,
   extractKnowledgePoints,
   isExtractingMaterial,
   isFullExtracting,
@@ -259,9 +269,12 @@ import {
   applyChapterMoves,
   applyKnowledgePointSort,
   updateKnowledgePoint,
+  startOrganizeTask,
+  DATA_SAVED_EVENT,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
+import { useNotifyStore } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
 import { expandChapterNodeIds } from "../utils/chapterScope";
 import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
@@ -272,6 +285,16 @@ import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
+const notifyStore = useNotifyStore();
+
+// 资料 AI 梳理状态（后台任务）
+function orgTaskOf(m: Material) {
+  return notifyStore.taskOf(m.id);
+}
+function startOrganize(m: Material) {
+  if (!currentCourseId()) return;
+  startOrganizeTask(m.id, currentCourseId()!);
+}
 /** 课程归档后内容只读：隐藏全部写入口 */
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
 const materials = ref<Material[]>([]);
@@ -634,18 +657,6 @@ async function reidentifyChapters() {
   if (!currentCourseId() || reidentifying.value) return;
   reidentifying.value = true;
   try {
-    // 先对有源文件的资料重新解析（用最新解析器更新 headings，避免旧资料标题乱序）
-    const reparseList = materials.value.filter((m) => m.assetPath);
-    for (const m of reparseList) {
-      try {
-        await reparseMaterial(m.id);
-      } catch (e) {
-        console.error("重新解析资料失败:", e);
-      }
-    }
-    if (reparseList.length > 0) {
-      await loadMaterials();
-    }
     const allHeadings: ParsedHeading[] = [];
     for (const m of materials.value) {
       try {
@@ -955,5 +966,12 @@ watch(
   },
 );
 
-onMounted(load);
+onMounted(() => {
+  load();
+  // 后台 AI 梳理任务完成后回写资料 → 刷新字数等展示
+  window.addEventListener(DATA_SAVED_EVENT, loadMaterials);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener(DATA_SAVED_EVENT, loadMaterials);
+});
 </script>

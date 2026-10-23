@@ -40,7 +40,7 @@ function detectHeadingLevel(text: string): number {
 }
 
 /** 从 markdown 中提取一级/二级标题（### 及更深层级忽略）。支持编号模式识别（无 # 标记的纯文本标题）。 */
-function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
+export function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
   const headings: ParsedHeading[] = [];
   for (const line of markdown.split("\n")) {
     const trimmed = line.trim();

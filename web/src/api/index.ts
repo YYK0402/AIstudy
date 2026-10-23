@@ -5,6 +5,7 @@ import { aggregateStudyTrend } from "../utils/studyTrend";
 import type { StudyTrend } from "../utils/studyTrend";
 import { PROMPT_TASKS, findPromptTask, resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import type { PromptVarInfo } from "./promptTemplates";
+import { useNotifyStore } from "../stores/notify";
 export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
 export type { PromptTaskMeta, PromptVarInfo } from "./promptTemplates";
@@ -1362,6 +1363,7 @@ export const AI_TASKS = [
   { key: "gen_report", name: "学习报告生成" },
   { key: "infer_graph", name: "图谱关联关系推理" },
   { key: "recognize_toc", name: "目录识别矫正" },
+  { key: "organize_doc", name: "文档结构梳理" },
 ] as const;
 
 export const GLOBAL_DEFAULT_KEY = "global_default";
@@ -1446,6 +1448,210 @@ export async function createMaterial(input: {
   data.materials.push(material);
   await saveData(data);
   return material;
+}
+
+// ===== 资料 AI 结构梳理（后台任务） =====
+// 模块级状态不受组件卸载影响：上传后弹窗即关、切页不中断；同一资料防并发
+const organizingMaterialIds = new Set<number>();
+const organizeAbortFlags = new Map<number, { aborted: boolean }>();
+
+/** 文本切段：按空行分段聚合到 ~size 字符；单段超限（OCR 长行）硬切 */
+function splitTextChunks(text: string, size = 8000): string[] {
+  const chunks: string[] = [];
+  let current = "";
+  const push = () => {
+    const t = current.trim();
+    if (t) chunks.push(t);
+    current = "";
+  };
+  for (const para of text.split(/\n\s*\n/)) {
+    if (para.length > size) {
+      push();
+      for (let i = 0; i < para.length; i += size) {
+        chunks.push(para.slice(i, i + size));
+      }
+      continue;
+    }
+    if (current.length + para.length + 2 > size) push();
+    current += (current ? "\n\n" : "") + para;
+  }
+  push();
+  return chunks;
+}
+
+export interface OrganizeResult {
+  content: string;
+  /** AI 是否实际参与（未配置任务模型时为 false，返回原文） */
+  organized: boolean;
+  /** 输出异常被弃用、保留原文的段数 */
+  failedChunks: number;
+}
+
+/**
+ * AI 文档结构梳理：分段 → 逐段调 callAi（删页眉页脚噪声/拼断行/标注章 # 节 ##）→ 拼接。
+ * 安全网：段输出长度不足输入 40% 视为异常（防 AI 概括丢内容），该段保留原文。
+ */
+export async function organizeDocWithAi(
+  text: string,
+  onProgress?: (done: number, total: number) => void,
+  isAborted?: () => boolean,
+): Promise<OrganizeResult> {
+  const data = await getData();
+  const binding = findTaskBinding(data, "organize_doc");
+  if (!binding || !text.trim()) {
+    return { content: text, organized: false, failedChunks: 0 };
+  }
+  const tpl = resolvePromptTemplate(data, "organize_doc");
+  const chunks = splitTextChunks(text);
+  const out: string[] = [];
+  let failedChunks = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    if (isAborted?.()) {
+      out.push(...chunks.slice(i));
+      break;
+    }
+    onProgress?.(i, chunks.length);
+    const chunk = chunks[i];
+    let cleaned = chunk;
+    try {
+      const res = await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey: "organize_doc",
+        messages: [
+          { role: "system", content: renderPrompt(tpl.system, {}) },
+          { role: "user", content: renderPrompt(tpl.user, { chunk }) },
+        ],
+      });
+      let candidate = res.content.trim();
+      const fence = candidate.match(/^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/);
+      if (fence) candidate = fence[1].trim();
+      if (candidate && candidate.length >= chunk.length * 0.4) {
+        cleaned = candidate;
+      } else {
+        failedChunks++;
+      }
+    } catch (e) {
+      console.error(`AI 梳理第 ${i + 1}/${chunks.length} 段失败:`, e);
+      failedChunks++;
+    }
+    out.push(cleaned);
+  }
+  onProgress?.(chunks.length, chunks.length);
+  return { content: out.join("\n\n").trim(), organized: true, failedChunks };
+}
+
+/**
+ * 启动资料的后台 AI 梳理任务（不阻塞调用方）。
+ * text 省略时：有源文件则重读重解析，无源文件（粘贴/思源）用已存内容。
+ * 同一资料已有任务在跑时忽略重复启动。
+ */
+export function startOrganizeTask(materialId: number, courseId: number, text?: string): void {
+  if (organizingMaterialIds.has(materialId)) return;
+  organizingMaterialIds.add(materialId);
+  const flag = { aborted: false };
+  organizeAbortFlags.set(materialId, flag);
+  void runOrganizeTask(materialId, courseId, text, flag);
+}
+
+export function cancelOrganizeTask(materialId: number): void {
+  const flag = organizeAbortFlags.get(materialId);
+  if (flag) flag.aborted = true;
+}
+
+async function runOrganizeTask(
+  materialId: number,
+  courseId: number,
+  text: string | undefined,
+  flag: { aborted: boolean },
+): Promise<void> {
+  const notify = useNotifyStore();
+  try {
+    const data = await getData();
+    const material = data.materials.find((m) => m.id === materialId);
+    if (!material) throw new Error("资料不存在或已删除");
+    // 取待梳理文本：优先调用方提供的（上传即用内存文本，免二次下载）
+    let source = text;
+    if (!source) {
+      if (material.assetPath) {
+        const res = await fetch(material.assetPath);
+        if (!res.ok) throw new Error("读取源文件失败，请重新上传");
+        const blob = await res.blob();
+        const { parseDocument } = await import("../utils/documentParser");
+        const fileName = /\.(pdf|docx|pptx|txt|md|markdown)$/i.test(material.name)
+          ? material.name
+          : `${material.name}.${material.fileType}`;
+        source = (await parseDocument(new File([blob], fileName))).contentText;
+      } else {
+        source = material.contentText;
+      }
+    }
+    if (!source.trim()) throw new Error("资料没有可梳理的文本内容");
+    notify.upsertTask({
+      materialId,
+      materialName: material.name,
+      courseId,
+      status: "running",
+      done: 0,
+      total: 0,
+      message: "准备中…",
+      unread: false,
+      startedAt: now(),
+      finishedAt: null,
+    });
+    const res = await organizeDocWithAi(
+      source,
+      (done, total) => {
+        if (total > 0) {
+          notify.patchTask(materialId, { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
+        }
+      },
+      () => flag.aborted,
+    );
+    if (flag.aborted) {
+      notify.patchTask(materialId, { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
+      return;
+    }
+    if (!res.organized) {
+      notify.patchTask(materialId, {
+        status: "failed",
+        unread: true,
+        finishedAt: now(),
+        message: "未配置「文档结构梳理」模型：请到「模型配置 → 任务模型」为该任务指定模型",
+      });
+      return;
+    }
+    // 回写：整理后正文 + 标题结构（从 # / ## 行提取）+ 同步思源文档
+    const latest = await getData();
+    const mat = latest.materials.find((m) => m.id === materialId);
+    if (!mat) throw new Error("资料已在任务期间被删除");
+    const { extractHeadingsFromMarkdown } = await import("../utils/documentParser");
+    const headings = extractHeadingsFromMarkdown(res.content);
+    mat.contentText = res.content;
+    mat.headings = JSON.stringify(headings);
+    await saveData(latest);
+    if (mat.siyuanDocId && isSiyuanDocId(mat.siyuanDocId)) {
+      try {
+        await window.siyuanAiStudy.updateSiyuanDoc(mat.siyuanDocId, `# ${mat.name}\n\n${res.content}`);
+      } catch (e) {
+        console.error("同步梳理结果到思源失败:", e);
+      }
+    }
+    const chCount = headings.filter((h) => h.level === 1).length;
+    let msg = `梳理完成：识别 ${chCount} 章 ${headings.length - chCount} 节`;
+    if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
+    notify.patchTask(materialId, { status: "done", unread: true, finishedAt: now(), message: msg });
+  } catch (e) {
+    notify.patchTask(materialId, {
+      status: "failed",
+      unread: true,
+      finishedAt: now(),
+      message: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    organizingMaterialIds.delete(materialId);
+    organizeAbortFlags.delete(materialId);
+  }
 }
 
 // ===== 思源文档（同源自带通道，无需 token） =====
@@ -1622,33 +1828,7 @@ export async function uploadAsset(file: File): Promise<string> {
   return path;
 }
 
-// 重新解析资料：读取源文件，用最新解析器更新 contentText 与 headings
-export async function reparseMaterial(materialId: number): Promise<void> {
-  const data = await getData();
-  const material = data.materials.find((m) => m.id === materialId);
-  if (!material) throw new Error("资料不存在");
-  if (!material.assetPath) throw new Error("资料缺少源文件，无法重新解析");
-  const res = await fetch(material.assetPath);
-  if (!res.ok) throw new Error("读取源文件失败");
-  const blob = await res.blob();
-  const file = new File([blob], material.name);
-  const { parseDocument } = await import("../utils/documentParser");
-  const parsed = await parseDocument(file);
-  material.contentText = parsed.contentText;
-  material.headings = JSON.stringify(parsed.headings);
-  await saveData(data);
-  // 资料已落库思源时，同步更新思源笔记内容
-  if (material.siyuanDocId) {
-    try {
-      await window.siyuanAiStudy.updateSiyuanDoc(
-        material.siyuanDocId,
-        `# ${material.name}\n\n${parsed.contentText}`,
-      );
-    } catch (e) {
-      console.error("更新思源笔记失败:", e);
-    }
-  }
-}
+
 
 export async function deleteMaterial(id: number): Promise<void> {
   const data = await getData();

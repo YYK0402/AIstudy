@@ -80,6 +80,45 @@
 .theme-toggle .ic-moon { display: none; }
 .ai-study-app[data-theme="light"] .theme-toggle .ic-sun { display: none; }
 .ai-study-app[data-theme="light"] .theme-toggle .ic-moon { display: block; }
+
+/* ===== 顶栏任务通知铃 ===== */
+.notify-wrap { position: relative; flex-shrink: 0; }
+.notify-bell { position: relative; }
+.notify-badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--as-red);
+  color: #fff; font-size: 10px; line-height: 16px; text-align: center;
+  pointer-events: none;
+}
+.notify-panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 100;
+  width: 400px; max-height: 440px; overflow-y: auto;
+  padding: 12px;
+  background: var(--as-bg-elev);
+  border: 1px solid var(--as-border);
+  border-radius: var(--as-radius);
+  box-shadow: var(--as-shadow);
+}
+.notify-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
+.notify-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px; margin-bottom: 8px;
+  background: var(--as-bg-elev2);
+  border: 1px solid var(--as-border-soft);
+  border-radius: var(--as-radius-sm);
+}
+.notify-item:last-child { margin-bottom: 0; }
+.notify-main { flex: 1; min-width: 0; }
+.notify-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notify-ico { margin-right: 4px; }
+.notify-msg { font-size: 12px; color: var(--as-text-faint); margin-top: 3px; line-height: 1.5; }
+.notify-progress {
+  height: 4px; margin-top: 7px; overflow: hidden;
+  background: var(--as-bg); border-radius: 2px;
+}
+.notify-progress i { display: block; height: 100%; background: var(--as-accent); transition: width .3s; }
+.notify-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
 .ai-study-app, .ai-study-app * { margin: 0; padding: 0; box-sizing: border-box; }
 .ai-study-app a { text-decoration: none; color: inherit; }
 /* 思源内核 base.css 有全局 svg{fill:currentColor}，会盖掉图标 fill="none" 属性导致实心；
