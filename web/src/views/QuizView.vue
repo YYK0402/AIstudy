@@ -12,7 +12,7 @@
           <h3>本次刷题小结</h3>
           <div class="big">{{ quizSummary.total }} 题 · 答对 {{ quizSummary.correct }} 题<template v-if="quizSummary.essayCount"> · 简答均分 {{ quizSummary.essayAvg }} 分</template></div>
           <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
-            <button class="btn primary" @click="startPractice">再来一轮</button>
+            <button class="btn primary" @click="againPractice">再来一轮</button>
             <button class="btn ghost" @click="endPractice">返回题库</button>
           </div>
         </div>
@@ -29,9 +29,9 @@
               :key="opt"
               class="option"
               :class="{
-                picked: userAnswer === opt,
+                picked: pickedSingle === opt,
                 right: quizResult && opt === currentQuestion!.answer,
-                wrong: quizResult && userAnswer === opt && !quizResult.isCorrect,
+                wrong: quizResult && pickedSingle === opt && !quizResult.isCorrect,
               }"
               @click="pickOption(opt)"
             >
@@ -64,9 +64,12 @@
             </div>
           </template>
 
+          <div v-if="quizError" class="s" style="color:var(--as-red);margin-bottom:10px">✗ {{ quizError }}</div>
           <div v-if="quizResult && currentQuestion!.qType !== 'essay'" class="judge-line" :class="quizResult.isCorrect ? 'ok' : 'bad'">
             {{ quizResult.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
           </div>
+          <div v-if="quizResult && quizResult.masteryNotes.length" class="mastery-note">↓ 掌握度：{{ quizResult.masteryNotes.join(" · ") }}</div>
+          <div v-if="quizResult && quizResult.planNotes.length" class="plan-note">✓ 计划任务已自动勾选：{{ quizResult.planNotes.join("、") }}</div>
           <div v-if="quizResult && currentQuestion!.analysis" class="analysis">{{ currentQuestion!.analysis }}</div>
 
           <div class="quiz-actions">
@@ -83,6 +86,12 @@
                 :disabled="!userAnswer.trim() || submitting"
                 @click="submitCurrent"
               >{{ submitting ? "AI 阅卷中…" : "提交（AI 阅卷）" }}</button>
+              <button
+                v-else
+                class="btn primary"
+                :disabled="pickedSingle === null || submitting"
+                @click="submitPicked"
+              >{{ submitting ? "提交中…" : "提交答案" }}</button>
             </template>
             <button v-if="quizResult" class="btn primary" :disabled="submitting" @click="nextQuestion">
               {{ quizIdx + 1 < quizList.length ? "下一题" : "查看小结" }}
@@ -92,7 +101,27 @@
         </template>
       </div>
 
-      <div v-show="!practicing" class="card">
+      <!-- 去自测（?kp=）专属路径：有题直接刷，无题一键生成后自动开刷 -->
+      <div v-if="selfTestKp && !practicing" class="card selftest-banner" style="margin-bottom:14px">
+        <span class="st-ico">🎯</span>
+        <div class="st-main">
+          <div class="st-title">自测：{{ selfTestKp.name }}</div>
+          <div class="st-meta">
+            {{ selfTestKp.chapterName || "未分章" }} · 题库已有 {{ selfTestPool.length }} 道相关题
+          </div>
+          <div v-if="selfTestError" class="s" style="color:var(--as-red)">{{ selfTestError }}</div>
+        </div>
+        <button v-if="selfTestPool.length > 0" class="btn primary" @click="startSelfTest">
+          开始刷题（{{ selfTestPool.length }} 题）
+        </button>
+        <button v-else class="btn primary" :disabled="selfTestBusy" @click="generateSelfTest">
+          {{ selfTestBusy ? "出题中…" : "⚡ 生成自测题并开始" }}
+        </button>
+        <button class="btn ghost sm" @click="kpChangeOpen = true">换一个</button>
+        <button class="st-close" title="关闭" @click="selfTestKpId = null">✕</button>
+      </div>
+
+      <div v-show="!practicing && !archived" class="card">
         <h3>AI 出题
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">从已抽取的知识点命题</span>
         </h3>
@@ -100,14 +129,10 @@
           <span class="ico">🌱</span> 暂无知识点，请先上传资料并抽取知识点
         </div>
         <template v-else>
-          <div class="kp-select">
-            <button
-              v-for="kp in knowledgePoints"
-              :key="kp.id"
-              class="kp-chip"
-              :class="{ on: selectedKpIds.includes(kp.id) }"
-              @click="toggleKp(kp.id)"
-            >{{ kp.name }}</button>
+          <div class="gen-scope">
+            <button class="btn sm" :disabled="generating" @click="genKpOpen = true">选择知识点</button>
+            <span v-if="selectedKpIds.length > 0" class="s" style="color:var(--as-text-dim)">已选 {{ selectedKpIds.length }} 个知识点</span>
+            <span v-else class="s" style="color:var(--as-text-faint)">未选择知识点（按 章-节-知识点 选择）</span>
           </div>
           <div class="gen-form">
             <div class="field">
@@ -133,14 +158,20 @@
             </button>
           </div>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
-          <div v-else-if="genResult" class="s" style="color:var(--as-green);margin-top:10px">✓ 已生成 {{ genResult }} 道题目</div>
+          <div v-else-if="genCreated.length > 0" class="gen-done">
+            <span style="color:var(--as-green)">✓ 已生成 {{ genCreated.length }} 道题目</span>
+            <button class="btn sm primary" @click="practiceGenerated">立即刷题 →</button>
+            <button class="btn sm ghost" @click="genCreated = []">收起</button>
+          </div>
         </template>
       </div>
 
       <div v-show="!practicing" class="card" style="margin-top:14px">
         <h3>题库
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ questions.length }} 题</span>
-          <button class="btn primary sm" :disabled="filteredQuestions.length === 0" @click="startPractice" style="margin-left:12px">
+          <button v-if="!archived" class="btn ghost sm" @click="importOpen = true" style="margin-left:12px">导入真题</button>
+          <button class="btn ghost sm" :disabled="filteredQuestions.length === 0" @click="exportMarkdown" style="margin-left:8px">导出</button>
+          <button class="btn primary sm" :disabled="questions.length === 0" @click="openSetModal" style="margin-left:8px">
             开始刷题
           </button>
         </h3>
@@ -148,6 +179,15 @@
           <span class="ico">✏️</span> 暂无题目，选择知识点后点「开始出题」
         </div>
         <template v-else>
+          <div v-if="!archived" class="q-batch-bar">
+            <button class="chip" :class="{ on: selectedAll }" @click="toggleSelectAll">
+              {{ selectedAll ? "取消全选" : "全选" }}（{{ filteredQuestions.length }}）
+            </button>
+            <span v-if="selectedIds.size > 0" class="q-batch-count">已选 {{ selectedIds.size }} 题</span>
+            <span style="flex:1"></span>
+            <button class="btn sm ghost" :disabled="selectedIds.size === 0" @click="batchKpOpen = true">批量绑定知识点</button>
+            <button class="btn sm ghost danger" :disabled="selectedIds.size === 0" @click="batchDelete">批量删除</button>
+          </div>
           <div class="filter-chips">
             <button class="chip" :class="{ on: filterType === '' }" @click="filterType = ''">全部</button>
             <button
@@ -161,53 +201,187 @@
           <div class="q-list">
             <div v-for="q in filteredQuestions" :key="q.id" class="q-fixed">
               <div class="top">
+                <label v-if="!archived" class="q-check">
+                  <input type="checkbox" :checked="selectedIds.has(q.id)" @change="toggleSelect(q.id)" />
+                </label>
                 <span class="tag" :class="q.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[q.qType as QuestionType] }}</span>
+                <span class="src-tag">{{ questionSourceLabel(q.source) }}</span>
                 <span v-for="name in kpNames(q)" :key="name" class="kp-tag">{{ name }}</span>
               </div>
               <div class="title">{{ q.title }}</div>
               <div class="foot">
                 <span>{{ QUESTION_DIFFICULTY_LABELS[q.difficulty as QuestionDifficulty] ?? q.difficulty }}</span>
                 <span style="margin-left:auto"></span>
+                <button v-if="!archived" class="btn sm ghost" @click="editing = q">编辑</button>
                 <button class="btn sm ghost" @click="delQ(q)">删除</button>
               </div>
             </div>
           </div>
         </template>
       </div>
+
+      <QuestionEditModal
+        :open="editing !== null"
+        :question="editing"
+        :knowledge-points="knowledgePoints"
+        @close="editing = null"
+        @saved="onQuestionSaved"
+      />
+      <QuestionBatchKpModal
+        :open="batchKpOpen"
+        :ids="[...selectedIds]"
+        :knowledge-points="knowledgePoints"
+        @close="batchKpOpen = false"
+        @saved="onBatchKpSaved"
+      />
+      <QuestionSetModal
+        :open="setModalOpen"
+        :questions="questions"
+        :knowledge-points="knowledgePoints"
+        :chapters="chapters"
+        :preset="setPreset"
+        @close="onSetModalClose"
+        @generated="onQuizGenerated"
+      />
+      <KpSelectModal
+        :open="genKpOpen"
+        :chapters="chapters"
+        :kps="knowledgePoints"
+        :initial-selected="selectedKpIds"
+        @close="genKpOpen = false"
+        @confirm="onGenKpConfirm"
+      />
+      <KpSelectModal
+        :open="kpChangeOpen"
+        :chapters="chapters"
+        :kps="knowledgePoints"
+        :initial-selected="selfTestKpId != null ? [selfTestKpId] : []"
+        @close="kpChangeOpen = false"
+        @confirm="onSelfTestKpConfirm"
+      />
+      <QuestionImportModal
+        :open="importOpen"
+        :course-id="currentCourseId()"
+        :knowledge-points="knowledgePoints"
+        @close="importOpen = false"
+        @imported="onQuestionsImported"
+      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {
   queryKnowledgePoints,
   queryQuestions,
   deleteQuestion,
+  deleteQuestions,
   generateQuestions,
   submitAnswer,
   parseQuestionKpIds,
   parseQuestionOptions,
+  shuffleList,
+  exportQuestionsMarkdown,
+  questionSourceLabel,
+  queryChapters,
   QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
 } from "../api";
-import type { KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
+import { kpsOfChapter } from "../utils/chapterScope";
+import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
 import type { AnswerResult } from "../api";
+import QuestionEditModal from "../components/QuestionEditModal.vue";
+import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
+import QuestionSetModal from "../components/QuestionSetModal.vue";
+import QuestionImportModal from "../components/QuestionImportModal.vue";
+import KpSelectModal from "../components/KpSelectModal.vue";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
+/** 课程归档后隐藏出题入口（已有题目仍可练习） */
+const archived = computed(() => courseStore.currentCourse?.status === "archived");
+const route = useRoute();
+const router = useRouter();
 
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const questions = ref<Question[]>([]);
+const chapters = ref<Chapter[]>([]);
 const selectedKpIds = ref<number[]>([]);
+const genKpOpen = ref(false);
 const genQType = ref<QuestionType>("single");
 const genDifficulty = ref<QuestionDifficulty>("easy");
 const genCount = ref(3);
 const generating = ref(false);
 const genError = ref("");
-const genResult = ref(0);
+const genCreated = ref<Question[]>([]);
 const filterType = ref("");
+
+function onGenKpConfirm(ids: number[]) {
+  selectedKpIds.value = ids;
+  genKpOpen.value = false;
+}
+
+function practiceGenerated() {
+  if (genCreated.value.length === 0) return;
+  beginQuiz(shuffleList(genCreated.value));
+  genCreated.value = [];
+}
+
+// ===== 去自测（?kp=）banner =====
+const selfTestKpId = ref<number | null>(null);
+const selfTestBusy = ref(false);
+const selfTestError = ref("");
+const kpChangeOpen = ref(false);
+const selfTestKp = computed(() =>
+  selfTestKpId.value != null ? knowledgePoints.value.find((k) => k.id === selfTestKpId.value) ?? null : null,
+);
+const selfTestPool = computed(() =>
+  selfTestKpId.value != null
+    ? questions.value.filter((q) => parseQuestionKpIds(q).includes(selfTestKpId.value as number))
+    : [],
+);
+
+function onSelfTestKpConfirm(ids: number[]) {
+  kpChangeOpen.value = false;
+  selfTestKpId.value = ids.length > 0 ? ids[0] : null;
+  selfTestError.value = "";
+}
+
+function startSelfTest() {
+  if (selfTestPool.value.length === 0) return;
+  beginQuiz(shuffleList(selfTestPool.value));
+}
+
+/** 无题时一键：AI 生成该 KP 自测题 → 生成完直接开刷 */
+async function generateSelfTest() {
+  const kp = selfTestKp.value;
+  if (!kp || !currentCourseId() || selfTestBusy.value) return;
+  selfTestBusy.value = true;
+  selfTestError.value = "";
+  try {
+    const created = await generateQuestions(currentCourseId(), {
+      kpIds: [kp.id],
+      count: genCount.value,
+      qType: genQType.value,
+      difficulty: genDifficulty.value,
+    });
+    if (created.length === 0) {
+      selfTestError.value = "AI 未生成题目，请重试或调整下方题型/难度";
+      return;
+    }
+    questions.value = [...created, ...questions.value];
+    window.siyuanAiStudy.showMessage(`已为「${kp.name}」生成 ${created.length} 题，开始刷题`);
+    beginQuiz(shuffleList(created));
+  } catch (e) {
+    console.error("生成自测题失败:", e);
+    selfTestError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    selfTestBusy.value = false;
+  }
+}
 
 const filteredQuestions = computed(() =>
   filterType.value === "" ? questions.value : questions.value.filter((q) => q.qType === filterType.value),
@@ -219,6 +393,8 @@ const quizList = ref<Question[]>([]);
 const quizIdx = ref(0);
 const userAnswer = ref("");
 const pickedMulti = ref<string[]>([]);
+/** 单选/判断两步提交：先选中，再点「提交答案」 */
+const pickedSingle = ref<string | null>(null);
 const quizResult = ref<AnswerResult | null>(null);
 const submitting = ref(false);
 const quizSummary = ref<{
@@ -229,35 +405,141 @@ const quizSummary = ref<{
 } | null>(null);
 const answeredResults = ref<Array<{ isCorrect: boolean; score: string; qType: string }>>([]);
 
+const quizError = ref("");
 const currentQuestion = computed<Question | null>(() => quizList.value[quizIdx.value] ?? null);
 const currentOptions = computed(() => (currentQuestion.value ? parseQuestionOptions(currentQuestion.value) : []));
+
+/** 当前题展示时刻（毫秒）：提交时算答题实际耗时，写入学习时长日志 */
+const questionStartAt = ref(0);
+function startQuestionTimer() {
+  questionStartAt.value = Date.now();
+}
+function elapsedQuestionSec(): number {
+  return questionStartAt.value ? Math.max(0, Math.round((Date.now() - questionStartAt.value) / 1000)) : 0;
+}
 
 function resetQuestionState() {
   userAnswer.value = "";
   pickedMulti.value = [];
+  pickedSingle.value = null;
   quizResult.value = null;
+  quizError.value = "";
 }
 
-function startPractice() {
-  const pool = filteredQuestions.value;
-  if (pool.length === 0 || practicing.value) return;
-  quizList.value = [...pool].sort(() => Math.random() - 0.5);
+function beginQuiz(list: Question[]) {
+  quizList.value = [...list];
   quizIdx.value = 0;
   answeredResults.value = [];
   quizSummary.value = null;
   resetQuestionState();
+  startQuestionTimer();
   practicing.value = true;
+}
+
+// ===== 组卷面板 =====
+const setModalOpen = ref(false);
+/** 预填（章节复盘 ?set= / 结业模考）：知识点范围 + 标题；关闭面板后清除 */
+const setPreset = ref<{ kpIds: number[]; title: string } | null>(null);
+
+function openSetModal() {
+  if (practicing.value) return;
+  setPreset.value = null;
+  setModalOpen.value = true;
+}
+
+function onSetModalClose() {
+  setModalOpen.value = false;
+  setPreset.value = null;
+}
+
+function onQuizGenerated(list: Question[]) {
+  if (list.length === 0) return;
+  beginQuiz(list);
+}
+
+function againPractice() {
+  beginQuiz(shuffleList(quizList.value));
+}
+
+/** 组卷预填入口：?set=<章节id>（章节复盘）/ ?exam=1（结业模考，全课程知识点） */
+async function enterPresetSet() {
+  const setRaw = route.query.set;
+  const examRaw = route.query.exam;
+  if ((setRaw == null || setRaw === "") && (examRaw == null || examRaw === "")) return;
+  const clearQuery = () => router.replace({ path: "/quiz" });
+  if (practicing.value) {
+    clearQuery();
+    return;
+  }
+  try {
+    if (examRaw != null && examRaw !== "") {
+      // 结业模考覆盖全课程题目（含未绑定知识点的题），故不按知识点过滤
+      if (questions.value.length === 0) {
+        window.siyuanAiStudy.showMessage("课程暂无题目，无法进行结业模考", 4000, "error");
+        return;
+      }
+      setPreset.value = { kpIds: [], title: `结业模考 · 全课程` };
+      setModalOpen.value = true;
+      return;
+    }
+    const chId = Number(Array.isArray(setRaw) ? setRaw[0] : setRaw);
+    if (!Number.isFinite(chId) || chId <= 0 || !currentCourseId()) return;
+    const allChapters = await queryChapters(currentCourseId());
+    const ch = allChapters.find((c) => c.id === chId);
+    if (!ch) {
+      window.siyuanAiStudy.showMessage("章节不存在，可能已被删除", 4000, "error");
+      return;
+    }
+    const kpIds = kpsOfChapter(knowledgePoints.value, allChapters, ch.id).map((k) => k.id);
+    if (kpIds.length === 0) {
+      window.siyuanAiStudy.showMessage("本章暂无知识点，无法组卷", 4000, "error");
+      return;
+    }
+    setPreset.value = { kpIds, title: `章节组卷 · ${ch.name}` };
+    setModalOpen.value = true;
+  } catch (e) {
+    console.error("组卷预填失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "组卷预填失败", 4000, "error");
+  } finally {
+    clearQuery();
+  }
+}
+
+/** 学习页「去自测」带入 ?kp=：显示自测 banner（有题直接刷 / 无题一键生成后开刷） */
+function enterKpPractice() {
+  const raw = route.query.kp;
+  if (raw == null || raw === "") return;
+  const kpId = Number(Array.isArray(raw) ? raw[0] : raw);
+  const clearQuery = () => router.replace({ path: "/quiz" });
+  if (!Number.isFinite(kpId) || kpId <= 0) {
+    clearQuery();
+    return;
+  }
+  if (practicing.value) {
+    clearQuery();
+    return;
+  }
+  selfTestKpId.value = kpId;
+  selfTestError.value = "";
+  clearQuery();
 }
 
 function endPractice() {
   practicing.value = false;
   quizList.value = [];
   quizSummary.value = null;
+  quizError.value = "";
+  setPreset.value = null;
 }
 
 function pickOption(opt: string) {
   if (quizResult.value || submitting.value) return;
-  userAnswer.value = opt;
+  pickedSingle.value = pickedSingle.value === opt ? null : opt;
+}
+
+function submitPicked() {
+  if (pickedSingle.value === null) return;
+  userAnswer.value = pickedSingle.value;
   void submitCurrent();
 }
 
@@ -271,7 +553,7 @@ function toggleMulti(opt: string) {
 function isRightOption(opt: string): boolean {
   if (!quizResult.value || !currentQuestion.value) return false;
   return quizResult.value.isCorrect
-    ? currentQuestion.value.answer.split(",").map((s) => s.trim()).includes(opt)
+    ? currentQuestion.value.answer.split(/[,，]/).map((s) => s.trim()).includes(opt)
     : false;
 }
 
@@ -285,12 +567,13 @@ async function submitCurrent() {
   if (!q || quizResult.value) return;
   submitting.value = true;
   try {
-    const result = await submitAnswer(q, userAnswer.value);
+    const result = await submitAnswer(q, userAnswer.value, elapsedQuestionSec());
     quizResult.value = result;
     answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType });
   } catch (e) {
     console.error("提交作答失败:", e);
-    genError.value = e instanceof Error ? e.message : String(e);
+    // 在刷题卡片内提示（genError 属于出题卡片，刷题时不可见）
+    quizError.value = e instanceof Error ? e.message : String(e);
   } finally {
     submitting.value = false;
   }
@@ -300,6 +583,7 @@ function nextQuestion() {
   if (quizIdx.value + 1 < quizList.value.length) {
     quizIdx.value++;
     resetQuestionState();
+    startQuestionTimer();
   } else {
     const total = answeredResults.value.length;
     const correct = answeredResults.value.filter((r) => r.isCorrect).length;
@@ -318,21 +602,17 @@ function kpNames(q: Question): string[] {
     .filter((n): n is string => Boolean(n));
 }
 
-function toggleKp(id: number) {
-  selectedKpIds.value = selectedKpIds.value.includes(id)
-    ? selectedKpIds.value.filter((n) => n !== id)
-    : [...selectedKpIds.value, id];
-}
-
 async function load() {
   if (!currentCourseId()) {
     knowledgePoints.value = [];
     questions.value = [];
+    chapters.value = [];
     return;
   }
-  [knowledgePoints.value, questions.value] = await Promise.all([
+  [knowledgePoints.value, questions.value, chapters.value] = await Promise.all([
     queryKnowledgePoints(currentCourseId()),
     queryQuestions(currentCourseId()),
+    queryChapters(currentCourseId()),
   ]);
 }
 
@@ -340,7 +620,7 @@ async function generate() {
   if (!currentCourseId() || selectedKpIds.value.length === 0) return;
   generating.value = true;
   genError.value = "";
-  genResult.value = 0;
+  genCreated.value = [];
   try {
     const created = await generateQuestions(currentCourseId(), {
       kpIds: selectedKpIds.value,
@@ -348,13 +628,103 @@ async function generate() {
       qType: genQType.value,
       difficulty: genDifficulty.value,
     });
-    genResult.value = created.length;
+    genCreated.value = created;
     questions.value = [...created, ...questions.value];
   } catch (e) {
     genError.value = e instanceof Error ? e.message : String(e);
   } finally {
     generating.value = false;
   }
+}
+
+const editing = ref<Question | null>(null);
+
+async function onQuestionSaved() {
+  editing.value = null;
+  // getData 返回存活对象引用，api 已改底层值；重新加载列表刷新渲染
+  try {
+    questions.value = await queryQuestions(currentCourseId());
+  } catch (e) {
+    console.error("刷新题库失败:", e);
+  }
+  window.siyuanAiStudy.showMessage("题目已保存");
+}
+
+// ===== 批量操作 =====
+const selectedIds = ref<Set<number>>(new Set());
+const batchKpOpen = ref(false);
+
+const selectedAll = computed(
+  () => filteredQuestions.value.length > 0 && filteredQuestions.value.every((q) => selectedIds.value.has(q.id)),
+);
+
+function toggleSelect(id: number) {
+  const next = new Set(selectedIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedIds.value = next;
+}
+
+function toggleSelectAll() {
+  const filteredIds = new Set(filteredQuestions.value.map((q) => q.id));
+  if (selectedAll.value) {
+    selectedIds.value = new Set([...selectedIds.value].filter((id) => !filteredIds.has(id)));
+  } else {
+    selectedIds.value = new Set([...selectedIds.value, ...filteredIds]);
+  }
+}
+
+async function batchDelete() {
+  const ids = [...selectedIds.value];
+  if (ids.length === 0) return;
+  if (!window.confirm(`确定删除选中的 ${ids.length} 道题？相关答题记录与错题将一并清理。`)) return;
+  try {
+    const removed = await deleteQuestions(ids);
+    questions.value = questions.value.filter((q) => !new Set(ids).has(q.id));
+    selectedIds.value = new Set();
+    window.siyuanAiStudy.showMessage(`已删除 ${removed} 道题`);
+  } catch (e) {
+    console.error("批量删除失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "批量删除失败", 4000, "error");
+  }
+}
+
+function exportMarkdown() {
+  const list = filteredQuestions.value;
+  if (list.length === 0) return;
+  const md = exportQuestionsMarkdown(list, knowledgePoints.value, courseStore.currentCourse?.name ?? "题库");
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  a.href = url;
+  a.download = `题库-${courseStore.currentCourse?.name ?? "导出"}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  window.siyuanAiStudy.showMessage(`已导出 ${list.length} 题 Markdown`);
+}
+
+// ===== 真题导入 =====
+const importOpen = ref(false);
+
+async function onQuestionsImported(count: number) {
+  importOpen.value = false;
+  try {
+    questions.value = await queryQuestions(currentCourseId());
+    window.siyuanAiStudy.showMessage(`已导入 ${count} 道真题，可用批量绑定补充知识点`);
+  } catch (e) {
+    console.error("刷新题库失败:", e);
+  }
+}
+
+async function onBatchKpSaved(count: number) {
+  try {
+    questions.value = await queryQuestions(currentCourseId());
+  } catch (e) {
+    console.error("刷新题库失败:", e);
+  }
+  window.siyuanAiStudy.showMessage(`已更新 ${count} 道题的知识点绑定`);
 }
 
 async function delQ(q: Question) {
@@ -364,20 +734,47 @@ async function delQ(q: Question) {
     questions.value = questions.value.filter((x) => x.id !== q.id);
   } catch (e) {
     console.error("删除题目失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除题目失败");
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除题目失败", 4000, "error");
   }
 }
 
 watch(
   () => courseStore.currentCourseId,
   () => {
+    // 切课程视为中断当前练习，避免继续答旧课程的题
+    if (practicing.value) {
+      endPractice();
+      window.siyuanAiStudy.showMessage("已切换课程，本次练习已结束");
+    }
     genError.value = "";
-    genResult.value = 0;
+    genCreated.value = [];
     selectedKpIds.value = [];
     filterType.value = "";
+    selectedIds.value = new Set();
+    selfTestKpId.value = null;
     load();
   },
 );
 
-onMounted(load);
+onMounted(async () => {
+  await load();
+  enterKpPractice();
+  void enterPresetSet();
+});
+
+watch(
+  () => route.query.kp,
+  async (v) => {
+    if (v != null && v !== "") await load();
+    enterKpPractice();
+  },
+);
+
+watch(
+  () => [route.query.set, route.query.exam] as const,
+  async (v) => {
+    if ((v[0] != null && v[0] !== "") || (v[1] != null && v[1] !== "")) await load();
+    void enterPresetSet();
+  },
+);
 </script>
