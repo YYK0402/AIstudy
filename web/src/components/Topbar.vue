@@ -2,8 +2,8 @@
   <div class="topbar">
     <div class="crumbs">研习 <span class="sep">/</span> <span class="cur">{{ title }}</span></div>
     <div class="spacer"></div>
-    <div class="topbar-today">
-      <span class="dot"></span> 今日待完成 <b>6</b> 项 · <b>5</b> 知识点复习 · <b>3</b> 道错题
+    <div v-if="currentCourseId" class="topbar-today">
+      <span class="dot"></span> 今日 <b>{{ todayTaskCount }}</b> 项任务 · <b>{{ dueReviewCount }}</b> 待复习 · <b>{{ wrongCount }}</b> 道错题
     </div>
     <button class="theme-toggle" title="切换明暗主题" @click="theme.toggle()">
       <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -18,12 +18,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useThemeStore } from "../stores/theme";
+import { useCourseStore } from "../stores/course";
+import {
+  queryStudyPlans,
+  queryStudyTasks,
+  queryDueReviews,
+  queryWrongQuestions,
+  formatLocalDate,
+  DATA_SAVED_EVENT,
+} from "../api";
 
 const route = useRoute();
 const theme = useThemeStore();
+const courseStore = useCourseStore();
+
+const currentCourseId = computed(() => courseStore.currentCourseId);
+
+const todayTaskCount = ref(0);
+const dueReviewCount = ref(0);
+const wrongCount = ref(0);
 
 const titleMap: Record<string, string> = {
   home: "学习首页",
@@ -33,10 +49,57 @@ const titleMap: Record<string, string> = {
   study: "开始学习",
   quiz: "刷题练习",
   wrong: "错题本",
+  review: "复习计划",
   graph: "知识图谱",
   report: "学习报告",
   settings: "模型配置",
 };
 
 const title = computed(() => titleMap[(route.name as string) ?? ""] ?? "学习首页");
+
+/** 当前课程的今日待完成任务 / 到期复习 / 错题数量（未选课程时隐藏） */
+async function loadStats() {
+  const id = courseStore.currentCourseId;
+  if (!id) {
+    todayTaskCount.value = 0;
+    dueReviewCount.value = 0;
+    wrongCount.value = 0;
+    return;
+  }
+  try {
+    const today = formatLocalDate();
+    const [plans, due, wrong] = await Promise.all([
+      queryStudyPlans(id),
+      queryDueReviews(id),
+      queryWrongQuestions(id),
+    ]);
+    let tasks = 0;
+    for (const p of plans) {
+      if (p.status === "paused") continue;
+      const ts = await queryStudyTasks(p.id);
+      tasks += ts.filter((t) => t.scheduledDate === today && t.status !== "done").length;
+    }
+    todayTaskCount.value = tasks;
+    dueReviewCount.value = due.length;
+    wrongCount.value = wrong.length;
+  } catch (e) {
+    console.error("加载顶栏统计失败:", e);
+  }
+}
+
+function onCourseChange() {
+  loadStats();
+}
+function onDataSaved() {
+  loadStats();
+}
+
+onMounted(() => {
+  loadStats();
+  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
+});
+watch(() => courseStore.currentCourseId, onCourseChange);
 </script>

@@ -17,8 +17,8 @@
         <input v-model="form.baseUrl" placeholder="如：https://api.deepseek.com/v1" />
       </div>
       <div class="field">
-        <label>API Key <span v-if="!isEdit" class="req">*</span><span v-else style="color:var(--as-text-faint)">（留空则不修改）</span></label>
-        <input v-model="form.apiKey" type="password" :placeholder="isEdit ? '留空保留原密钥' : 'sk-...'" />
+        <label>API Key <span v-if="keyRequired" class="req">*</span><span v-else style="color:var(--as-text-faint)">{{ isEdit ? "（留空则不修改）" : "（本地服务可留空）" }}</span></label>
+        <input v-model="form.apiKey" type="password" :placeholder="isEdit ? '留空保留原密钥' : keyRequired ? 'sk-...' : '本地服务可留空'" />
       </div>
       <div class="field">
         <label>请求超时时间（秒）</label>
@@ -40,8 +40,6 @@ import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
 import { createProvider, updateProvider, PROVIDER_PRESETS } from "../api";
 
-const emit = defineEmits<{ (e: "saved"): void }>();
-
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
 const saving = ref(false);
@@ -57,11 +55,23 @@ const form = reactive({
 
 const isEdit = computed(() => modalStore.editingProvider !== null);
 
+/** 本地服务（Ollama 等）通常无需 API Key */
+function isLocalUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "0.0.0.0" || h === "::1" || h === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+const keyRequired = computed(() => !isEdit.value && !isLocalUrl(form.baseUrl.trim()));
+
 const valid = computed(() => {
   if (form.name.trim() === "" || form.baseUrl.trim() === "") {
     return false;
   }
-  return isEdit.value || form.apiKey.trim() !== "";
+  return isEdit.value || form.apiKey.trim() !== "" || isLocalUrl(form.baseUrl.trim());
 });
 
 function applyPreset(preset: { name: string; baseUrl: string }) {
@@ -124,10 +134,9 @@ async function save() {
     close();
     resetForm();
     await providerStore.load();
-    emit("saved");
   } catch (error) {
     console.error("保存服务商失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存服务商失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存服务商失败", 4000, "error");
   } finally {
     saving.value = false;
   }

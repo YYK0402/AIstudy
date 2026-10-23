@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    <div class="course-switch">
+    <div class="course-switch" ref="switchRef">
       <label>当前课程</label>
       <div class="course-select" @click.stop="toggleDropdown">
         <div class="course-emoji">{{ currentEmoji }}</div>
@@ -29,7 +29,7 @@
           @click="selectCourse(c)"
         >
           <span class="cd-emoji">{{ emojiOf(c.id) }}</span>{{ c.name }}
-          <span class="cd-meta">进度</span>
+          <span class="cd-check">✓</span>
         </div>
         <div class="cd-add" @click="openNewCourse">＋ 新建课程</div>
       </div>
@@ -78,19 +78,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
-import { queryCourses } from "../api";
+import { queryCourses, queryWrongQuestions, DATA_SAVED_EVENT } from "../api";
 import { emojiOf } from "../utils";
 import type { Course } from "../api";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
+const router = useRouter();
 
 const dropdownOpen = ref(false);
+const switchRef = ref<HTMLElement | null>(null);
 
-const navGroups = [
+// 当前课程错题数（0 时不显示角标）
+const wrongCount = ref(0);
+
+const navGroups = computed(() => [
   {
     label: "学习",
     items: [
@@ -105,7 +111,7 @@ const navGroups = [
     label: "练习",
     items: [
       { to: "/quiz", icon: "quiz", label: "刷题练习" },
-      { to: "/wrong", icon: "wrong", label: "错题本", badge: "12" },
+      { to: "/wrong", icon: "wrong", label: "错题本", badge: wrongCount.value },
       { to: "/review", icon: "repeat", label: "复习计划" },
       { to: "/graph", icon: "graph", label: "知识图谱" },
     ],
@@ -114,7 +120,26 @@ const navGroups = [
     label: "洞察",
     items: [{ to: "/report", icon: "report", label: "学习报告" }],
   },
-];
+]);
+
+async function loadWrongCount() {
+  const id = courseStore.currentCourseId;
+  if (!id) {
+    wrongCount.value = 0;
+    return;
+  }
+  try {
+    wrongCount.value = (await queryWrongQuestions(id)).length;
+  } catch (e) {
+    console.error("加载错题数失败:", e);
+  }
+}
+
+function onDataSaved() {
+  loadWrongCount();
+  // 课程状态（归档）/列表变化后同步 store，保证各页面读到的 status 最新
+  courseStore.refresh().catch((e) => console.error("刷新课程列表失败:", e));
+}
 
 const icons: Record<string, string> = {
   home: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -141,9 +166,29 @@ function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value;
 }
 
+// 点击下拉外部关闭
+function onDocPointerDown(e: PointerEvent) {
+  if (!dropdownOpen.value) return;
+  if (switchRef.value && !switchRef.value.contains(e.target as Node)) {
+    dropdownOpen.value = false;
+  }
+}
+
+// Esc 关闭下拉
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && dropdownOpen.value) {
+    dropdownOpen.value = false;
+  }
+}
+
 function selectCourse(course: Course) {
+  const switched = course.id !== courseStore.currentCourseId;
   courseStore.setCurrent(course.id);
   dropdownOpen.value = false;
+  // 切换课程后自动跳到课程主页
+  if (switched) {
+    void router.push("/course");
+  }
 }
 
 function openNewCourse() {
@@ -160,5 +205,15 @@ onMounted(async () => {
       console.error("加载课程失败:", error);
     }
   }
+  loadWrongCount();
+  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
+  document.addEventListener("pointerdown", onDocPointerDown);
+  document.addEventListener("keydown", onKeydown);
 });
+onBeforeUnmount(() => {
+  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
+  document.removeEventListener("pointerdown", onDocPointerDown);
+  document.removeEventListener("keydown", onKeydown);
+});
+watch(() => courseStore.currentCourseId, loadWrongCount);
 </script>

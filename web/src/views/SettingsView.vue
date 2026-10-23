@@ -1,6 +1,11 @@
 <template>
   <div class="page">
-    <div class="page-title"><h1>模型配置</h1><div class="desc">服务商 · 模型 · 任务分配 · 调用日志</div></div>
+    <div class="page-title"><h1>模型配置</h1><div class="desc">服务商 · 模型 · 任务分配 · 提示词模板 · 调用日志</div></div>
+    <div class="settings-tabs">
+      <button class="settings-tab" :class="{ on: activeTab === 'models' }" @click="activeTab = 'models'">模型配置</button>
+      <button class="settings-tab" :class="{ on: activeTab === 'prompts' }" @click="activeTab = 'prompts'">提示词模板</button>
+    </div>
+    <div v-show="activeTab === 'models'">
     <div class="two-col" style="grid-template-columns:1fr 1fr">
       <div class="card">
         <h3>服务商 <button class="btn sm ghost" style="margin-left:auto" @click="modalStore.openNewProvider()">＋ 新增服务商</button></h3>
@@ -27,10 +32,24 @@
               <div class="model-list">
                 <div v-if="modelsOf(p.id).length === 0" class="s" style="color:var(--as-text-faint)">暂无模型</div>
                 <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item">
-                  <span class="m-name">{{ m.displayName }}</span>
-                  <span class="m-id">{{ m.modelId }}</span>
-                  <span v-if="m.maxContext" class="m-id">{{ m.maxContext }} ctx</span>
-                  <span class="m-del" @click="removeModel(m)">✕</span>
+                  <template v-if="editingModelId === m.id">
+                    <input v-model="editModel.modelId" placeholder="模型 ID" style="flex:1" />
+                    <input v-model="editModel.displayName" placeholder="显示名" style="flex:0.8" />
+                    <input v-model="editModel.maxContext" placeholder="上下文" type="number" style="width:70px" />
+                    <input v-model="editModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="editModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
+                    <button class="btn sm" @click="saveEditModel(m)">确定</button>
+                    <button class="btn sm ghost" @click="editingModelId = null">取消</button>
+                  </template>
+                  <template v-else>
+                    <span class="m-name">{{ m.displayName }}</span>
+                    <span class="m-id">{{ m.modelId }}</span>
+                    <span v-if="m.maxContext" class="m-id">{{ m.maxContext }} ctx</span>
+                    <span v-if="m.temperature != null" class="m-id">t{{ m.temperature }}</span>
+                    <span v-if="m.maxTokens != null" class="m-id">out{{ m.maxTokens }}</span>
+                    <span class="m-del" title="编辑" style="opacity:1" @click="startEditModel(m)">✎</span>
+                    <span class="m-del" title="删除" @click="removeModel(m)">✕</span>
+                  </template>
                 </div>
                 <div v-if="fetchingModels" class="s" style="color:var(--as-text-faint)">获取模型列表中…</div>
                 <template v-else-if="addingModelId === p.id && !modelUseManual">
@@ -41,6 +60,8 @@
                     </select>
                     <input v-model="newModel.displayName" placeholder="显示名（自动预填）" style="flex:0.8" />
                     <input v-model="newModel.maxContext" placeholder="上下文" type="number" style="width:70px" />
+                    <input v-model="newModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="newModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
                     <button class="btn sm" :disabled="!newModel.modelId" @click="addModel(p.id)">确定</button>
                   </div>
                   <button class="btn sm ghost" @click="useManualInput()">手动输入模型 ID</button>
@@ -51,6 +72,8 @@
                     <input v-model="newModel.modelId" placeholder="模型 ID" />
                     <input v-model="newModel.displayName" placeholder="显示名" />
                     <input v-model="newModel.maxContext" placeholder="上下文" type="number" />
+                    <input v-model="newModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="newModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
                     <button class="btn sm" @click="addModel(p.id)">确定</button>
                   </div>
                   <button class="btn sm ghost" @click="retryFetch(p.id)">重试自动获取</button>
@@ -78,6 +101,9 @@
               <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
             </select>
           </div>
+        </div>
+        <div class="s" style="color:var(--as-text-faint);margin-top:10px">
+          优先级：课程指定的模型（课程编辑弹窗设置）＞ 任务级 ＞ 全局默认。
         </div>
       </div>
     </div>
@@ -108,6 +134,24 @@
       <div class="s" style="color:var(--as-text-faint);margin-top:6px">
         开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
       </div>
+      <div class="ta-row" style="margin-top:14px">
+        <span class="t">AI 失败自动重试</span>
+        <select v-model.number="settings.aiRetryCount">
+          <option :value="0">关闭</option>
+          <option :value="1">1 次（超时 / 5xx / 网络错误）</option>
+          <option :value="2">2 次（超时 / 5xx / 网络错误）</option>
+        </select>
+      </div>
+      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+        仅对超时、5xx、网络错误自动重试（间隔 2 秒递增），每次尝试均记入调用日志；鉴权等 4xx 错误不重试。
+      </div>
+      <div class="ta-row" style="margin-top:14px">
+        <span class="t">请求速率限制（次/分钟）</span>
+        <input v-model.number="settings.aiRateLimitPerMin" type="number" min="0" step="1" placeholder="0 = 不限" style="width:90px" />
+      </div>
+      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+        0 = 不限。AI 调用（全部服务商共享窗口）超过上限时排队等待窗口释放（本地 Ollama 建议 30 以上，公网 API 建议 10-20）。
+      </div>
     </div>
     <div class="card" style="margin-top:14px">
       <h3>最近调用日志</h3>
@@ -118,18 +162,64 @@
       <template v-else>
         <table class="log-table">
           <tr><th>任务</th><th>模型</th><th>Token</th><th>状态</th><th>时间</th></tr>
-          <tr v-for="log in pagedLogs" :key="log.id">
-            <td>{{ log.taskKey }}</td>
-            <td class="mono">{{ log.modelName }}</td>
-            <td class="mono">{{ log.tokenIn + log.tokenOut }}</td>
-            <td><span class="status-dot" :class="log.status === 'success' ? 'ok' : 'bad'"></span> {{ log.status }}</td>
-            <td class="mono">{{ formatTime(log.createTime) }}</td>
-          </tr>
+          <template v-for="log in pagedLogs" :key="log.id">
+            <tr class="log-row" :class="{ active: detailLogId === log.id }" title="点击查看明细" @click="toggleLogDetail(log.id)">
+              <td>{{ log.taskKey }}</td>
+              <td class="mono">{{ log.modelName }}</td>
+              <td class="mono">{{ log.tokenIn + log.tokenOut }}</td>
+              <td><span class="status-dot" :class="log.status === 'success' ? 'ok' : 'bad'"></span> {{ log.status }}</td>
+              <td class="mono">{{ formatTime(log.createTime) }}</td>
+            </tr>
+            <tr v-if="detailLogId === log.id" class="log-detail-row">
+              <td colspan="5">
+                任务 {{ log.taskKey }} · 服务商 {{ log.providerName }} · 模型 {{ log.modelName }}<br />
+                输入 token {{ log.tokenIn }} · 输出 token {{ log.tokenOut }} · {{ formatFullTime(log.createTime) }}
+                <div v-if="log.status !== 'success' && log.errorMsg" class="log-err">✗ {{ log.errorMsg }}</div>
+                <div v-else class="s" style="color:var(--as-text-faint)">调用成功（不保存请求/响应正文）</div>
+              </td>
+            </tr>
+          </template>
         </table>
         <div v-if="logTotalPages > 1" class="pagination">
           <button class="btn sm ghost" :disabled="logPage === 1" @click="logPage--">‹ 上一页</button>
           <span class="pg-info">{{ logPage }} / {{ logTotalPages }}</span>
           <button class="btn sm ghost" :disabled="logPage === logTotalPages" @click="logPage++">下一页 ›</button>
+        </div>
+      </template>
+    </div>
+    </div>
+    <div v-show="activeTab === 'prompts'">
+      <div class="s" style="color:var(--as-text-faint);margin-bottom:12px">
+        修改 8 类 AI 任务的提示词。模板中用
+        <code class="code-inline">{{ "{varName}" }}</code>
+        占位，运行时由系统填充实际值（各任务可用变量见卡片内列表）；删除占位符则该部分信息不再提供。保存与默认完全一致的内容会自动回到「默认」状态。
+      </div>
+      <div v-if="promptLoading" class="s" style="padding:24px 0;color:var(--as-text-faint)">加载中…</div>
+      <template v-else>
+        <div v-for="t in promptViews" :key="t.key" class="card" style="margin-bottom:14px">
+          <h3>
+            {{ t.name }}
+            <span class="ptag" :class="t.isCustom ? 'custom' : 'def'">{{ t.isCustom ? "自定义" : "默认" }}</span>
+            <span style="margin-left:auto;display:flex;gap:6px">
+              <button
+                class="btn sm ghost"
+                :disabled="promptSavingKey === t.key || !t.isCustom"
+                @click="resetPrompt(t)"
+              >恢复默认</button>
+              <button class="btn sm primary" :disabled="promptSavingKey === t.key || !promptDirty(t)" @click="savePrompt(t)">
+                {{ promptSavingKey === t.key ? "保存中…" : "保存" }}
+              </button>
+            </span>
+          </h3>
+          <div class="s" style="color:var(--as-text-faint)">{{ t.desc }}</div>
+          <div class="prompt-vars">
+            <span v-for="v in t.vars" :key="v.name" class="prompt-var"><code class="code-inline">{{ v.name }}</code>{{ v.desc }}</span>
+            <span v-if="t.vars.length === 0" class="prompt-var">（无变量，纯固定提示词）</span>
+          </div>
+          <label class="prompt-label">系统提示词（system）</label>
+          <textarea v-model="promptEdits[t.key].system" class="prompt-ta" rows="6" spellcheck="false"></textarea>
+          <label class="prompt-label">用户提示模板（user）</label>
+          <textarea v-model="promptEdits[t.key].user" class="prompt-ta" rows="4" spellcheck="false"></textarea>
         </div>
       </template>
     </div>
@@ -146,14 +236,18 @@ import {
   testProvider as testProviderApi,
   fetchProviderModels,
   createModel,
+  updateModel,
   deleteModel,
   saveTaskModel,
   getSettings,
   updateSettings,
   AI_TASKS,
   GLOBAL_DEFAULT_KEY,
+  getPromptTemplateViews,
+  savePromptTemplate as savePromptTemplateApi,
+  resetPromptTemplate as resetPromptTemplateApi,
 } from "../api";
-import type { AiProvider, AiModel } from "../api";
+import type { AiProvider, AiModel, PromptTemplateView } from "../api";
 
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
@@ -162,10 +256,18 @@ const settings = reactive({
   chapterMode: "manual" as "manual" | "auto",
   persistToSiyuan: false,
   notebookName: "AI 研习",
+  aiRetryCount: 0 as 0 | 1 | 2,
+  aiRateLimitPerMin: 0,
 });
 const settingsSaving = ref(false);
 const logPage = ref(1);
 const LOG_PAGE_SIZE = 10;
+/** 当前展开明细的日志 id（同一时间只展开一条） */
+const detailLogId = ref<number | null>(null);
+
+function toggleLogDetail(id: number) {
+  detailLogId.value = detailLogId.value === id ? null : id;
+}
 
 const pagedLogs = computed(() => {
   const sorted = [...providerStore.logs].sort((a, b) => b.id - a.id);
@@ -182,6 +284,8 @@ const newModel = reactive({
   modelId: "",
   displayName: "",
   maxContext: "",
+  temperature: "",
+  maxTokens: "",
   /** 自动获取到的服务商模型 id 列表 */
   fetched: [] as string[],
 });
@@ -193,11 +297,75 @@ const modelUseManual = ref(true);
 const tasks = AI_TASKS;
 const taskModelMap = computed(() => providerStore.taskModelMap);
 
+// ===== 提示词模板 Tab =====
+const activeTab = ref<"models" | "prompts">("models");
+const promptViews = ref<PromptTemplateView[]>([]);
+const promptLoading = ref(true);
+const promptSavingKey = ref<string | null>(null);
+const promptEdits = reactive<Record<string, { system: string; user: string }>>({});
+
+async function loadPromptTemplates() {
+  promptLoading.value = true;
+  try {
+    promptViews.value = await getPromptTemplateViews();
+    for (const v of promptViews.value) {
+      promptEdits[v.key] = { system: v.current.system, user: v.current.user };
+    }
+  } catch (error) {
+    console.error("加载提示词模板失败:", error);
+    window.siyuanAiStudy.showMessage("加载提示词模板失败", 4000, "error");
+  } finally {
+    promptLoading.value = false;
+  }
+}
+
+function promptDirty(t: PromptTemplateView): boolean {
+  const e = promptEdits[t.key];
+  return !!e && (e.system !== t.current.system || e.user !== t.current.user);
+}
+
+async function savePrompt(t: PromptTemplateView) {
+  const e = promptEdits[t.key];
+  if (!e) return;
+  if (!e.system.trim()) {
+    window.siyuanAiStudy.showMessage("系统提示词不能为空", 4000, "error");
+    return;
+  }
+  promptSavingKey.value = t.key;
+  try {
+    await savePromptTemplateApi(t.key, { system: e.system, user: e.user });
+    promptViews.value = await getPromptTemplateViews();
+    window.siyuanAiStudy.showMessage("提示词模板已保存");
+  } catch (error) {
+    console.error("保存提示词模板失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存提示词模板失败", 4000, "error");
+  } finally {
+    promptSavingKey.value = null;
+  }
+}
+
+async function resetPrompt(t: PromptTemplateView) {
+  if (!window.confirm(`确定将「${t.name}」恢复为默认模板？`)) return;
+  promptSavingKey.value = t.key;
+  try {
+    await resetPromptTemplateApi(t.key);
+    promptEdits[t.key] = { system: t.def.system, user: t.def.user };
+    promptViews.value = await getPromptTemplateViews();
+    window.siyuanAiStudy.showMessage("已恢复默认模板");
+  } catch (error) {
+    console.error("恢复默认模板失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "恢复默认模板失败", 4000, "error");
+  } finally {
+    promptSavingKey.value = null;
+  }
+}
+
 const modelsOf = (providerId: number): AiModel[] => providerStore.models.filter((m) => m.providerId === providerId);
 
 function toggleExpand(id: number) {
   expandedId.value = expandedId.value === id ? null : id;
   addingModelId.value = null;
+  editingModelId.value = null;
 }
 
 async function toggleProvider(provider: AiProvider) {
@@ -206,7 +374,7 @@ async function toggleProvider(provider: AiProvider) {
     await updateProvider(provider);
   } catch (error) {
     console.error("更新服务商状态失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新服务商状态失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新服务商状态失败", 4000, "error");
   }
 }
 
@@ -236,7 +404,7 @@ async function handleDelete(provider: AiProvider) {
     await providerStore.load();
   } catch (error) {
     console.error("删除服务商失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除服务商失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除服务商失败", 4000, "error");
   }
 }
 
@@ -245,6 +413,8 @@ function startAddModel(providerId: number) {
   newModel.modelId = "";
   newModel.displayName = "";
   newModel.maxContext = "";
+  newModel.temperature = "";
+  newModel.maxTokens = "";
   void fetchModelList(providerId);
 }
 
@@ -303,12 +473,65 @@ async function addModel(providerId: number) {
       modelId: newModel.modelId.trim(),
       displayName: newModel.displayName.trim(),
       maxContext: Number(newModel.maxContext) || null,
+      temperature: parseOptionalNum(newModel.temperature, 0, 2),
+      maxTokens: parseOptionalInt(newModel.maxTokens),
     });
     addingModelId.value = null;
     await providerStore.load();
   } catch (error) {
     console.error("添加模型失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "添加模型失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "添加模型失败", 4000, "error");
+  }
+}
+
+// 注意：v-model 绑定 type=number 输入时值为 number（Vue 自动转换），空输入为 ""
+function parseOptionalNum(raw: string | number, min: number, max: number): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
+function parseOptionalInt(raw: string | number): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+const editingModelId = ref<number | null>(null);
+const editModel = reactive({
+  modelId: "",
+  displayName: "",
+  maxContext: "",
+  temperature: "",
+  maxTokens: "",
+});
+
+function startEditModel(m: AiModel) {
+  editingModelId.value = m.id;
+  editModel.modelId = m.modelId;
+  editModel.displayName = m.displayName;
+  editModel.maxContext = m.maxContext === null ? "" : String(m.maxContext);
+  editModel.temperature = m.temperature == null ? "" : String(m.temperature);
+  editModel.maxTokens = m.maxTokens == null ? "" : String(m.maxTokens);
+}
+
+async function saveEditModel(m: AiModel) {
+  if (!editModel.modelId.trim() || !editModel.displayName.trim()) {
+    return;
+  }
+  try {
+    await updateModel(m.id, {
+      modelId: editModel.modelId.trim(),
+      displayName: editModel.displayName.trim(),
+      maxContext: Number(editModel.maxContext) || null,
+      temperature: parseOptionalNum(editModel.temperature, 0, 2),
+      maxTokens: parseOptionalInt(editModel.maxTokens),
+    });
+    editingModelId.value = null;
+    await providerStore.load();
+  } catch (error) {
+    console.error("更新模型失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新模型失败", 4000, "error");
   }
 }
 
@@ -318,7 +541,7 @@ async function removeModel(model: AiModel) {
     await providerStore.load();
   } catch (error) {
     console.error("删除模型失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除模型失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除模型失败", 4000, "error");
   }
 }
 
@@ -329,7 +552,7 @@ function onTaskModelChange(taskKey: string, event: Event) {
     .then(() => providerStore.load())
     .catch((error) => {
       console.error("保存任务分配失败:", error);
-      window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存任务分配失败");
+      window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存任务分配失败", 4000, "error");
     });
 }
 
@@ -340,12 +563,14 @@ async function saveSettings() {
       chapterMode: settings.chapterMode,
       persistToSiyuan: settings.persistToSiyuan,
       notebookName: settings.notebookName.trim() || "AI 研习",
+      aiRetryCount: settings.aiRetryCount,
+      aiRateLimitPerMin: Number(settings.aiRateLimitPerMin) || 0,
     });
     settings.notebookName = settings.notebookName.trim() || "AI 研习";
     window.siyuanAiStudy.showMessage("设置已保存");
   } catch (error) {
     console.error("保存应用设置失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存应用设置失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存应用设置失败", 4000, "error");
   } finally {
     settingsSaving.value = false;
   }
@@ -358,7 +583,15 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatFullTime(iso: string): string {
+  if (!iso) {
+    return "";
+  }
+  return new Date(iso).toLocaleString("zh-CN");
+}
+
 onMounted(async () => {
+  void loadPromptTemplates();
   try {
     await providerStore.load();
   } catch (error) {
@@ -369,6 +602,8 @@ onMounted(async () => {
     settings.chapterMode = s.chapterMode;
     settings.persistToSiyuan = s.persistToSiyuan;
     settings.notebookName = s.notebookName;
+    settings.aiRetryCount = (s.aiRetryCount === 1 || s.aiRetryCount === 2 ? s.aiRetryCount : 0) as 0 | 1 | 2;
+    settings.aiRateLimitPerMin = Number(s.aiRateLimitPerMin) || 0;
   } catch (error) {
     console.error("加载应用设置失败:", error);
   }

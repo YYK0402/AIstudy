@@ -18,6 +18,16 @@
         <label>预计总周期</label>
         <input v-model="form.totalCycle" placeholder="如：12 周 / 3 个月" />
       </div>
+      <div class="field">
+        <label>本课程指定模型</label>
+        <select v-model.number="form.modelId">
+          <option :value="null">跟随任务分配（模型配置页）</option>
+          <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
+        </select>
+        <div class="s" style="color:var(--as-text-faint);margin-top:4px">
+          指定后，本课程的全部 AI 任务（抽取/出题/评估/报告等）优先用该模型；留空则按「模型配置」页的任务分配执行。
+        </div>
+      </div>
       <div v-if="!isEdit" class="field">
         <label>目录构建模式</label>
         <div class="mode-grid">
@@ -32,6 +42,9 @@
         </div>
       </div>
       <div class="modal-actions">
+        <button v-if="isEdit" class="btn ghost danger" style="margin-right:auto" :disabled="creating" @click="remove">
+          删除课程
+        </button>
         <button class="btn ghost" @click="close">取消</button>
         <button class="btn primary" :disabled="!form.name.trim() || creating" @click="save">
           {{ creating ? (isEdit ? "保存中…" : "创建中…") : (isEdit ? "保存" : "创建课程") }}
@@ -42,13 +55,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useCourseStore } from "../stores/course";
-import { createCourse, updateCourse, queryCourses } from "../api";
+import { useProviderStore } from "../stores/provider";
+import { createCourse, updateCourse, queryCourses, deleteCourse } from "../api";
 
 const modalStore = useModalStore();
 const courseStore = useCourseStore();
+const providerStore = useProviderStore();
 
 const creating = ref(false);
 
@@ -57,7 +72,12 @@ const form = reactive({
   description: "",
   target: "",
   totalCycle: "",
+  modelId: null as number | null,
   mode: "manual" as "manual" | "ai",
+});
+
+onMounted(() => {
+  void providerStore.load();
 });
 
 const isEdit = computed(() => modalStore.editingCourse !== null);
@@ -72,12 +92,14 @@ watch(
       form.description = editing.description;
       form.target = editing.target;
       form.totalCycle = editing.totalCycle;
+      form.modelId = editing.modelId ?? null;
       form.mode = "manual";
     } else {
       form.name = "";
       form.description = "";
       form.target = "";
       form.totalCycle = "";
+      form.modelId = null;
       form.mode = "manual";
     }
   },
@@ -101,6 +123,7 @@ async function save() {
         description: form.description,
         target: form.target,
         totalCycle: form.totalCycle,
+        modelId: form.modelId,
       });
     } else {
       await createCourse({
@@ -108,6 +131,7 @@ async function save() {
         description: form.description,
         target: form.target,
         totalCycle: form.totalCycle,
+        modelId: form.modelId,
       });
     }
     const courses = await queryCourses();
@@ -117,10 +141,32 @@ async function save() {
     form.description = "";
     form.target = "";
     form.totalCycle = "";
+    form.modelId = null;
     form.mode = "manual";
   } catch (error) {
     console.error("保存课程失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存课程失败");
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存课程失败", 4000, "error");
+  } finally {
+    creating.value = false;
+  }
+}
+
+async function remove() {
+  const editing = modalStore.editingCourse;
+  if (!editing || creating.value) return;
+  if (!window.confirm(`确定删除课程「${editing.name}」？其下章节、知识点、资料、题目与全部学习记录将一并删除，且已落库思源的文档会同步删除。此操作不可恢复。`)) {
+    return;
+  }
+  creating.value = true;
+  try {
+    await deleteCourse(editing.id);
+    const courses = await queryCourses();
+    courseStore.setCourses(courses);
+    close();
+    window.siyuanAiStudy.showMessage(`课程「${editing.name}」已删除`);
+  } catch (error) {
+    console.error("删除课程失败:", error);
+    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除课程失败", 4000, "error");
   } finally {
     creating.value = false;
   }
