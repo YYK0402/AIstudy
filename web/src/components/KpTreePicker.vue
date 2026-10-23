@@ -6,20 +6,20 @@
     </div>
     <div class="kpsm-tree">
       <div v-for="ch in visibleChapters" :key="ch.id" class="kpsm-ch">
-        <div class="kpsm-row ch">
+        <div class="kpsm-row ch" :class="{ checked: isNodeAll(ch.id) }">
           <input
             type="checkbox"
             :checked="isNodeAll(ch.id)"
             :indeterminate.prop="isNodePartial(ch.id)"
             @change="toggleNode(ch.id, $event)"
           />
-          <span class="tgl" @click="toggleExpand(ch.id)">{{ expanded.has(ch.id) ? "▾" : "▸" }}</span>
           <span class="nm">{{ ch.name }}</span>
           <span class="cnt">{{ allKpIdsOfNode(ch.id).length }}</span>
+          <span class="tgl" :class="{ open: expanded.has(ch.id) }" @click="toggleExpand(ch.id)">▾</span>
         </div>
         <div v-show="isSearching || expanded.has(ch.id)" class="kpsm-children">
           <div v-for="u in visibleUnitsOf(ch.id)" :key="u.id" class="kpsm-unit">
-            <div class="kpsm-row unit">
+            <div class="kpsm-row unit" :class="{ checked: isNodeAll(u.id) }">
               <input
                 type="checkbox"
                 :checked="isNodeAll(u.id)"
@@ -30,14 +30,14 @@
               <span class="cnt">{{ kpsOfNode(u.id).length }}</span>
             </div>
             <div class="kpsm-kps">
-              <label v-for="kp in kpsOfNode(u.id)" :key="kp.id" class="kpsm-row kp">
+              <label v-for="kp in kpsOfNode(u.id)" :key="kp.id" class="kpsm-row kp" :class="{ checked: selected.has(kp.id) }">
                 <input type="checkbox" :checked="selected.has(kp.id)" @change="toggleKp(kp.id)" />
                 <span class="nm">{{ kp.name }}</span>
               </label>
             </div>
           </div>
           <div v-if="kpsOfNode(ch.id).length > 0" class="kpsm-kps direct">
-            <label v-for="kp in kpsOfNode(ch.id)" :key="kp.id" class="kpsm-row kp">
+            <label v-for="kp in kpsOfNode(ch.id)" :key="kp.id" class="kpsm-row kp" :class="{ checked: selected.has(kp.id) }">
               <input type="checkbox" :checked="selected.has(kp.id)" @change="toggleKp(kp.id)" />
               <span class="nm">{{ kp.name }}</span>
             </label>
@@ -50,17 +50,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, withDefaults } from "vue";
 import type { Chapter, KnowledgePoint } from "../api";
 
-const props = defineProps<{
-  chapters: Chapter[];
-  kps: KnowledgePoint[];
-  /** 已选知识点 id（教材序） */
-  modelValue: number[];
-  /** 内联嵌入（弹窗内）时压缩树高度 */
-  inline?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    chapters: Chapter[];
+    kps: KnowledgePoint[];
+    /** 已选知识点 id（教材序） */
+    modelValue: number[];
+    /** 内联嵌入（弹窗内）时压缩树高度 */
+    inline?: boolean;
+    /** 新章节出现时是否默认展开（内联组卷场景传 false，默认收起减少滚动） */
+    autoExpand?: boolean;
+  }>(),
+  {
+    autoExpand: true,
+  },
+);
 
 const emit = defineEmits<{ (e: "update:modelValue", ids: number[]): void }>();
 
@@ -68,10 +75,11 @@ const search = ref("");
 const expanded = ref<Set<number>>(new Set());
 const selected = computed(() => new Set(props.modelValue));
 
-// 章节异步加载：新出现的章默认展开（不主动收起用户手动折叠的）；immediate 覆盖挂载时章节已就绪的场景
+// 章节异步加载：autoExpand 时新出现的章默认展开（不主动收起用户手动折叠的）；immediate 覆盖挂载时章节已就绪的场景
 watch(
   () => props.chapters,
   (chs) => {
+    if (!props.autoExpand) return;
     const next = new Set(expanded.value);
     let changed = false;
     for (const c of chs) {
