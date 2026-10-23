@@ -23,7 +23,6 @@ export interface ListModelsResult extends TestProviderResult {
 export interface SiYuanAiStudyApi {
   getData(): AppData;
   saveData(data: AppData): Promise<{ code: number }>;
-  querySql(stmt: string): Promise<unknown>;
   callAi(input: {
     providerId: number;
     modelId: string;
@@ -32,11 +31,15 @@ export interface SiYuanAiStudyApi {
   }): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
-  showMessage(message: string, timeout?: number): void;
+  showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
   ensureNotebook(name: string): Promise<string>;
   createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
   removeSiyuanDoc(id: string): Promise<void>;
   updateSiyuanDoc(id: string, markdown: string): Promise<void>;
+  getSiyuanDocMarkdown(id: string): Promise<string | null>;
+  renameSiyuanDoc(id: string, name: string): Promise<void>;
+  removeAsset(path: string): Promise<void>;
+  ocrAsset(path: string): Promise<string>;
 }
 
 declare global {

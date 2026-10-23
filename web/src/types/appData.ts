@@ -20,4 +20,5 @@ export type {
   AppData,
   AppSettings,
   Mastery,
+  PromptTemplateDef,
 } from "../../../src/data";

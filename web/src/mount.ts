@@ -9,6 +9,8 @@ let app: VueApp | null = null;
 
 // 前端入口：由插件主入口动态加载后，调用 mount 挂载到页签元素
 export function mount(el: Element): void {
+  // 幂等：该元素已挂载过应用内容则跳过（防内核重放页签 init / 插件重载导致双重 mount，跨 bundle 实例也生效）
+  if (el.querySelector(":scope > .ai-study-app")) return;
   if (!document.getElementById("ai-study-style")) {
     const style = document.createElement("style");
     style.id = "ai-study-style";
