@@ -15,22 +15,38 @@
           <div class="kd-label">归属章节</div>
           <div class="kd-text">{{ chapterName || "未分配" }}</div>
         </div>
+        <div v-if="kp.tags && kp.tags.length" class="kd-section">
+          <div class="kd-label">标签</div>
+          <div class="kd-tags">
+            <span v-for="t in kp.tags" :key="t" class="tag-chip">{{ t }}</span>
+          </div>
+        </div>
         <div class="kd-section">
           <div class="kd-label">来源资料</div>
           <div class="kd-text">{{ sourceNames.length ? sourceNames.join("、") : "无" }}</div>
         </div>
+        <div v-if="kp.blockId" class="kd-section">
+          <div class="kd-label">绑定原文</div>
+          <div class="kd-text">{{ kp.blockName || "（未记录名称）" }}</div>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">关闭</button>
-        <button class="btn ghost danger" @click="remove">删除</button>
-        <button class="btn primary" @click="edit">编辑</button>
+        <button v-if="kp?.blockId" class="btn ghost" :disabled="opening" @click="openOriginal">
+          {{ opening ? "打开中…" : "📄 查看原文" }}
+        </button>
+        <template v-if="!readonly">
+          <button class="btn ghost danger" @click="remove">删除</button>
+          <button class="btn primary" @click="edit">编辑</button>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { openSiyuanDoc } from "../api";
 import type { KnowledgePoint } from "../api";
 
 const props = defineProps<{
@@ -38,6 +54,8 @@ const props = defineProps<{
   kp: KnowledgePoint | null;
   chapterName: string;
   sourceNames: string[];
+  /** 只读模式（课程归档）：隐藏编辑/删除 */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: "close"): void; (e: "edit"): void; (e: "delete"): void }>();
@@ -51,6 +69,22 @@ const masteryLabel = computed(() => {
   };
   return props.kp ? map[props.kp.mastery] : "";
 });
+
+const opening = ref(false);
+
+async function openOriginal() {
+  const id = props.kp?.blockId;
+  if (!id || opening.value) return;
+  opening.value = true;
+  try {
+    await openSiyuanDoc(id);
+  } catch (e) {
+    console.error("打开原文失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "打开原文失败", 4000, "error");
+  } finally {
+    opening.value = false;
+  }
+}
 
 function close() {
   emit("close");

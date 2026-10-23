@@ -34,6 +34,40 @@ function isHeadingLine(line: string): boolean {
   return false;
 }
 
+// 判断一行是否为章级标题（markdown 单 #，或「第X章/部/编/讲」；##、第X节、X.X 均属节级）
+function isChapterHeadingLine(line: string): boolean {
+  if (!line || line.length > 40) return false;
+  if (/^#\s+/.test(line)) return true;
+  if (/^第[一二三四五六七八九十百\d]+[章部编讲]/.test(line)) return true;
+  return false;
+}
+
+// 按章切分：一块 = 完整一章（含章内节结构），供 AI 抽取时看到整章上下文。
+// 与 chunkByMarkdownHeadings 的区别：节级标题不断块，只在章级标题处断。
+export function chunkByChapters(text: string): HeadingChunk[] {
+  const lines = text.split("\n");
+  const chunks: HeadingChunk[] = [];
+  let title = "";
+  let contentLines: string[] = [];
+  const flush = () => {
+    if (title || contentLines.some((l) => l.trim())) {
+      chunks.push({ title, content: contentLines.join("\n").trim() });
+    }
+  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (isChapterHeadingLine(trimmed)) {
+      flush();
+      title = trimmed.replace(/^#\s+/, "");
+      contentLines = [];
+    } else {
+      contentLines.push(line);
+    }
+  }
+  flush();
+  return chunks;
+}
+
 // 按标题（markdown 或编号模式）切分，返回 { 标题, 内容 } 片段。
 // 相比固定字符分块，按标题切分语义更完整、块数更少，可显著降低 AI 抽取的 token 消耗。
 export function chunkByMarkdownHeadings(text: string): HeadingChunk[] {
