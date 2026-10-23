@@ -111,18 +111,21 @@ async function confirm() {
           : null,
     }));
   if (nodes.length === 0) {
-    window.siyuanAiStudy.showMessage("请至少填写一个章节名称");
+    window.siyuanAiStudy.showMessage("请至少填写一个章节名称", 4000, "error");
     return;
   }
   saving.value = true;
   try {
     const res = await importChapterTree(modalStore.chapterPreviewCourseId, nodes);
-    window.siyuanAiStudy.showMessage(`已生成目录：新增 ${res.created} 个章节`);
+    let msg = `已生成目录：新增 ${res.created} 个章节`;
+    if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
+    if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
+    window.siyuanAiStudy.showMessage(msg);
     modalStore.notifyChapterImported();
     close();
   } catch (e) {
     console.error("生成目录失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "生成目录失败");
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "生成目录失败", 4000, "error");
   } finally {
     saving.value = false;
   }
