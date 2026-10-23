@@ -1493,11 +1493,12 @@ export interface OrganizeResult {
  */
 export async function organizeDocWithAi(
   text: string,
+  courseId?: number,
   onProgress?: (done: number, total: number) => void,
   isAborted?: () => boolean,
 ): Promise<OrganizeResult> {
   const data = await getData();
-  const binding = findTaskBinding(data, "organize_doc");
+  const binding = findTaskBinding(data, "organize_doc", courseId);
   if (!binding || !text.trim()) {
     return { content: text, organized: false, failedChunks: 0 };
   }
@@ -1526,6 +1527,20 @@ export async function organizeDocWithAi(
       let candidate = res.content.trim();
       const fence = candidate.match(/^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/);
       if (fence) candidate = fence[1].trim();
+      // 推理模型思考泄漏：content 混入思考文本时，取思考结束标记之后的正文
+      const thinkEndTag = "</" + "think>";
+      const thinkStartTag = "<" + "think" + ">";
+      const thinkEnd = candidate.lastIndexOf(thinkEndTag);
+      if (thinkEnd >= 0) {
+        candidate = candidate.slice(thinkEnd + thinkEndTag.length).trim();
+      } else if (candidate.includes(thinkStartTag)) {
+        // 无闭合标记：取最后一个 "Let's xxx." 过渡句之后的正文
+        let cut = -1;
+        const re = /\bLet's [a-zA-Z]+\.\s*/g;
+        let m2;
+        while ((m2 = re.exec(candidate)) !== null) cut = m2.index + m2[0].length;
+        if (cut > 0) candidate = candidate.slice(cut).trim();
+      }
       if (candidate && candidate.length >= chunk.length * 0.4) {
         cleaned = candidate;
       } else {
@@ -1601,6 +1616,7 @@ async function runOrganizeTask(
     });
     const res = await organizeDocWithAi(
       source,
+      courseId,
       (done, total) => {
         if (total > 0) {
           notify.patchTask(materialId, { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
