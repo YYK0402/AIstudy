@@ -7,6 +7,9 @@
     </div>
 
     <template v-else>
+      <SkeletonList v-if="loading" :rows="4" />
+      <LoadError v-else-if="loadError" :message="loadError" @retry="load" />
+      <template v-else>
       <div class="stat-grid">
         <div class="stat"><div class="k">知识点掌握</div><div class="v">{{ stats.kp.total }}<span> 个</span></div>
           <div v-if="stats.kp.total" class="sub">{{ masteredCount }}/{{ stats.kp.total }} 已掌握</div></div>
@@ -165,12 +168,15 @@
         </div>
         <div v-if="copyOk" class="s" style="color:var(--as-green);margin-top:8px">✓ 已复制到剪贴板</div>
       </div>
+      </template>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
@@ -197,6 +203,8 @@ const stats = ref<CourseStats>({
   study: { totalSeconds: 0, daily: [] },
   lastStudyTime: "",
 });
+const loading = ref(true);
+const loadError = ref("");
 const report = ref("");
 const generating = ref(false);
 const reportError = ref("");
@@ -260,6 +268,9 @@ function nodePct(n: MasteryTreeNode, m: Mastery): number {
 }
 
 async function load() {
+  loading.value = true;
+  loadError.value = "";
+  try {
   report.value = "";
   reportError.value = "";
   weakKps.value = [];
@@ -288,6 +299,12 @@ async function load() {
     });
   } catch (e) {
     console.error("加载薄弱点清单失败:", e);
+  }
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : "加载学习报告失败";
+    console.error("加载学习报告失败:", e);
+  } finally {
+    loading.value = false;
   }
 }
 

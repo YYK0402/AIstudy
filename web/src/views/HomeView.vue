@@ -53,7 +53,13 @@
       <h2>今日任务</h2><span class="hint">按课程汇总 · 学习计划 + 到期间隔复习</span>
     </div>
     <div class="card">
-      <div v-if="todayGroups.length === 0" class="empty-state">
+      <SkeletonList v-if="loading && todayGroups.length === 0" :rows="4" />
+      <LoadError
+        v-else-if="loadError && todayGroups.length === 0"
+        :message="loadError"
+        @retry="load"
+      />
+      <div v-else-if="todayGroups.length === 0" class="empty-state">
         <span class="ico"><AppIcon name="folder" :size="28" /></span>
         暂无待办任务，生成学习计划或出现到期复习后会显示在这里
       </div>
@@ -99,6 +105,8 @@ import { useModalStore } from "../stores/modal";
 import { emojiOf } from "../utils";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
 import ProgressBar from "../components/ProgressBar.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
 import { TASK_TYPES, TASK_TYPE_LABELS, taskAction } from "../constants/tasks";
 import {
   getData,
@@ -181,6 +189,8 @@ interface TodayTaskItem {
 }
 
 const todayTasks = reactive<TodayTaskItem[]>([]);
+const loading = ref(true);
+const loadError = ref("");
 /** 正在写入的任务：防止连点，勾选框显示转圈 */
 const pendingTaskIds = ref<Set<number>>(new Set());
 
@@ -256,6 +266,9 @@ function formatDate(iso: string): string {
 }
 
 async function load() {
+  loading.value = true;
+  loadError.value = "";
+  try {
   const data = await getData();
   // 课程卡片学习概览
   for (const c of data.courses) {
@@ -321,6 +334,12 @@ async function load() {
   items.sort((a, b) => Number(a.done) - Number(b.done));
   todayTasks.splice(0, todayTasks.length, ...items);
   applyDefaultExpand();
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : "加载失败";
+    console.error("加载首页失败:", e);
+  } finally {
+    loading.value = false;
+  }
 }
 
 function openTask(task: TodayTaskItem) {

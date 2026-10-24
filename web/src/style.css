@@ -1536,3 +1536,18 @@
   .study-layout { grid-template-columns: 1fr; }
   .topbar-today { display: none; }
 }
+
+
+/* ===== 加载骨架 ===== */
+.skeleton-list { display: flex; flex-direction: column; gap: 10px; padding: 6px 0; }
+.skeleton-row {
+  height: 44px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--as-bg-elev2) 25%, var(--as-bg-hover) 37%, var(--as-bg-elev2) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.2s ease infinite;
+}
+@keyframes skeletonShimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

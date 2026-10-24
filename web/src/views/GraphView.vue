@@ -32,7 +32,13 @@
       </div>
 
       <div class="card" style="margin-top:14px">
-        <div v-if="knowledgePoints.length === 0" class="empty-state" style="padding:120px 20px">
+        <SkeletonList v-if="loading && knowledgePoints.length === 0" :rows="5" />
+        <LoadError
+          v-else-if="loadError && knowledgePoints.length === 0"
+          :message="loadError"
+          @retry="load"
+        />
+        <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:120px 20px">
           <span class="ico">🕸️</span>
           暂无知识点<br />上传资料并由 AI 解析出知识点后，图谱会展示它们之间的关联
         </div>
@@ -122,6 +128,8 @@
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
 import { useCourseStore } from "../stores/course";
 import {
   queryKnowledgePoints,
@@ -269,7 +277,13 @@ function nextOf(kp: KnowledgePoint): KnowledgePoint[] {
   return knowledgePoints.value.filter((k) => parseKpPrevIds(k).includes(kp.id));
 }
 
+const loading = ref(true);
+const loadError = ref("");
+
 async function load() {
+  loading.value = true;
+  loadError.value = "";
+  try {
   if (!currentCourseId()) {
     knowledgePoints.value = [];
     return;
@@ -277,6 +291,12 @@ async function load() {
   knowledgePoints.value = await queryKnowledgePoints(currentCourseId());
   if (selectedKpId.value !== null && !knowledgePoints.value.some((k) => k.id === selectedKpId.value)) {
     selectedKpId.value = null;
+  }
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : "加载知识图谱失败";
+    console.error("加载图谱失败:", e);
+  } finally {
+    loading.value = false;
   }
 }
 
