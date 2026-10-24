@@ -124,7 +124,7 @@ interface ListModelsResult extends TestProviderResult {
 // 暴露给前端（同渲染进程直接挂载）的数据/内核 API
 interface StudyApi {
   getData(): AppData;
-  saveData(data: AppData): Promise<{ code: number }>;
+  saveData(data: AppData): Promise<{ code: number; msg?: string }>;
   callAi(input: CallAiInput): Promise<CallAiResult>;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
@@ -367,7 +367,11 @@ export default class AiStudyPlugin extends Plugin {
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         const res = await this.commitData(data);
-        return { code: (res as { code?: number })?.code ?? 0 };
+        // 透传内核真实结果；兼容 SiYuan Plugin.saveData 返回 any：
+        // 缺失 code 按成功处理，与原行为一致；明确拿到数字 code 且非 0 才报错
+        const r = (res ?? {}) as { code?: number; msg?: string };
+        const code = typeof r.code === "number" ? r.code : 0;
+        return { code, msg: r.msg };
       },
       callAi: async (input: CallAiInput) => {
         return await this.handleCallAi(input);

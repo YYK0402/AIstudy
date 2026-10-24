@@ -11,6 +11,7 @@
         <div v-if="quizSummary" class="quiz-summary">
           <h3>本次刷题小结</h3>
           <div class="big">{{ quizSummary.total }} 题 · 答对 {{ quizSummary.correct }} 题<template v-if="quizSummary.essayCount"> · 简答均分 {{ quizSummary.essayAvg }} 分</template></div>
+          <div v-if="testDoneTitles.length" class="plan-note">✓ 测评任务已自动勾选：{{ testDoneTitles.join("、") }}</div>
           <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
             <button class="btn primary" @click="againPractice">再来一轮</button>
             <button class="btn ghost" @click="endPractice">返回题库</button>
@@ -289,9 +290,10 @@ import {
   queryChapters,
   QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
+  completeTestTasks,
 } from "../api";
 import { kpsOfChapter } from "../utils/chapterScope";
-import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
+import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
 import type { AnswerResult } from "../api";
 import QuestionEditModal from "../components/QuestionEditModal.vue";
 import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
@@ -404,6 +406,10 @@ const quizSummary = ref<{
   essayAvg: string;
 } | null>(null);
 const answeredResults = ref<Array<{ isCorrect: boolean; score: string; qType: string }>>([]);
+/** 本轮刷题的测评来源：仅章节组卷（?set=）/结业模考（?exam=1）入口开刷时非空，答完最后一题据此自动勾 test 任务 */
+const currentTestContext = ref<TestTaskContext | null>(null);
+/** 本轮自动勾掉的测评任务标题（小结展示用） */
+const testDoneTitles = ref<string[]>([]);
 
 const quizError = ref("");
 const currentQuestion = computed<Question | null>(() => quizList.value[quizIdx.value] ?? null);
@@ -426,11 +432,13 @@ function resetQuestionState() {
   quizError.value = "";
 }
 
-function beginQuiz(list: Question[]) {
+function beginQuiz(list: Question[], context: TestTaskContext | null = null) {
   quizList.value = [...list];
   quizIdx.value = 0;
   answeredResults.value = [];
   quizSummary.value = null;
+  testDoneTitles.value = [];
+  currentTestContext.value = context;
   resetQuestionState();
   startQuestionTimer();
   practicing.value = true;
@@ -450,11 +458,16 @@ function openSetModal() {
 function onSetModalClose() {
   setModalOpen.value = false;
   setPreset.value = null;
+  // 生成时 close 紧随 generated 触发（beginQuiz 已接管 context 且已在刷题）；仅取消组卷时清空待生效来源
+  if (!practicing.value) currentTestContext.value = null;
 }
 
 function onQuizGenerated(list: Question[]) {
   if (list.length === 0) return;
-  beginQuiz(list);
+  // 先取出待生效来源，再由 beginQuiz 存为本轮 context
+  const ctx = currentTestContext.value;
+  currentTestContext.value = null;
+  beginQuiz(list, ctx);
 }
 
 function againPractice() {
@@ -478,6 +491,7 @@ async function enterPresetSet() {
         window.siyuanAiStudy.showMessage("课程暂无题目，无法进行结业模考", 4000, "error");
         return;
       }
+      currentTestContext.value = { kind: "exam" };
       setPreset.value = { kpIds: [], title: `结业模考 · 全课程` };
       setModalOpen.value = true;
       return;
@@ -495,6 +509,7 @@ async function enterPresetSet() {
       window.siyuanAiStudy.showMessage("本章暂无知识点，无法组卷", 4000, "error");
       return;
     }
+    currentTestContext.value = { kind: "chapter-test", chapterId: chId };
     setPreset.value = { kpIds, title: `章节组卷 · ${ch.name}` };
     setModalOpen.value = true;
   } catch (e) {
@@ -530,6 +545,8 @@ function endPractice() {
   quizSummary.value = null;
   quizError.value = "";
   setPreset.value = null;
+  currentTestContext.value = null;
+  testDoneTitles.value = [];
 }
 
 function pickOption(opt: string) {
@@ -592,6 +609,21 @@ function nextQuestion() {
       ? String(Math.round(essays.reduce((s, r) => s + Number(r.score || 0), 0) / essays.length))
       : "";
     quizSummary.value = { total, correct, essayCount: essays.length, essayAvg };
+    // 测评入口（?set= / ?exam=1）且全部答完 → 自动勾掉计划里对应的 test 任务
+    void finishTestTasks();
+  }
+}
+
+/** 答完最后一题后勾测评任务；失败只提示，不影响刷题小结 */
+async function finishTestTasks() {
+  const ctx = currentTestContext.value;
+  const courseId = currentCourseId();
+  if (!ctx || courseId == null) return;
+  try {
+    testDoneTitles.value = await completeTestTasks(courseId, ctx);
+  } catch (e) {
+    console.error("测评任务自动勾选失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "测评任务自动勾选失败", 4000, "error");
   }
 }
 

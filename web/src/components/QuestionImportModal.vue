@@ -87,6 +87,9 @@ async function doImport() {
   try {
     const created = await importQuestions(props.courseId, report.value.drafts);
     emit("imported", created.length);
+  } catch (e) {
+    console.error("导入题库失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "导入题库失败", 4000, "error");
   } finally {
     importing.value = false;
   }

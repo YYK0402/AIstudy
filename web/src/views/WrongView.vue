@@ -8,7 +8,7 @@
 
     <div v-else class="card">
       <h3>错题列表
-        <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ wrongList.length }} 题</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ wrongList.length }} 题（已掌握 {{ graduatedCount }} 题）</span>
         <button class="btn ghost sm" :disabled="filteredWrong.length === 0" @click="exportMarkdown" style="margin-left:12px">导出</button>
       </h3>
       <div v-if="wrongList.length === 0" class="empty-state" style="padding:24px 0">
@@ -84,6 +84,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import {
   queryWrongQuestions,
+  countGraduatedWrongQuestions,
   deleteWrongQuestion,
   markWrongErrorType,
   queryKnowledgePoints,
@@ -100,6 +101,8 @@ const currentCourseId = () => courseStore.currentCourseId;
 
 const wrongList = ref<Array<{ wrong: WrongQuestion; question: Question }>>([]);
 const knowledgePoints = ref<KnowledgePoint[]>([]);
+/** 已毕业（已掌握）错题计数，列表默认隐藏这些条目 */
+const graduatedCount = ref(0);
 
 const filterType = ref("");
 const filterErr = ref("");
@@ -121,11 +124,14 @@ async function load() {
   if (!currentCourseId()) {
     wrongList.value = [];
     knowledgePoints.value = [];
+    graduatedCount.value = 0;
     return;
   }
-  [wrongList.value, knowledgePoints.value] = await Promise.all([
-    queryWrongQuestions(currentCourseId()),
-    queryKnowledgePoints(currentCourseId()),
+  const id = currentCourseId();
+  [wrongList.value, knowledgePoints.value, graduatedCount.value] = await Promise.all([
+    queryWrongQuestions(id),
+    queryKnowledgePoints(id),
+    countGraduatedWrongQuestions(id),
   ]);
 }
 
@@ -133,6 +139,7 @@ async function del(w: { wrong: WrongQuestion }) {
   try {
     await deleteWrongQuestion(w.wrong.id);
     wrongList.value = wrongList.value.filter((x) => x.wrong.id !== w.wrong.id);
+    if (currentCourseId()) graduatedCount.value = await countGraduatedWrongQuestions(currentCourseId());
   } catch (e) {
     console.error("移出错题失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "移出错题失败", 4000, "error");
@@ -145,6 +152,7 @@ async function toggleErr(w: { wrong: WrongQuestion; question: Question }, type: 
     await markWrongErrorType(w.wrong.id, next);
     // getData 返回存活对象引用，api 已改底层值；重新加载列表刷新渲染
     wrongList.value = await queryWrongQuestions(currentCourseId());
+    if (currentCourseId()) graduatedCount.value = await countGraduatedWrongQuestions(currentCourseId());
   } catch (e) {
     console.error("标记错误类型失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "标记失败", 4000, "error");

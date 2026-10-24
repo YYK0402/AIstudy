@@ -55,7 +55,8 @@
         暂无待办任务，生成学习计划或出现到期复习后会显示在这里
       </div>
       <div v-else class="today-list" style="padding:4px 0">
-        <div v-for="task in todayTasks" :key="task.id" class="today-item" :class="{ done: task.done }" @click="onItemClick(task)">
+        <div v-for="task in todayTasks" :key="task.id" class="today-item" :class="{ done: task.done }" @click="openTask(task)">
+          <span v-if="task.kind === 'plan'" class="tp-check" @click.stop="toggleTask(task)">{{ task.done ? "✓" : "" }}</span>
           <div class="ico" :style="{ background: task.color }"><span style="font-size:14px">{{ task.icon }}</span></div>
           <div class="info"><div class="t">{{ task.title }}</div><div class="s">{{ task.sub }}</div></div>
           <router-link
@@ -288,12 +289,17 @@ async function load() {
   todayTasks.splice(0, todayTasks.length, ...items);
 }
 
-function onItemClick(task: TodayTaskItem) {
+function openTask(task: TodayTaskItem) {
   if (task.kind === "review") {
-    router.push("/review");
+    router.push({ path: "/review", query: task.kpId != null ? { kp: String(task.kpId) } : {} });
     return;
   }
-  toggleTask(task);
+  if (task.kpId != null || task.taskType === "test") {
+    router.push(taskActionRoute(task));
+    return;
+  }
+  router.push("/plan");
+  window.siyuanAiStudy.showMessage("该任务无绑定知识点，请在学习计划页处理");
 }
 
 async function toggleTask(task: TodayTaskItem) {
@@ -332,3 +338,14 @@ watch(
   () => load().catch((e) => console.error("刷新首页失败:", e)),
 );
 </script>
+
+<style scoped>
+.today-item .tp-check {
+  width: 16px;
+  text-align: center;
+  color: var(--as-green);
+  font-weight: 600;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+</style>

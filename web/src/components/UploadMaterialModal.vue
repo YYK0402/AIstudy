@@ -6,13 +6,9 @@
         <label>选择文件（PDF / Word / PPT / TXT / Markdown）</label>
         <input ref="fileInput" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.markdown" @change="onFile" />
         <div v-if="selectedFile" class="s" style="margin-top:6px">{{ selectedFile.name }}（{{ fileSize }}）</div>
-        <label v-if="isPdf" class="s" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
-          <input type="checkbox" v-model="useOcr" :disabled="parsing" />
-          OCR 识别扫描件（纯图片 PDF，耗时较长，使用思源内核 OCR）
-        </label>
         <label class="s" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
           <input type="checkbox" v-model="useAiOrganize" :disabled="parsing || sySel !== null" />
-          AI 梳理结构与识别章节（保存后后台运行，进度见右上铃铛）
+          AI 梳理结构与识别章节（保存后后台运行：去页眉页脚水印、修复断行缺字、识别目录，进度见右上铃铛）
         </label>
       </div>
       <div class="field">
@@ -65,7 +61,6 @@ const selectedFile = ref<File | null>(null);
 const pastedText = ref("");
 const parsing = ref(false);
 const saving = ref(false);
-const useOcr = ref(false);
 const useAiOrganize = ref(false);
 const ocrStatus = ref("");
 const result = ref<ParsedDocument | null>(null);
@@ -95,7 +90,6 @@ function reset() {
   pastedText.value = "";
   result.value = null;
   error.value = "";
-  useOcr.value = false;
   useAiOrganize.value = false;
   ocrStatus.value = "";
   sySel.value = null;
@@ -121,17 +115,17 @@ watch(sySel, async (sel) => {
   }
 });
 
-// 扫描件 OCR 通道：文字层已有足够文本时跳过；失败时保留原解析结果并提示
+// 扫描件 OCR 通道：PDF 文字层不足时自动触发（onFile 决策）；失败时保留原解析结果并提示
 async function runOcr(file: File, doc: ParsedDocument) {
   if (doc.contentText.trim().length >= 100) {
     ocrStatus.value = "该 PDF 已有文字层，无需 OCR";
     return;
   }
   try {
-    const ocrText = await ocrPdfText(file, (p, t) => (ocrStatus.value = `OCR 识别中：第 ${p}/${t} 页`));
+    const ocrText = await ocrPdfText(file, (p, t) => (ocrStatus.value = `检测到扫描件，OCR 识别中：第 ${p}/${t} 页`));
     if (ocrText.trim()) {
       result.value = { ...doc, contentText: ocrText.trim(), headings: [] };
-      ocrStatus.value = `OCR 完成：识别 ${ocrText.trim().length} 字符（未识别章节结构，目录需手动搭建）`;
+      ocrStatus.value = `OCR 完成：识别 ${ocrText.trim().length} 字符，页眉页脚水印与章节结构将由 AI 梳理处理`;
     } else {
       ocrStatus.value = "OCR 未识别到文本，请检查扫描图片质量";
     }
@@ -153,10 +147,15 @@ async function onFile(e: Event) {
     try {
       const doc = await parseDocument(file);
       result.value = doc;
-      // PDF 结构信息依赖启发式解析，默认走 AI 梳理；其余格式已有结构
-      useAiOrganize.value = doc.fileType === "pdf";
-      if (useOcr.value && isPdf.value) {
-        await runOcr(file, doc);
+      // 第二步链路默认启用：AI 梳理去噪 + 识别章节（用户可取消）
+      useAiOrganize.value = true;
+      // 第一步识别层自动决策：PDF 文字层充足直接用（无 OCR 误差且更快），不足（扫描件）自动转 OCR
+      if (isPdf.value) {
+        if (doc.contentText.trim().length >= 100) {
+          ocrStatus.value = "PDF 已有文字层，按文字层解析（无需 OCR）";
+        } else {
+          await runOcr(file, doc);
+        }
       }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -164,22 +163,6 @@ async function onFile(e: Event) {
     parsing.value = false;
   }
 }
-
-// 选中文件后再勾选「OCR 识别扫描件」时补跑 OCR（文字层已充足时提示跳过）
-watch(useOcr, async (on) => {
-  const file = selectedFile.value;
-  if (!on || !file || !isPdf.value || parsing.value || !result.value) return;
-  if (result.value.contentText.trim().length >= 100) {
-    ocrStatus.value = "该 PDF 已有文字层，无需 OCR";
-    return;
-  }
-  parsing.value = true;
-  try {
-    await runOcr(file, result.value);
-  } finally {
-    parsing.value = false;
-  }
-});
 
 async function save() {
   if (!canSave.value || !result.value) return;
@@ -210,13 +193,14 @@ async function save() {
     const headings = result.value.headings;
     close();
     modalStore.notifyMaterialSaved();
-    if (aiOrganize) {
-      startOrganizeTask(material.id, courseId, contentText);
-      window.siyuanAiStudy.showMessage("已保存，AI 梳理任务已后台启动（进度见右上铃铛）", 4000);
-    }
-    // 自动模式下，识别到标题结构则弹出目录预览
     const settings = await getSettings();
-    if (settings.chapterMode === "auto" && headings.length > 0) {
+    if (aiOrganize) {
+      // 第三步目录预览等梳理完成后再自动弹出（梳理后的标题更干净），见 runOrganizeTask
+      startOrganizeTask(material.id, courseId, contentText);
+      const waitToc = settings.chapterMode === "auto" ? "，完成后自动弹目录预览" : "";
+      window.siyuanAiStudy.showMessage(`已保存，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）`, 4000);
+    } else if (settings.chapterMode === "auto" && headings.length > 0) {
+      // 未启用 AI 梳理时，用本地启发式标题立即弹目录预览
       modalStore.openChapterPreview(courseId, headings);
     }
   } catch (e) {

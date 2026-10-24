@@ -16,6 +16,8 @@ export const useModalStore = defineStore("modal", {
     chapterPreviewOpen: false,
     chapterPreviewCourseId: 0,
     chapterPreviewHeadings: [] as ParsedHeading[],
+    /** 目录来源资料 id（确认生成后自动对该资料抽取知识点；课程级重新识别时为空） */
+    chapterPreviewSourceMaterialId: null as number | null,
     // 章节导入后递增，通知课程内容页刷新目录树
     chapterVersion: 0,
   }),
@@ -55,15 +57,17 @@ export const useModalStore = defineStore("modal", {
     notifyMaterialSaved() {
       this.materialVersion++;
     },
-    openChapterPreview(courseId: number, headings: ParsedHeading[]) {
+    openChapterPreview(courseId: number, headings: ParsedHeading[], sourceMaterialId?: number | null) {
       this.chapterPreviewCourseId = courseId;
       this.chapterPreviewHeadings = headings;
+      this.chapterPreviewSourceMaterialId = sourceMaterialId ?? null;
       this.chapterPreviewOpen = true;
     },
     closeChapterPreview() {
       this.chapterPreviewOpen = false;
       this.chapterPreviewCourseId = 0;
       this.chapterPreviewHeadings = [];
+      this.chapterPreviewSourceMaterialId = null;
     },
     notifyChapterImported() {
       this.chapterVersion++;

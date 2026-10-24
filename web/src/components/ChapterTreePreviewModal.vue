@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
-import { importChapterTree } from "../api";
+import { importChapterTree, startExtractTask } from "../api";
 import type { ChapterTreeNode } from "../api";
 
 const modalStore = useModalStore();
@@ -116,13 +116,20 @@ async function confirm() {
   }
   saving.value = true;
   try {
-    const res = await importChapterTree(modalStore.chapterPreviewCourseId, nodes);
+    // 先取目录上下文：close() 会清空 store
+    const courseId = modalStore.chapterPreviewCourseId;
+    const sourceMaterialId = modalStore.chapterPreviewSourceMaterialId;
+    const res = await importChapterTree(courseId, nodes);
     let msg = `已生成目录：新增 ${res.created} 个章节`;
     if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
     if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
+    // 第四步链路：目录确认且确有新增章节时，自动对来源资料启动知识点抽取（重复确认同一目录不重复抽）
+    const autoExtract = sourceMaterialId !== null && res.created > 0;
+    if (autoExtract) msg += "；知识点抽取已后台启动（进度见右上铃铛）";
     window.siyuanAiStudy.showMessage(msg);
     modalStore.notifyChapterImported();
     close();
+    if (autoExtract) startExtractTask(sourceMaterialId, courseId);
   } catch (e) {
     console.error("生成目录失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "生成目录失败", 4000, "error");

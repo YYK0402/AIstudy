@@ -22,7 +22,7 @@ export interface ListModelsResult extends TestProviderResult {
 
 export interface SiYuanAiStudyApi {
   getData(): AppData;
-  saveData(data: AppData): Promise<{ code: number }>;
+  saveData(data: AppData): Promise<{ code: number; msg?: string }>;
   callAi(input: {
     providerId: number;
     modelId: string;

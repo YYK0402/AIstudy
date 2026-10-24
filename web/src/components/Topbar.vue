@@ -18,20 +18,21 @@
           <b>任务通知</b>
           <button class="btn sm ghost" @click="notifyStore.clearAll()">清空</button>
         </div>
-        <div v-for="t in sortedTasks" :key="t.materialId" class="notify-item">
+        <div v-for="t in sortedTasks" :key="`${t.materialId}-${t.taskType}`" class="notify-item">
           <div class="notify-main">
             <div class="notify-name">
-              <span class="notify-ico">{{ statusIcon(t.status) }}</span> {{ t.materialName }}
+              <span class="notify-ico">{{ statusIcon(t.status) }}</span>
+              <span class="muted">{{ taskTypeLabel(t.taskType) }}</span> {{ t.materialName }}
             </div>
             <div class="notify-msg">{{ t.message }}</div>
             <div v-if="t.status === 'running' && t.total > 0" class="notify-progress"><i :style="{ width: progressPct(t) }"></i></div>
           </div>
           <div class="notify-actions">
-            <button v-if="t.status === 'done'" class="btn sm ghost" @click="viewToc(t)">查看目录</button>
+            <button v-if="t.status === 'done' && t.taskType === 'organize'" class="btn sm ghost" @click="viewToc(t)">查看目录</button>
             <button v-if="t.status === 'done'" class="btn sm ghost" @click="goContent(t)">资料</button>
             <button v-if="t.status === 'failed'" class="btn sm ghost" @click="retryTask(t)">重试</button>
             <button v-if="t.status === 'running'" class="btn sm ghost" @click="cancelTask(t)">取消</button>
-            <button class="btn sm ghost" @click="notifyStore.clearTask(t.materialId)">移除</button>
+            <button class="btn sm ghost" @click="notifyStore.clearTask(t.materialId, t.taskType)">移除</button>
           </div>
         </div>
       </div>
@@ -65,6 +66,8 @@ import {
   formatLocalDate,
   startOrganizeTask,
   cancelOrganizeTask,
+  startExtractTask,
+  cancelExtractTask,
   DATA_SAVED_EVENT,
 } from "../api";
 
@@ -114,6 +117,10 @@ function statusIcon(status: OrgTaskState["status"]): string {
   return "⏹️";
 }
 
+function taskTypeLabel(taskType: OrgTaskState["taskType"]): string {
+  return taskType === "extract" ? "知识点抽取" : "AI 梳理";
+}
+
 function progressPct(t: OrgTaskState): string {
   if (t.total <= 0) return "0%";
   return `${Math.min(100, Math.round((t.done / t.total) * 100))}%`;
@@ -159,11 +166,13 @@ async function viewToc(t: OrgTaskState) {
 }
 
 function retryTask(t: OrgTaskState) {
-  startOrganizeTask(t.materialId, t.courseId);
+  if (t.taskType === "extract") startExtractTask(t.materialId, t.courseId);
+  else startOrganizeTask(t.materialId, t.courseId);
 }
 
 function cancelTask(t: OrgTaskState) {
-  cancelOrganizeTask(t.materialId);
+  if (t.taskType === "extract") cancelExtractTask(t.materialId);
+  else cancelOrganizeTask(t.materialId);
 }
 
 /** 当前课程的今日待完成任务 / 到期复习 / 错题数量（未选课程时隐藏） */

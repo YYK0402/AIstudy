@@ -2,10 +2,13 @@
 import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 import type { ParsedHeading } from "../utils/documentParser";
 import { aggregateStudyTrend } from "../utils/studyTrend";
+import { removeCsvIds } from "../utils/csvIds";
+import { recordWrongResult } from "../utils/wrongStreak";
 import type { StudyTrend } from "../utils/studyTrend";
 import { PROMPT_TASKS, findPromptTask, resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import type { PromptVarInfo } from "./promptTemplates";
 import { useNotifyStore } from "../stores/notify";
+import { useModalStore } from "../stores/modal";
 export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
 export type { PromptTaskMeta, PromptVarInfo } from "./promptTemplates";
@@ -17,9 +20,22 @@ export async function getData(): Promise<AppData> {
   return window.siyuanAiStudy.getData();
 }
 
-export async function saveData(data: AppData): Promise<void> {
-  await window.siyuanAiStudy.saveData(data);
-  window.dispatchEvent(new Event(DATA_SAVED_EVENT));
+// 模块级串行队列：并发写盘按调用顺序执行，避免互相覆盖；
+// 队列链吞掉失败（saveChain 永不 reject），单次失败不阻断后续保存
+let saveChain: Promise<unknown> = Promise.resolve();
+
+export function saveData(data: AppData): Promise<void> {
+  const run = saveChain.then(async () => {
+    const res = await window.siyuanAiStudy.saveData(data);
+    if (res.code !== 0) {
+      throw new Error(`数据保存失败${res.msg ? `：${res.msg}` : ""}`);
+    }
+  });
+  saveChain = run.catch(() => undefined);
+  // 失败时不派发 DATA_SAVED_EVENT（run reject 则不进 then 回调）
+  return run.then(() => {
+    window.dispatchEvent(new Event(DATA_SAVED_EVENT));
+  });
 }
 
 // ===== 通用工具 =====
@@ -137,7 +153,7 @@ export async function deleteCourse(id: number): Promise<void> {
   data.chapters = data.chapters.filter((c) => c.courseId !== id);
   data.knowledgePoints = data.knowledgePoints.filter((k) => k.courseId !== id);
   data.materials = data.materials.filter((m) => m.courseId !== id);
-  data.materialChapters = data.materialChapters.filter((mc) => materialIds.has(mc.materialId));
+  data.materialChapters = data.materialChapters.filter((mc) => !materialIds.has(mc.materialId));
   data.questions = data.questions.filter((q) => q.courseId !== id);
   data.answerRecords = data.answerRecords.filter((r) => !questionIds.has(r.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !questionIds.has(w.qId));
@@ -558,10 +574,11 @@ function adjustMasteryInData(data: AppData, kpId: number, delta: number): string
   return `${MASTERY_LABELS[from]} → ${MASTERY_LABELS[next]}`;
 }
 
-/** 知识点在当前错题本是否仍有未移出的错题（经题目 kpIds 关联） */
+/** 知识点在当前错题本是否仍有未移出的在管错题（已毕业不计；经题目 kpIds 关联） */
 function kpHasOpenWrong(data: AppData, kpId: number): boolean {
   const qMap = new Map(data.questions.map((q) => [q.id, q]));
   return data.wrongQuestions.some((w) => {
+    if ((w.status ?? "active") === "graduated") return false;
     const q = qMap.get(w.qId);
     return !!q && parseQuestionKpIds(q).includes(kpId);
   });
@@ -587,8 +604,13 @@ function parseAiGradeResponse(content: string): { score: number; feedback: strin
   return null;
 }
 
-/** 提交一次作答。客观题本地判分，简答题调用 grade_answer AI 阅卷。 */
-export async function submitAnswer(question: Question, userAnswer: string, durationSec = 0): Promise<AnswerResult> {
+/** 提交一次作答。客观题本地判分，简答题调用 grade_answer AI 阅卷。fromReview=true 时答对不计入错题毕业连对（由复习评分统一计） */
+export async function submitAnswer(
+  question: Question,
+  userAnswer: string,
+  durationSec = 0,
+  options?: { fromReview?: boolean },
+): Promise<AnswerResult> {
   const data = await getData();
   let isCorrect: boolean;
   let score: string;
@@ -641,18 +663,8 @@ export async function submitAnswer(question: Question, userAnswer: string, durat
   const masteryNotes: string[] = [];
   const planNotes: string[] = [];
   if (!isCorrect) {
-    const wrong = data.wrongQuestions.find((w) => w.qId === question.id);
-    if (wrong) {
-      wrong.reviewTimes++;
-    } else {
-      data.wrongQuestions.push({
-        id: nextId(data.wrongQuestions),
-        recordId: record.id,
-        qId: question.id,
-        reviewTimes: 1,
-        createTime: now(),
-      });
-    }
+    // 答错 → 归入错题本（已有记录含已毕业的重新激活）
+    recordWrongResult(data.wrongQuestions, question.id, "wrong", now());
     // 答错 → 题目进入复习池（已有触点则重置为明日到期）
     ensureQuestionReviewInData(data, question.id);
     // 答错 → 关联知识点掌握度各降一级 + 追加薄弱练习任务
@@ -669,6 +681,8 @@ export async function submitAnswer(question: Question, userAnswer: string, durat
     for (const kpId of parseQuestionKpIds(question)) {
       planNotes.push(...completeKpTasksInData(data, kpId, ["practice"]));
     }
+    // 答对 → 错题连对 +1（复习中提交不在此计，由 submitReview 按自评分统一计）
+    if (!options?.fromReview) recordWrongResult(data.wrongQuestions, question.id, "correct", now());
   }
 
   logStudyInData(data, {
@@ -687,13 +701,24 @@ function normalizeAnswer(s: string): string {
   return s.trim().replace(/，/g, ",").split(/\s*,\s*/).map((p) => p.trim()).sort((a, b) => a.localeCompare(b)).join(",");
 }
 
-export async function queryWrongQuestions(courseId: number): Promise<Array<{ wrong: WrongQuestion; question: Question }>> {
+export async function queryWrongQuestions(
+  courseId: number,
+  options?: { includeGraduated?: boolean },
+): Promise<Array<{ wrong: WrongQuestion; question: Question }>> {
   const data = await getData();
   const qMap = new Map(data.questions.filter((q) => q.courseId === courseId).map((q) => [q.id, q]));
   return data.wrongQuestions
     .filter((w) => qMap.has(w.qId))
+    .filter((w) => options?.includeGraduated || (w.status ?? "active") === "active")
     .sort((a, b) => b.id - a.id)
     .map((w) => ({ wrong: w, question: qMap.get(w.qId)! }));
+}
+
+/** 本课程已毕业（已掌握）的错题数（题目属于该课程） */
+export async function countGraduatedWrongQuestions(courseId: number): Promise<number> {
+  const data = await getData();
+  const qMap = new Map(data.questions.filter((q) => q.courseId === courseId).map((q) => [q.id, q]));
+  return data.wrongQuestions.filter((w) => (w.status ?? "active") === "graduated" && qMap.has(w.qId)).length;
 }
 
 export async function deleteWrongQuestion(id: number): Promise<void> {
@@ -1606,6 +1631,7 @@ async function runOrganizeTask(
       materialId,
       materialName: material.name,
       courseId,
+      taskType: "organize",
       status: "running",
       done: 0,
       total: 0,
@@ -1619,17 +1645,17 @@ async function runOrganizeTask(
       courseId,
       (done, total) => {
         if (total > 0) {
-          notify.patchTask(materialId, { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
+          notify.patchTask(materialId, "organize", { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
         }
       },
       () => flag.aborted,
     );
     if (flag.aborted) {
-      notify.patchTask(materialId, { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
+      notify.patchTask(materialId, "organize", { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
       return;
     }
     if (!res.organized) {
-      notify.patchTask(materialId, {
+      notify.patchTask(materialId, "organize", {
         status: "failed",
         unread: true,
         finishedAt: now(),
@@ -1659,9 +1685,13 @@ async function runOrganizeTask(
     let msg = `梳理完成：识别 ${chCount} 章 ${headings.length - chCount} 节`;
     if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
     if (siyuanSyncFailed) msg += "；同步思源文档失败";
-    notify.patchTask(materialId, { status: "done", unread: true, finishedAt: now(), message: msg });
+    notify.patchTask(materialId, "organize", { status: "done", unread: true, finishedAt: now(), message: msg });
+    // 自动目录模式：梳理完成后弹目录预览（梳理后的标题比梳理前的启发式识别更干净）
+    if (latest.settings.chapterMode === "auto" && headings.length > 0) {
+      useModalStore().openChapterPreview(courseId, headings, materialId);
+    }
   } catch (e) {
-    notify.patchTask(materialId, {
+    notify.patchTask(materialId, "organize", {
       status: "failed",
       unread: true,
       finishedAt: now(),
@@ -1853,6 +1883,12 @@ export async function deleteMaterial(id: number): Promise<void> {
   const data = await getData();
   const material = data.materials.find((m) => m.id === id);
   data.materials = data.materials.filter((m) => m.id !== id);
+  // 级联清理资料-章节关联与知识点的来源资料引用，避免悬挂引用
+  data.materialChapters = data.materialChapters.filter((mc) => mc.materialId !== id);
+  const removedMaterialIds = new Set([id]);
+  for (const k of data.knowledgePoints) {
+    k.sourceAssetIds = removeCsvIds(k.sourceAssetIds, removedMaterialIds);
+  }
   await saveData(data);
   if (material?.siyuanDocId) {
     removeSiyuanDoc(material.siyuanDocId).catch((e) => console.error("删除思源文档失败:", e));
@@ -1999,7 +2035,12 @@ export function endFullExtract(): void {
 
 export async function extractKnowledgePoints(
   materialId: number,
-  options?: { taskKey?: string; onProgress?: (current: number, total: number, blockTitle: string) => void },
+  options?: {
+    taskKey?: string;
+    /** 取消信号：返回 true 时停止后续块（已完成块的结果保留） */
+    isAborted?: () => boolean;
+    onProgress?: (current: number, total: number, blockTitle: string) => void;
+  },
 ): Promise<ExtractKpResult> {
   if (extractingMaterialIds.has(materialId)) {
     throw new Error("该资料正在抽取中，请等待本次抽取完成");
@@ -2028,7 +2069,11 @@ async function extractKnowledgePointsInner(
   material: Material,
   taskKey: string,
   binding: { providerId: number; modelId: string },
-  options?: { taskKey?: string; onProgress?: (current: number, total: number, blockTitle: string) => void },
+  options?: {
+    taskKey?: string;
+    isAborted?: () => boolean;
+    onProgress?: (current: number, total: number, blockTitle: string) => void;
+  },
 ): Promise<ExtractKpResult> {
   const data: AppData = await getData();
 
@@ -2078,6 +2123,7 @@ async function extractKnowledgePointsInner(
   const errors: string[] = [];
 
   for (let i = 0; i < blocks.length; i++) {
+    if (options?.isAborted?.()) break;
     const block = blocks[i];
     // 每块 AI 调用前回调进度（供 UI 实时显示第 X/N 块）
     options?.onProgress?.(i + 1, blocks.length, block.title);
@@ -2162,6 +2208,75 @@ async function extractKnowledgePointsInner(
   return { newCount, updateCount: 0, duplicateCount, totalChunks: blocks.length, errors };
 }
 
+// ===== 知识点抽取后台任务（与 AI 梳理同机制：铃铛通知 + 可取消 + 不受组件卸载影响） =====
+const extractAbortFlags = new Map<number, { aborted: boolean }>();
+
+export function startExtractTask(materialId: number, courseId: number): void {
+  if (extractingMaterialIds.has(materialId)) return;
+  const flag = { aborted: false };
+  extractAbortFlags.set(materialId, flag);
+  void runExtractTask(materialId, courseId, flag);
+}
+
+export function cancelExtractTask(materialId: number): void {
+  const flag = extractAbortFlags.get(materialId);
+  if (flag) flag.aborted = true;
+}
+
+async function runExtractTask(
+  materialId: number,
+  courseId: number,
+  flag: { aborted: boolean },
+): Promise<void> {
+  const notify = useNotifyStore();
+  try {
+    const data = await getData();
+    const material = data.materials.find((m) => m.id === materialId);
+    if (!material) throw new Error("资料不存在或已删除");
+    notify.upsertTask({
+      materialId,
+      materialName: material.name,
+      courseId,
+      taskType: "extract",
+      status: "running",
+      done: 0,
+      total: 0,
+      message: "准备中…",
+      unread: false,
+      startedAt: now(),
+      finishedAt: null,
+    });
+    const result = await extractKnowledgePoints(materialId, {
+      isAborted: () => flag.aborted,
+      onProgress: (current, total, blockTitle) => {
+        if (total > 0) {
+          notify.patchTask(
+            materialId,
+            "extract",
+            { done: current, total, message: `知识点抽取：第 ${current}/${total} 块${blockTitle ? " · " + blockTitle : ""}` },
+          );
+        }
+      },
+    });
+    if (flag.aborted) {
+      notify.patchTask(materialId, "extract", { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
+      return;
+    }
+    let msg = `抽取完成：新增 ${result.newCount} 个知识点，合并重复 ${result.duplicateCount} 个`;
+    if (result.errors.length > 0) msg += `；${result.errors.length} 块失败（${result.errors[0]}）`;
+    notify.patchTask(materialId, "extract", { status: "done", unread: true, finishedAt: now(), message: msg });
+  } catch (e) {
+    notify.patchTask(materialId, "extract", {
+      status: "failed",
+      unread: true,
+      finishedAt: now(),
+      message: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    extractAbortFlags.delete(materialId);
+  }
+}
+
 /** 标签输入解析：中英文逗号/分号分隔，去空白去重 */
 export function parseTagsInput(input: string): string[] {
   return [...new Set(input.split(/[,，;；]/).map((t) => t.trim()).filter(Boolean))];
@@ -2195,6 +2310,12 @@ export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
   // 级联清理复习触点与讲解记录，避免悬挂引用
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.kpId === null || !removed.has(s.kpId));
   data.explainRecords = data.explainRecords.filter((r) => r.kpId === null || !removed.has(r.kpId));
+  // 题目保留，仅从 kpIds 中移除被删知识点
+  for (const q of data.questions) {
+    q.kpIds = removeCsvIds(q.kpIds, removed);
+  }
+  // 计划任务命中被删知识点直接删除；studyLogs 保留历史不清理
+  data.studyTasks = data.studyTasks.filter((t) => t.kpId === null || !removed.has(t.kpId));
   // 从其他知识点的前置列表中移除被删知识点
   for (const k of data.knowledgePoints) {
     const parts = k.prevKpIds.split(",").map((s) => s.trim()).filter(Boolean);
@@ -2463,6 +2584,16 @@ export async function deleteChapters(ids: number[]): Promise<void> {
     }
   }
   data.chapters = data.chapters.filter((c) => !removed.has(c.id));
+  // 章末测评（test）任务命中被删章节直接删除：chapterId 置 null 会被当成结业模考入口
+  data.studyTasks = data.studyTasks.filter(
+    (t) => !(t.taskType === "test" && t.chapterId !== null && removed.has(t.chapterId)),
+  );
+  // 其他类型任务命中被删章节：章节引用置 null，任务保留
+  for (const t of data.studyTasks) {
+    if (t.chapterId !== null && removed.has(t.chapterId)) t.chapterId = null;
+  }
+  // 清理资料-章节关联
+  data.materialChapters = data.materialChapters.filter((mc) => !removed.has(mc.chapterId));
   // 引用被删章节的知识点归属刷新为未分配
   for (const kp of data.knowledgePoints) {
     if (kp.chapterId !== null && removed.has(kp.chapterId)) {
@@ -2564,7 +2695,7 @@ export async function queryDueReviews(courseId: number): Promise<ReviewDueItem[]
     }));
 }
 
-/** 对一次复习打分：自研 SM2 更新间隔与到期日。 */
+/** 对一次复习打分：自研 SM2 更新间隔与到期日；题目触点同步错题本（牢固=连对+1 / 忘了=再答错 / 模糊不动） */
 export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade, durationSec = 0): Promise<ReviewSchedule> {
   const data = await getData();
   const idx = data.reviewSchedules.findIndex((s) => s.id === schedule.id);
@@ -2612,6 +2743,11 @@ export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade,
   }
   if (reviewCourseId !== null) {
     logStudyInData(data, { courseId: reviewCourseId, kpId: reviewKpId, taskId: null, action: "review", durationSec });
+  }
+  // 题目触点同步错题本：牢固=连对+1、忘了=再答错（模糊不动）；已毕业条目内部忽略
+  if (target.qId !== null) {
+    if (grade === "solid") recordWrongResult(data.wrongQuestions, target.qId, "correct", now());
+    else if (grade === "forgotten") recordWrongResult(data.wrongQuestions, target.qId, "wrong", now());
   }
   await saveData(data);
   return target;
@@ -2933,6 +3069,41 @@ function completeKpTasksInData(data: AppData, kpId: number, types: string[]): st
   return doneTitles;
 }
 
+/** 测评来源：章节组卷（?set=<章节id>）→ 章末测评任务；结业模考（?exam=1）→ 结业模考任务 */
+export type TestTaskContext =
+  | { kind: "chapter-test"; chapterId: number }
+  | { kind: "exam" };
+
+/**
+ * 测评完成勾选：章节组卷/结业模考全部答完后，勾掉该课程未暂停计划中
+ * 「今天排期 + 未完成 + test」的任务。chapter-test 匹配 chapterId === context.chapterId
+ * 的章末测评任务；exam 匹配 chapterId === null 的结业模考任务。
+ * 无命中返回空数组且不写盘，不会误勾其他任务。
+ */
+export async function completeTestTasks(
+  courseId: number,
+  context: TestTaskContext,
+): Promise<string[]> {
+  const data = await getData();
+  const today = formatLocalDate();
+  const planIds = new Set(
+    data.studyPlans.filter((p) => p.courseId === courseId && p.status !== "paused").map((p) => p.id),
+  );
+  const doneTitles: string[] = [];
+  for (const t of data.studyTasks) {
+    if (!planIds.has(t.planId)) continue;
+    if (t.scheduledDate !== today || t.status !== "todo" || t.taskType !== "test") continue;
+    const matched = context.kind === "chapter-test" ? t.chapterId === context.chapterId : t.chapterId === null;
+    if (!matched) continue;
+    t.status = "done";
+    doneTitles.push(t.title);
+  }
+  if (doneTitles.length > 0) {
+    await saveData(data);
+  }
+  return doneTitles;
+}
+
 export async function generateStudyPlan(
   courseId: number,
   input: { startDate: string; targetDate: string; dailyHour: string },
@@ -3183,7 +3354,7 @@ export async function queryCourseStats(courseId: number): Promise<CourseStats> {
       correct,
       accuracy: records.length ? Math.round((correct / records.length) * 100) + "%" : "",
       essayAvgScore: avg(essayScores),
-      wrongCount: data.wrongQuestions.filter((w) => qIdSet.has(w.qId)).length,
+      wrongCount: data.wrongQuestions.filter((w) => qIdSet.has(w.qId) && (w.status ?? "active") !== "graduated").length,
     },
     explain: { total: explainRecords.length, avgScore: avg(explainScores) },
     review: { touchpoints: reviews.length, totalReviews: reviews.reduce((s, r) => s + r.reviewTimes, 0) },

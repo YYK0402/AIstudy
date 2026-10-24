@@ -147,6 +147,12 @@ export interface WrongQuestion {
   createTime: string;
   /** 错误类型标记：concept 概念不清 / memory 记忆遗漏 / careless 粗心；缺省=未标记 */
   errorType?: string;
+  /** active=在管 / graduated=已掌握毕业（旧数据缺失按 active 处理） */
+  status?: "active" | "graduated";
+  /** 连续答对/牢固次数（毕业用）；旧数据缺失按 0 处理 */
+  correctStreak?: number;
+  /** 毕业时间；未毕业/旧数据为 null 或缺失 */
+  graduatedAt?: string | null;
 }
 
 export interface StudyPlan {

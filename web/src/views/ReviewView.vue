@@ -182,11 +182,11 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
   if (busy[id]) return;
   busy[id] = true;
   try {
-    // 题目触点若填了简答也可提交作答记录（不阻塞评分）
+    // 题目触点若填了简答也可提交作答记录（不阻塞评分）；fromReview=true 避免与下方牢固评分重复计连对
     const answer = essayAnswers[id];
     if (item.question && item.question.qType === "essay" && answer && answer.trim()) {
       try {
-        await submitAnswer(item.question, answer.trim());
+        await submitAnswer(item.question, answer.trim(), 0, { fromReview: true });
       } catch (e) {
         console.error("复习中提交作答失败:", e);
         window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "作答提交失败", 4000, "error");

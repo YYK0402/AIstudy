@@ -178,25 +178,13 @@
               <span v-else-if="orgTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ orgTaskOf(m)!.message }}</span>
               <span v-else class="muted">{{ orgTaskOf(m)!.message }}</span>
             </div>
-            <div v-if="extractState[m.id]?.status === 'loading'" class="s" style="color:var(--as-accent-strong);margin-top:4px">
-              {{ extractLoadingLabel(m.id) }}
-            </div>
-            <div v-else-if="extractState[m.id]?.status === 'done'" class="s" style="margin-top:4px">
-              <span style="color:var(--as-green)">
-                ✓ 抽取完成：新增 {{ extractState[m.id]!.newCount }} · 更新 {{ extractState[m.id]!.updateCount }} · 跳过 {{ extractState[m.id]!.duplicateCount }}
+            <div v-if="extractTaskOf(m)" class="s" style="margin-top:4px">
+              <span v-if="extractTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
+                🔄 {{ extractTaskOf(m)!.message }}
               </span>
-              <span
-                v-if="extractState[m.id]!.errors?.length"
-                class="s"
-                style="color:var(--as-red);margin-left:8px;cursor:pointer"
-                @click="extractState[m.id]!.showErrors = !extractState[m.id]!.showErrors"
-              >· {{ extractState[m.id]!.errors!.length }} 块失败（{{ extractState[m.id]!.showErrors ? "收起" : "查看详情" }}）</span>
-              <div v-if="extractState[m.id]!.showErrors && extractState[m.id]!.errors?.length" class="s" style="color:var(--as-red);margin-top:4px;white-space:pre-line">
-                {{ extractState[m.id]!.errors!.join("\n") }}
-              </div>
-            </div>
-            <div v-else-if="extractState[m.id]?.status === 'error'" class="s" style="color:var(--as-red);margin-top:4px">
-              ✗ {{ extractState[m.id]!.error }}
+              <span v-else-if="extractTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ extractTaskOf(m)!.message }}</span>
+              <span v-else-if="extractTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ extractTaskOf(m)!.message }}</span>
+              <span v-else class="muted">{{ extractTaskOf(m)!.message }}</span>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
@@ -205,8 +193,8 @@
               <button class="btn sm ghost" :disabled="orgTaskOf(m)?.status === 'running'" @click="startOrganize(m)">
                 {{ orgTaskOf(m)?.status === "running" ? "梳理中…" : "🤖 AI 梳理" }}
               </button>
-              <button class="btn sm ghost" :disabled="extractState[m.id]?.status === 'loading'" @click="extract(m)">
-                {{ extractState[m.id]?.status === "loading" ? "抽取中…" : "抽取知识点" }}
+              <button class="btn sm ghost" :disabled="extractTaskOf(m)?.status === 'running'" @click="extract(m)">
+                {{ extractTaskOf(m)?.status === "running" ? "抽取中…" : "抽取知识点" }}
               </button>
               <button class="btn sm ghost" @click="del(m)">删除</button>
             </template>
@@ -246,14 +234,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
 import {
   queryMaterials,
   deleteMaterial,
   extractKnowledgePoints,
-  isExtractingMaterial,
   isFullExtracting,
   beginFullExtract,
   endFullExtract,
@@ -270,6 +257,7 @@ import {
   applyKnowledgePointSort,
   updateKnowledgePoint,
   startOrganizeTask,
+  startExtractTask,
   DATA_SAVED_EVENT,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
@@ -287,9 +275,12 @@ const courseStore = useCourseStore();
 const modalStore = useModalStore();
 const notifyStore = useNotifyStore();
 
-// 资料 AI 梳理状态（后台任务）
+// 资料后台任务状态（AI 梳理 / 知识点抽取，进度见右上铃铛）
 function orgTaskOf(m: Material) {
-  return notifyStore.taskOf(m.id);
+  return notifyStore.taskOf(m.id, "organize");
+}
+function extractTaskOf(m: Material) {
+  return notifyStore.taskOf(m.id, "extract");
 }
 function startOrganize(m: Material) {
   if (!currentCourseId()) return;
@@ -536,18 +527,6 @@ const detailSourceNames = computed(() => {
   return kpSources.value[detailKp.value.id] ?? [];
 });
 
-interface ExtractState {
-  status: "loading" | "done" | "error";
-  newCount?: number;
-  updateCount?: number;
-  duplicateCount?: number;
-  error?: string;
-  progress?: { current: number; total: number; blockTitle: string };
-  errors?: string[];
-  showErrors?: boolean;
-}
-const extractState = reactive<Record<number, ExtractState>>({});
-
 const currentCourseId = () => courseStore.currentCourseId;
 
 const masteryLabel = (m: Mastery): string => {
@@ -639,10 +618,7 @@ async function loadChapters() {
 
 async function load() {
   await Promise.all([loadMaterials(), loadKnowledgePoints(), loadChapters()]);
-  // 恢复模块级抽取锁：组件重挂载后，仍在跑的抽取循环要让按钮保持禁用
-  for (const m of materials.value) {
-    if (isExtractingMaterial(m.id)) extractState[m.id] = { status: "loading" };
-  }
+  // 抽取任务状态来自 notify store（localStorage 持久化），组件重挂载后自然恢复
   if (isFullExtracting()) fullExtracting.value = true;
 }
 
@@ -826,7 +802,6 @@ async function del(m: Material) {
   if (!window.confirm(`确定删除资料「${m.name}」？`)) return;
   try {
     await deleteMaterial(m.id);
-    delete extractState[m.id];
     await load();
   } catch (e) {
     console.error("删除资料失败:", e);
@@ -834,34 +809,10 @@ async function del(m: Material) {
   }
 }
 
-function extractLoadingLabel(materialId: number): string {
-  const progress = extractState[materialId]?.progress;
-  if (!progress) return "抽取中…";
-  return `抽取中：第 ${progress.current}/${progress.total} 块 · ${progress.blockTitle || "文本片段"}`;
-}
-
-async function extract(m: Material) {
-  extractState[m.id] = { status: "loading" };
-  try {
-    const result = await extractKnowledgePoints(m.id, {
-      onProgress: (current, total, blockTitle) => {
-        extractState[m.id] = { status: "loading", progress: { current, total, blockTitle } };
-      },
-    });
-    extractState[m.id] = {
-      status: "done",
-      newCount: result.newCount,
-      updateCount: result.updateCount,
-      duplicateCount: result.duplicateCount,
-      errors: result.errors.length > 0 ? result.errors : undefined,
-    };
-    await loadKnowledgePoints();
-  } catch (e) {
-    extractState[m.id] = {
-      status: "error",
-      error: e instanceof Error ? e.message : String(e),
-    };
-  }
+// 知识点抽取：后台任务（进度/取消见右上铃铛，切页不丢）；抽取完成后资料库自动刷新
+function extract(m: Material) {
+  if (!currentCourseId()) return;
+  startExtractTask(m.id, currentCourseId()!);
 }
 
 const fullExtracting = ref(false);
@@ -966,12 +917,16 @@ watch(
   },
 );
 
+// 后台 AI 梳理/知识点抽取任务完成回写数据 → 刷新资料与知识点展示
+function onAnyDataSaved() {
+  loadMaterials();
+  loadKnowledgePoints();
+}
 onMounted(() => {
   load();
-  // 后台 AI 梳理任务完成后回写资料 → 刷新字数等展示
-  window.addEventListener(DATA_SAVED_EVENT, loadMaterials);
+  window.addEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, loadMaterials);
+  window.removeEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
 });
 </script>
