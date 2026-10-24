@@ -197,12 +197,28 @@ export interface ReviewSchedule {
   id: number;
   kpId: number | null;
   qId: number | null;
+  /** 闪卡触点（T3.4）；旧数据无此字段 */
+  cardId?: number | null;
   stage: number;
   dueTime: string;
   easeFactor: number;
   intervalDays: number;
   lastReviewTime: string | null;
   reviewTimes: number;
+}
+
+/** 闪卡（T3.4）：正面问题 / 背面答案要点，每知识点 1 张 */
+export interface FlashCard {
+  id: number;
+  courseId: number;
+  kpId: number;
+  /** 正面：问题 */
+  front: string;
+  /** 背面：答案要点 */
+  back: string;
+  source: "ai" | "manual";
+  createTime: string;
+  updateTime?: string;
 }
 
 export interface StudyLog {
@@ -251,6 +267,7 @@ export interface AppData {
   studyTasks: StudyTask[];
   explainRecords: ExplainRecord[];
   reviewSchedules: ReviewSchedule[];
+  flashCards: FlashCard[];
   studyLogs: StudyLog[];
   settings: AppSettings;
   /** 自定义提示词模板（taskKey → 模板）；未覆盖的任务用内置默认模板 */
@@ -282,6 +299,7 @@ export function createEmptyData(): AppData {
     studyTasks: [],
     explainRecords: [],
     reviewSchedules: [],
+    flashCards: [],
     studyLogs: [],
     settings: {
       chapterMode: "manual",

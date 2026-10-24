@@ -16,6 +16,7 @@ export type {
   StudyTask,
   ExplainRecord,
   ReviewSchedule,
+  FlashCard,
   StudyLog,
   AppData,
   AppSettings,

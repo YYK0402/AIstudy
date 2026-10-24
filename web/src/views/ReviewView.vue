@@ -40,9 +40,9 @@
           {{ dueList.length }} 项
         </span>
       </h3>
-      <div v-if="dueList.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">☀️</span> 今日无到期复习项<br />答错的题目和讲解达标的知识点会自动进入复习计划
-      </div>
+        <div v-if="dueList.length === 0" class="empty-state" style="padding:24px 0">
+          <span class="ico">☀️</span> 今日无到期复习项<br />答错的题目、讲解达标的知识点和闪卡会自动进入复习计划
+        </div>
       <template v-else>
         <div v-for="item in dueList" :key="item.schedule.id" class="review-item">
           <!-- 知识点触点 -->
@@ -91,8 +91,30 @@
                   placeholder="仍想写一遍？写下你的回答让 AI 阅卷（可跳过）"
                 />
               </div>
-              <div class="grade-row">
+                <div class="grade-row">
                 <span class="grade-label">按你的掌握情况自评：</span>
+                <button class="btn sm ghost rg bad" :disabled="busy[item.schedule.id]" @click="grade(item, 'forgotten')">忘了</button>
+                <button class="btn sm ghost rg mid" :disabled="busy[item.schedule.id]" @click="grade(item, 'vague')">模糊</button>
+                <button class="btn sm ghost rg good" :disabled="busy[item.schedule.id]" @click="grade(item, 'solid')">牢固</button>
+              </div>
+            </template>
+          </template>
+
+          <!-- 闪卡触点（T3.4）：看问题回想 → 揭示答案要点 → 自评 -->
+          <template v-else-if="item.flashcard">
+            <div class="ri-head">
+              <span class="kp-chip mini on">闪卡</span>
+              <span class="ri-meta">第 {{ item.schedule.stage }} 阶 · 间隔 {{ item.schedule.intervalDays }} 天 · 累计 {{ item.schedule.reviewTimes }} 次</span>
+            </div>
+            <template v-if="revealed[item.schedule.id] === undefined">
+              <div class="review-body q-title-mini">{{ item.flashcard.front }}</div>
+              <div class="recall-mask" style="margin-top:8px">先凭记忆回想这张卡的答案要点</div>
+              <button class="btn primary sm" @click="reveal(item.schedule.id)">揭示答案</button>
+            </template>
+            <template v-else>
+              <div class="review-body reveal-answer">答案要点：{{ item.flashcard.back }}</div>
+              <div class="grade-row">
+                <span class="grade-label">这次回想记得有多牢？</span>
                 <button class="btn sm ghost rg bad" :disabled="busy[item.schedule.id]" @click="grade(item, 'forgotten')">忘了</button>
                 <button class="btn sm ghost rg mid" :disabled="busy[item.schedule.id]" @click="grade(item, 'vague')">模糊</button>
                 <button class="btn sm ghost rg good" :disabled="busy[item.schedule.id]" @click="grade(item, 'solid')">牢固</button>

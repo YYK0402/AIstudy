@@ -449,7 +449,13 @@ export default class AiStudyPlugin extends Plugin {
   }
 
   private async handleRemoveSiyuanDoc(id: string): Promise<void> {
-    await fetchSyncPost("/api/filetree/removeDocByID", { id });
+    const res = (await fetchSyncPost("/api/filetree/removeDocByID", { id })) as {
+      code: number;
+      msg?: string;
+    };
+    if (res.code !== 0) {
+      throw new Error(`删除思源文档失败: ${res.msg ?? "未知错误"}`);
+    }
   }
 
   // 更新思源文档的 markdown 内容（用于资料重新解析后同步更新笔记）

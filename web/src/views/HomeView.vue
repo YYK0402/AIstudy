@@ -93,6 +93,7 @@ import {
   updateStudyTask,
   setCourseStatus,
   formatLocalDate,
+  truncateText,
   DATA_SAVED_EVENT,
 } from "../api";
 import type { Course } from "../api";
@@ -261,6 +262,7 @@ async function load() {
     for (const item of await queryDueReviews(c.id)) {
       const kp = item.knowledgePoint;
       const q = item.question;
+      const card = item.flashcard;
       items.push({
         id: -item.schedule.id,
         kind: "review",
@@ -270,7 +272,7 @@ async function load() {
         taskType: "review",
         scheduledDate: item.schedule.dueTime,
         sort: 0,
-        title: kp ? `复习：${kp.name}` : q ? `错题复习：${q.title}` : `复习 #${item.schedule.id}`,
+        title: kp ? `复习：${kp.name}` : q ? `错题复习：${q.title}` : card ? `闪卡：${truncateText(card.front, 24)}` : `复习 #${item.schedule.id}`,
         sub: "间隔复习",
         course: c.name,
         icon: "🔁",

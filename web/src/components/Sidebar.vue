@@ -82,7 +82,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
-import { queryCourses, queryWrongQuestions, DATA_SAVED_EVENT } from "../api";
+import { queryCourses, queryWrongQuestions, queryDueFlashcardCount, DATA_SAVED_EVENT } from "../api";
 import { emojiOf } from "../utils";
 import type { Course } from "../api";
 
@@ -95,6 +95,8 @@ const switchRef = ref<HTMLElement | null>(null);
 
 // 当前课程错题数（0 时不显示角标）
 const wrongCount = ref(0);
+// 当前课程今日到期闪卡数（0 时不显示角标）
+const cardDueCount = ref(0);
 
 const navGroups = computed(() => [
   {
@@ -112,6 +114,7 @@ const navGroups = computed(() => [
     items: [
       { to: "/quiz", icon: "quiz", label: "刷题练习" },
       { to: "/wrong", icon: "wrong", label: "错题本", badge: wrongCount.value },
+      { to: "/cards", icon: "cards", label: "闪卡本", badge: cardDueCount.value },
       { to: "/review", icon: "repeat", label: "复习计划" },
       { to: "/graph", icon: "graph", label: "知识图谱" },
     ],
@@ -135,8 +138,22 @@ async function loadWrongCount() {
   }
 }
 
+async function loadCardDueCount() {
+  const id = courseStore.currentCourseId;
+  if (!id) {
+    cardDueCount.value = 0;
+    return;
+  }
+  try {
+    cardDueCount.value = await queryDueFlashcardCount(id);
+  } catch (e) {
+    console.error("加载闪卡到期数失败:", e);
+  }
+}
+
 function onDataSaved() {
   loadWrongCount();
+  loadCardDueCount();
   // 课程状态（归档）/列表变化后同步 store，保证各页面读到的 status 最新
   courseStore.refresh().catch((e) => console.error("刷新课程列表失败:", e));
 }
@@ -149,6 +166,7 @@ const icons: Record<string, string> = {
   study: '<path d="M12 6.5C10 4.5 7 4.5 5 6.5v11c2-2 5-2 7 0 2-2 5-2 7 0v-11c-2-2-5-2-7 0z"/><path d="M12 6.5V17.5"/>',
   quiz: '<path d="M4 4h16v16H4z"/><path d="M8 10h8M8 14h8"/><path d="M12 4v16"/>',
   wrong: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M12 8v4M12 16h.01"/>',
+  cards: '<rect x="3" y="5" width="13" height="16" rx="2"/><path d="M8 3h11a2 2 0 012 2v12"/>',
   repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/>',
   graph: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l7-1M7.5 8l3.5 8M16.5 8l-3.5 8"/>',
   report: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
@@ -206,6 +224,7 @@ onMounted(async () => {
     }
   }
   loadWrongCount();
+  loadCardDueCount();
   window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
   document.addEventListener("pointerdown", onDocPointerDown);
   document.addEventListener("keydown", onKeydown);
@@ -215,5 +234,8 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDocPointerDown);
   document.removeEventListener("keydown", onKeydown);
 });
-watch(() => courseStore.currentCourseId, loadWrongCount);
+watch(() => courseStore.currentCourseId, () => {
+  loadWrongCount();
+  loadCardDueCount();
+});
 </script>

@@ -1,15 +1,17 @@
 // 重新导出所有数据类型
-import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
+import type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, FlashCard, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 import type { ParsedHeading } from "../utils/documentParser";
 import { aggregateStudyTrend } from "../utils/studyTrend";
 import { removeCsvIds } from "../utils/csvIds";
 import { recordWrongResult } from "../utils/wrongStreak";
+import { isReviewScheduleDue } from "../utils/reviewDue";
+import { parseFlashcardsJson } from "../utils/flashcardGen";
 import type { StudyTrend } from "../utils/studyTrend";
 import { PROMPT_TASKS, findPromptTask, resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import type { PromptVarInfo } from "./promptTemplates";
 import { useNotifyStore } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
-export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
+export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, FlashCard, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
 export type { PromptTaskMeta, PromptVarInfo } from "./promptTemplates";
 // ===== 底层数据读写（直接调用主窗口暴露的 Plugin 实例 API） =====
@@ -138,20 +140,41 @@ export async function deleteCourse(id: number): Promise<void> {
   const removedMaterials = data.materials.filter((m) => m.courseId === id);
   const questionIds = new Set(data.questions.filter((q) => q.courseId === id).map((q) => q.id));
   const planIds = new Set(data.studyPlans.filter((p) => p.courseId === id).map((p) => p.id));
+  const flashCardIds = new Set(data.flashCards.filter((c) => c.courseId === id).map((c) => c.id));
+  const siyuanCleanupErrors: string[] = [];
   if (course.siyuanDocId && isSiyuanDocId(course.siyuanDocId)) {
     // 课程文档是顶层文档，章节/资料是其子文档，删顶层即整体删除
-    await removeSiyuanDoc(course.siyuanDocId).catch((e) => console.error("删除课程思源文档失败:", e));
+    try {
+      await removeSiyuanDoc(course.siyuanDocId);
+    } catch (e) {
+      siyuanCleanupErrors.push(`课程文档「${course.name}」删除失败`);
+    }
   } else {
+    if (course.siyuanDocId) {
+      // 历史坏数据：id 格式异常，无法按顶层文档整树删除
+      siyuanCleanupErrors.push(`课程「${course.name}」的思源文档 id 格式异常，无法自动删除顶层文档`);
+    }
     for (const ch of data.chapters.filter((c) => c.courseId === id)) {
-      if (ch.siyuanBlockId) removeSiyuanDoc(ch.siyuanBlockId).catch((e) => console.error("删除章节思源文档失败:", e));
+      if (!ch.siyuanBlockId) continue;
+      try {
+        await removeSiyuanDoc(ch.siyuanBlockId);
+      } catch (e) {
+        siyuanCleanupErrors.push(`章节「${ch.name}」删除失败`);
+      }
     }
     for (const m of data.materials.filter((x) => x.courseId === id)) {
-      if (m.siyuanDocId) removeSiyuanDoc(m.siyuanDocId).catch((e) => console.error("删除资料思源文档失败:", e));
+      if (!m.siyuanDocId) continue;
+      try {
+        await removeSiyuanDoc(m.siyuanDocId);
+      } catch (e) {
+        siyuanCleanupErrors.push(`资料「${m.name}」删除失败`);
+      }
     }
   }
   data.courses = data.courses.filter((c) => c.id !== id);
   data.chapters = data.chapters.filter((c) => c.courseId !== id);
   data.knowledgePoints = data.knowledgePoints.filter((k) => k.courseId !== id);
+  data.flashCards = data.flashCards.filter((c) => c.courseId !== id);
   data.materials = data.materials.filter((m) => m.courseId !== id);
   data.materialChapters = data.materialChapters.filter((mc) => !materialIds.has(mc.materialId));
   data.questions = data.questions.filter((q) => q.courseId !== id);
@@ -163,6 +186,7 @@ export async function deleteCourse(id: number): Promise<void> {
   data.reviewSchedules = data.reviewSchedules.filter((s) => {
     if (s.kpId !== null && kpIds.has(s.kpId)) return false;
     if (s.qId !== null && questionIds.has(s.qId)) return false;
+    if (s.cardId != null && flashCardIds.has(s.cardId)) return false;
     return true;
   });
   data.studyLogs = data.studyLogs.filter((l) => l.courseId !== id);
@@ -170,6 +194,13 @@ export async function deleteCourse(id: number): Promise<void> {
   // 同步清理课程资料的源文件（仍被其他课程资料引用的跳过）
   for (const m of removedMaterials) {
     await removeAssetIfUnused(m.assetPath, data.materials);
+  }
+  if (siyuanCleanupErrors.length) {
+    window.siyuanAiStudy.showMessage(
+      `课程数据已删除，但思源文档清理不完整：${siyuanCleanupErrors.join("；")}`,
+      6000,
+      "error",
+    );
   }
 }
 
@@ -1235,7 +1266,7 @@ export async function generateQuestions(
   return questions;
 }
 
-function truncateText(s: string, n: number): string {
+export function truncateText(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
@@ -1389,6 +1420,7 @@ export const AI_TASKS = [
   { key: "infer_graph", name: "图谱关联关系推理" },
   { key: "recognize_toc", name: "目录识别矫正" },
   { key: "organize_doc", name: "文档结构梳理" },
+  { key: "gen_flashcard", name: "AI 闪卡生成" },
 ] as const;
 
 export const GLOBAL_DEFAULT_KEY = "global_default";
@@ -2310,6 +2342,10 @@ export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
   // 级联清理复习触点与讲解记录，避免悬挂引用
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.kpId === null || !removed.has(s.kpId));
   data.explainRecords = data.explainRecords.filter((r) => r.kpId === null || !removed.has(r.kpId));
+  // 级联删除闪卡（绑定被删知识点）及其复习触点
+  const removedCardIds = new Set(data.flashCards.filter((c) => removed.has(c.kpId)).map((c) => c.id));
+  data.flashCards = data.flashCards.filter((c) => !removed.has(c.kpId));
+  data.reviewSchedules = data.reviewSchedules.filter((s) => s.cardId == null || !removedCardIds.has(s.cardId));
   // 题目保留，仅从 kpIds 中移除被删知识点
   for (const q of data.questions) {
     q.kpIds = removeCsvIds(q.kpIds, removed);
@@ -2672,26 +2708,24 @@ export interface ReviewDueItem {
   knowledgePoint: KnowledgePoint | null;
   /** qId 触点时有值 */
   question: Question | null;
+  /** cardId 触点时有值（T3.4 闪卡） */
+  flashcard: FlashCard | null;
 }
 
 export async function queryDueReviews(courseId: number): Promise<ReviewDueItem[]> {
   const data = await getData();
-  // 到期 = dueTime 不晚于今天（此前误用 reviewNextDue(0)=明天，导致评完级次日仍浮现）
   const today = formatLocalDate();
   const kps = new Map(data.knowledgePoints.filter((k) => k.courseId === courseId).map((k) => [k.id, k]));
   const qs = new Map(data.questions.filter((q) => q.courseId === courseId).map((q) => [q.id, q]));
+  const cards = new Map(data.flashCards.filter((c) => c.courseId === courseId).map((c) => [c.id, c]));
   return data.reviewSchedules
-    .filter((s) => {
-      if (s.dueTime > today) return false;
-      if (s.kpId !== null) return kps.has(s.kpId);
-      if (s.qId !== null) return qs.has(s.qId);
-      return false;
-    })
+    .filter((s) => isReviewScheduleDue(s, today, new Set(kps.keys()), new Set(qs.keys()), new Set(cards.keys())))
     .sort((a, b) => a.dueTime.localeCompare(b.dueTime))
     .map((s) => ({
       schedule: s,
       knowledgePoint: s.kpId !== null ? kps.get(s.kpId) ?? null : null,
       question: s.qId !== null ? qs.get(s.qId) ?? null : null,
+      flashcard: s.cardId != null ? cards.get(s.cardId) ?? null : null,
     }));
 }
 
@@ -2730,7 +2764,7 @@ export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade,
     }
     if (kpId !== null) completeKpTasksInData(data, kpId, ["review"]);
   }
-  // 时长日志：由触点反查课程（知识点触点 → kp.courseId；题目触点 → question.courseId）
+  // 时长日志：由触点反查课程（知识点触点 → kp.courseId；题目触点 → question.courseId；闪卡触点 → card.courseId）
   let reviewKpId: number | null = target.kpId;
   let reviewCourseId: number | null = null;
   if (reviewKpId !== null) {
@@ -2740,6 +2774,10 @@ export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade,
     const rq = data.questions.find((q) => q.id === target.qId);
     reviewCourseId = rq?.courseId ?? null;
     if (rq) reviewKpId = parseQuestionKpIds(rq)[0] ?? null;
+  } else if (target.cardId != null) {
+    const rcard = data.flashCards.find((c) => c.id === target.cardId);
+    reviewCourseId = rcard?.courseId ?? null;
+    if (rcard) reviewKpId = rcard.kpId;
   }
   if (reviewCourseId !== null) {
     logStudyInData(data, { courseId: reviewCourseId, kpId: reviewKpId, taskId: null, action: "review", durationSec });
@@ -2778,6 +2816,223 @@ export async function submitKpReview(kpId: number, grade: ReviewGrade, durationS
   data.reviewSchedules.push(schedule);
   await saveData(data);
   return submitReview(schedule, grade, durationSec);
+}
+
+// ===== 闪卡（T3.4）：双面卡 + 复用 SM2 调度 =====
+export async function queryFlashCards(courseId: number): Promise<FlashCard[]> {
+  const data = await getData();
+  return data.flashCards.filter((c) => c.courseId === courseId);
+}
+
+/** 当前课程今日到期的闪卡触点数（侧栏角标用） */
+export async function queryDueFlashcardCount(courseId: number): Promise<number> {
+  const data = await getData();
+  const today = formatLocalDate();
+  const cardIds = new Set(data.flashCards.filter((c) => c.courseId === courseId).map((c) => c.id));
+  if (cardIds.size === 0) return 0;
+  return data.reviewSchedules.filter((s) => isReviewScheduleDue(s, today, new Set(), new Set(), cardIds)).length;
+}
+
+/** 闪卡触点：首建/重置排明天；已到期触点保持既有节奏 */
+function ensureCardReviewInData(data: AppData, cardId: number): void {
+  const existing = data.reviewSchedules.find((s) => s.cardId !== undefined && s.cardId === cardId);
+  if (existing) {
+    if (existing.dueTime < reviewNextDue(0)) return;
+    existing.dueTime = reviewNextDue(1);
+    existing.stage = 1;
+    existing.intervalDays = 1;
+    return;
+  }
+  data.reviewSchedules.push({
+    id: nextId(data.reviewSchedules),
+    kpId: null,
+    qId: null,
+    cardId,
+    stage: 1,
+    dueTime: reviewNextDue(1),
+    easeFactor: 2.5,
+    intervalDays: 1,
+    lastReviewTime: null,
+    reviewTimes: 0,
+  });
+}
+
+export async function createFlashCard(input: {
+  courseId: number;
+  kpId: number;
+  front: string;
+  back: string;
+}): Promise<FlashCard> {
+  const data = await getData();
+  const kp = data.knowledgePoints.find((k) => k.id === input.kpId && k.courseId === input.courseId);
+  if (!kp) throw new Error("知识点不存在或不属于本课程");
+  const front = input.front.trim();
+  const back = input.back.trim();
+  if (!front) throw new Error("卡片正面（问题）不能为空");
+  if (!back) throw new Error("卡片背面（答案要点）不能为空");
+  const card: FlashCard = {
+    id: nextId(data.flashCards),
+    courseId: input.courseId,
+    kpId: input.kpId,
+    front,
+    back,
+    source: "manual",
+    createTime: now(),
+  };
+  data.flashCards.push(card);
+  ensureCardReviewInData(data, card.id);
+  await saveData(data);
+  return card;
+}
+
+export async function updateFlashCard(
+  id: number,
+  input: { kpId?: number; front?: string; back?: string },
+): Promise<FlashCard> {
+  const data = await getData();
+  const card = data.flashCards.find((c) => c.id === id);
+  if (!card) throw new Error("闪卡不存在，可能已被删除");
+  if (input.kpId !== undefined && input.kpId !== card.kpId) {
+    const kp = data.knowledgePoints.find((k) => k.id === input.kpId && k.courseId === card.courseId);
+    if (!kp) throw new Error("知识点不存在或不属于本课程");
+    card.kpId = input.kpId;
+  }
+  if (input.front !== undefined) {
+    const front = input.front.trim();
+    if (!front) throw new Error("卡片正面（问题）不能为空");
+    card.front = front;
+  }
+  if (input.back !== undefined) {
+    const back = input.back.trim();
+    if (!back) throw new Error("卡片背面（答案要点）不能为空");
+    card.back = back;
+  }
+  card.updateTime = now();
+  await saveData(data);
+  return card;
+}
+
+/** 批量删除闪卡（级联清理其复习触点） */
+export async function deleteFlashCards(ids: number[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const data = await getData();
+  const removed = new Set(ids);
+  const before = data.flashCards.length;
+  data.flashCards = data.flashCards.filter((c) => !removed.has(c.id));
+  data.reviewSchedules = data.reviewSchedules.filter((s) => s.cardId == null || !removed.has(s.cardId));
+  await saveData(data);
+  return before - data.flashCards.length;
+}
+
+export interface GenerateFlashcardsResult {
+  created: number;
+  updated: number;
+  /** 已有卡片且未勾选覆盖 */
+  skipped: number;
+  /** AI 输出中因字段问题被剔除的条目 */
+  parseSkipped: number;
+  errors: string[];
+}
+
+const FLASHCARD_GEN_BATCH = 10;
+
+/**
+ * AI 批量生成闪卡：选中知识点每批 10 个调 gen_flashcard 任务，解析结果落库；
+ * 解析失败自动重试一次（把原始输出交还模型自纠正，与 gen_question 一致）。
+ */
+export async function generateFlashcards(
+  courseId: number,
+  kpIds: number[],
+  options: { overwrite?: boolean; onProgress?: (done: number, total: number) => void } = {},
+): Promise<GenerateFlashcardsResult> {
+  const data = await getData();
+  const course = data.courses.find((c) => c.id === courseId);
+  if (!course) throw new Error("课程不存在");
+  if (kpIds.length === 0) throw new Error("请至少选择一个知识点");
+  const binding = findTaskBinding(data, "gen_flashcard", courseId);
+  if (!binding) {
+    throw new Error(
+      "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「gen_flashcard」任务或「全局默认模型」",
+    );
+  }
+  const kps = kpIds
+    .map((id) => data.knowledgePoints.find((k) => k.id === id && k.courseId === courseId))
+    .filter((k): k is KnowledgePoint => !!k);
+  if (kps.length === 0) throw new Error("所选知识点不存在，可能已被删除");
+  const tpl = resolvePromptTemplate(data, "gen_flashcard");
+  const result: GenerateFlashcardsResult = { created: 0, updated: 0, skipped: 0, parseSkipped: 0, errors: [] };
+  const total = kps.length;
+  for (let i = 0; i < kps.length; i += FLASHCARD_GEN_BATCH) {
+    const batch = kps.slice(i, i + FLASHCARD_GEN_BATCH);
+    const kpLines = batch.map((k, idx) => `${idx}. ${k.name}：${truncateText(k.content, 300) || "（暂无描述）"}`).join("\n");
+    const baseMessages = [
+      { role: "system", content: renderPrompt(tpl.system, { courseName: course.name, kpLines }) },
+      { role: "user", content: renderPrompt(tpl.user, { courseName: course.name, kpLines }) },
+    ];
+    let parsed = parseFlashcardsJson(
+      (await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey: "gen_flashcard",
+        messages: baseMessages,
+      })).content,
+      batch.length,
+    );
+    if (parsed.items.length === 0) {
+      // 重试一次：追加自纠正指令再调一次
+      const retryRaw = (await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey: "gen_flashcard",
+        messages: [
+          ...baseMessages,
+          {
+            role: "user",
+            content:
+              "你上次的输出无法解析为闪卡 JSON。请重新输出：只返回包含 " +
+              batch.length +
+              " 个元素的 JSON 数组，每项字段为 index（0 起整数，与输入知识点顺序对应）、front（问题）、back（答案要点），不要输出任何其他文字。",
+          },
+        ],
+      })).content;
+      const retry = parseFlashcardsJson(retryRaw, batch.length);
+      if (retry.items.length > 0 || retry.errors.length === 0) parsed = retry;
+    }
+    for (const e of parsed.errors) result.errors.push(e);
+    result.parseSkipped += parsed.skipped;
+    const latest = await getData();
+    for (const item of parsed.items) {
+      const kp = batch[item.index];
+      const prev = latest.flashCards.find((c) => c.courseId === courseId && c.kpId === kp.id);
+      if (prev && !options.overwrite) {
+        result.skipped++;
+        continue;
+      }
+      if (prev) {
+        prev.front = item.front;
+        prev.back = item.back;
+        prev.source = "ai";
+        prev.updateTime = now();
+        result.updated++;
+      } else {
+        const card: FlashCard = {
+          id: nextId(latest.flashCards),
+          courseId,
+          kpId: kp.id,
+          front: item.front,
+          back: item.back,
+          source: "ai",
+          createTime: now(),
+        };
+        latest.flashCards.push(card);
+        ensureCardReviewInData(latest, card.id);
+        result.created++;
+      }
+    }
+    await saveData(latest);
+    options.onProgress?.(Math.min(total, i + FLASHCARD_GEN_BATCH), total);
+  }
+  return result;
 }
 
 // ===== AI 学习计划生成 =====

@@ -92,6 +92,7 @@ const titleMap: Record<string, string> = {
   study: "开始学习",
   quiz: "刷题练习",
   wrong: "错题本",
+  cards: "闪卡本",
   review: "复习计划",
   graph: "知识图谱",
   report: "学习报告",
