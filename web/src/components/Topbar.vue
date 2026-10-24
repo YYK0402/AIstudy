@@ -3,14 +3,16 @@
     <div class="crumbs">研习 <span class="sep">/</span> <span class="cur">{{ title }}</span></div>
     <div class="spacer"></div>
     <div v-if="currentCourseId" class="topbar-today">
-      <span class="dot"></span> 今日 <b>{{ todayTaskCount }}</b> 项任务 · <b>{{ dueReviewCount }}</b> 待复习 · <b>{{ wrongCount }}</b> 道错题
+      <span class="dot"></span>
+      <router-link class="metric" to="/">今日 <b>{{ todayTaskCount }}</b> 项任务</router-link>
+      <span class="sep">·</span>
+      <router-link class="metric" to="/review"><b>{{ dueReviewCount }}</b> 待复习</router-link>
+      <span class="sep">·</span>
+      <router-link class="metric" to="/wrong"><b>{{ wrongCount }}</b> 道错题</router-link>
     </div>
     <div class="notify-wrap" v-if="notifyStore.tasks.length > 0">
       <button class="theme-toggle notify-bell" title="任务通知" @click="togglePanel">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.7 21a2 2 0 01-3.4 0" />
-        </svg>
+        <AppIcon name="bell" :size="17" />
         <span v-if="notifyStore.unreadCount > 0" class="notify-badge">{{ notifyStore.unreadCount > 99 ? "99+" : notifyStore.unreadCount }}</span>
       </button>
       <div v-if="notifyStore.panelOpen" class="notify-panel">
@@ -24,7 +26,7 @@
         <div v-for="t in sortedTasks" :key="t.taskId" class="notify-item">
           <div class="notify-main">
             <div class="notify-name">
-              <span class="notify-ico">{{ statusIcon(t.status) }}</span>
+              <span class="notify-ico"><AppIcon :name="statusIcon(t.status)" :size="13" /></span>
               <span class="muted">{{ taskTypeLabel(t.taskType) }}</span> {{ t.label }}
             </div>
             <div class="notify-msg">{{ t.message }}</div>
@@ -43,19 +45,16 @@
       </div>
     </div>
     <button class="theme-toggle" title="切换明暗主题" @click="theme.toggle()">
-      <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="4.5" />
-        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-      </svg>
-      <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
-      </svg>
+      <AppIcon class="ic-sun" name="sun" :size="17" />
+      <AppIcon class="ic-moon" name="moon" :size="17" />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { MODAL_OPEN_EVENT } from "../utils/modals";
+import AppIcon from "./AppIcon.vue";
 import { useRoute, useRouter } from "vue-router";
 import { useThemeStore } from "../stores/theme";
 import { useCourseStore } from "../stores/course";
@@ -124,11 +123,11 @@ const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
   gen_plan: "AI 学习计划",
 };
 
-function statusIcon(status: BgTaskState["status"]): string {
-  if (status === "running") return "🔄";
-  if (status === "done") return "✅";
-  if (status === "failed") return "❌";
-  return "⏹️";
+function statusIcon(status: BgTaskState["status"]): import("../utils/icons").IconName {
+  if (status === "running") return "refresh";
+  if (status === "done") return "check";
+  if (status === "failed") return "x";
+  return "clock";
 }
 
 function taskTypeLabel(taskType: BgTaskType): string {
@@ -227,14 +226,20 @@ function onCourseChange() {
 function onDataSaved() {
   loadStats();
 }
+/** 打开任何弹窗时收起通知面板，避免面板压住弹窗 */
+function onModalOpen() {
+  notifyStore.panelOpen = false;
+}
 
 onMounted(() => {
   loadStats();
   window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
+  window.addEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.addEventListener("click", onDocClick);
 });
 onBeforeUnmount(() => {
   window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
+  window.removeEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.removeEventListener("click", onDocClick);
 });
 watch(() => courseStore.currentCourseId, onCourseChange);

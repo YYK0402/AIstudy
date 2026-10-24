@@ -1,0 +1,301 @@
+import type { AppData, KnowledgePoint, Material } from "../types/appData";
+import { getData, saveData } from "./storage";
+import { formatLocalDate, nextId, now, truncateText } from "./format";
+import { findTaskBinding } from "./ai";
+import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
+import { startBgTask } from "./bgTask";
+import { materialTaskId } from "../stores/notify";
+import { ensureReviewTouchpointInData } from "./review";
+import { updateKnowledgePoint } from "./kp";
+import { findChapterByTitle, normalizeKpName } from "./kpMatch";
+import { useNotifyStore } from "../stores/notify";
+import { isExtractingMaterial, markMaterialExtracting, unmarkMaterialExtracting } from "./extractState";
+import { isSiyuanDocId } from "./siyuanDoc";
+
+export interface ExtractKpResult {
+  newCount: number;
+  updateCount: number;
+  duplicateCount: number;
+  totalChunks: number;
+  errors: string[];
+}
+
+interface AiKpItem {
+  name: string;
+  description: string;
+  /** 该知识点所属小节标题（模型按原文照抄），用于挂到具体节 */
+  section: string;
+}
+
+function parseAiKpResponse(content: string): AiKpItem[] {
+  // 尝试从 LLM 返回中提取 JSON 数组（可能包裹在代码块或含前后文字）
+  const trimmed = content.trim();
+  const jsonMatch =
+    trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+    trimmed.match(/(\[[\s\S]*\])/);
+  const candidate = (jsonMatch ? jsonMatch[1] : trimmed).trim();
+  try {
+    const parsed = JSON.parse(candidate);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((it): it is { name: string; description: string; section?: string } =>
+          it && typeof it.name === "string" && typeof it.description === "string")
+        .map((it) => ({ name: it.name, description: it.description, section: it.section ?? "" }));
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+// 归一化知识点名：小写、去掉空白与标点，用于本地去重
+// 本地判断两个知识点名是否重复（精确/归一化后相同，或相互包含）
+function isDuplicateKpName(a: string, b: string): boolean {
+  const na = normalizeKpName(a);
+  const nb = normalizeKpName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
+}
+
+export async function extractKnowledgePoints(
+  materialId: number,
+  options?: {
+    taskKey?: string;
+    /** 取消信号：返回 true 时停止后续块（已完成块的结果保留） */
+    isAborted?: () => boolean;
+    onProgress?: (current: number, total: number, blockTitle: string) => void;
+  },
+): Promise<ExtractKpResult> {
+  if (isExtractingMaterial(materialId)) {
+    throw new Error("该资料正在抽取中，请等待本次抽取完成");
+  }
+  const data: AppData = await getData();
+  const material = data.materials.find((m) => m.id === materialId);
+  if (!material) {
+    throw new Error("资料不存在");
+  }
+  const taskKey = options?.taskKey ?? "extract_kp";
+  const binding = findTaskBinding(data, taskKey, material.courseId);
+  if (!binding) {
+    throw new Error(
+      "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「" + taskKey + "」任务或「全局默认模型」",
+    );
+  }
+  markMaterialExtracting(materialId);
+  try {
+    return await extractKnowledgePointsInner(material, taskKey, binding, options);
+  } finally {
+    unmarkMaterialExtracting(materialId);
+  }
+}
+
+async function extractKnowledgePointsInner(
+  material: Material,
+  taskKey: string,
+  binding: { providerId: number; modelId: string },
+  options?: {
+    taskKey?: string;
+    isAborted?: () => boolean;
+    onProgress?: (current: number, total: number, blockTitle: string) => void;
+  },
+): Promise<ExtractKpResult> {
+  const data: AppData = await getData();
+
+  const { chunkText, chunkByMarkdownHeadings, chunkByChapters } = await import("../utils/textChunker");
+  // 优先按章切块（模型一次看到完整一章含节结构）；无章级标题时回退按节切分，再回退固定字符分块
+  const chapterChunks = chunkByChapters(material.contentText);
+  const headingChunks = chapterChunks.length >= 2 ? chapterChunks : chunkByMarkdownHeadings(material.contentText);
+  const rawBlocks: Array<{ title: string; text: string }> =
+    headingChunks.length >= 2
+      ? headingChunks.map((c) => ({ title: c.title, text: c.content }))
+      : chunkText(material.contentText, 2000).map((t) => ({ title: "", text: t }));
+  // 单章超长（>30K 字）时再切分，避免超出模型有效上下文
+  const MAX_BLOCK_CHARS = 30000;
+  const blocks: Array<{ title: string; text: string }> = [];
+  for (const b of rawBlocks) {
+    if (b.text.length <= MAX_BLOCK_CHARS) {
+      blocks.push(b);
+      continue;
+    }
+    const parts = chunkText(b.text, MAX_BLOCK_CHARS);
+    parts.forEach((p, i) => blocks.push({ title: b.title ? `${b.title}（${i + 1}/${parts.length}）` : "", text: p }));
+  }
+  const existingKps: KnowledgePoint[] = data.knowledgePoints.filter((k) => k.courseId === material.courseId);
+  // 课程上下文：目录 + 已有知识点名（供提示词对齐术语、去重）
+  const course = data.courses.find((c) => c.id === material.courseId);
+  const courseChapters = data.chapters
+    .filter((c) => c.courseId === material.courseId)
+    .sort((a, b) => a.sort - b.sort);
+  const tocLines = courseChapters
+    .filter((ch) => ch.level === "chapter" || ch.parentId === null)
+    .map((ch) => {
+      const units = courseChapters
+        .filter((c) => c.level === "unit" && c.parentId === ch.id)
+        .map((u) => `  ${u.name}`)
+        .join("\n");
+      return ch.name + (units ? "\n" + units : "");
+    })
+    .join("\n");
+  // 每块调用前刷新：同批先抽的块产出的 KP 也要进入后续块的上下文
+  const buildKpNames = () => {
+    const names = existingKps.map((k) => k.name);
+    return names.length ? names.join("、") : "（暂无）";
+  };
+
+  let newCount = 0;
+  let duplicateCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < blocks.length; i++) {
+    if (options?.isAborted?.()) break;
+    const block = blocks[i];
+    // 每块 AI 调用前回调进度（供 UI 实时显示第 X/N 块）
+    options?.onProgress?.(i + 1, blocks.length, block.title);
+    // 根据块的章节标题查找已建立的章节（去编号 + 归一化 + 包含匹配），用于绑定知识点归属
+    const blockChapter = block.title
+      ? findChapterByTitle(
+          data.chapters.filter((c) => c.courseId === material.courseId),
+          block.title,
+        )
+      : undefined;
+    // 该章下的小节列表：模型返回的 section 标题匹配到具体节后，知识点挂到节而非章
+    const blockUnits = blockChapter
+      ? data.chapters.filter((c) => c.level === "unit" && c.parentId === blockChapter.id)
+      : [];
+    const locator = block.title ? `章节：${block.title}` : `文本片段（第${i + 1}/${blocks.length}块）`;
+    try {
+      const extractVars = {
+        locator,
+        blockText: block.text,
+        courseName: course?.name ?? "",
+        tocLines: tocLines || "（暂无目录）",
+        existingKpNames: buildKpNames(),
+      };
+      const extractTpl = resolvePromptTemplate(data, taskKey);
+      const res = await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey,
+        messages: [
+          { role: "system", content: renderPrompt(extractTpl.system, extractVars) },
+          { role: "user", content: renderPrompt(extractTpl.user, extractVars) },
+        ],
+      });
+      const items = parseAiKpResponse(res.content);
+      for (const item of items) {
+        const trimmedName = item.name.trim();
+        if (!trimmedName) continue;
+        const existing: KnowledgePoint | undefined = existingKps.find(
+          (k) => isDuplicateKpName(k.name, trimmedName),
+        );
+        if (existing) {
+          duplicateCount++;
+          // 合并来源资料，让知识点反映覆盖它的全部资料
+          const srcIds = existing.sourceAssetIds.split(",").map((s) => s.trim()).filter(Boolean);
+            if (!srcIds.includes(String(material.id))) {
+              existing.sourceAssetIds = [...srcIds, String(material.id)].join(",");
+            }
+        } else {
+          // section 标题匹配到具体小节则挂到节，否则回退挂章
+          const matchedUnit =
+            item.section && blockUnits.length > 0
+              ? findChapterByTitle(blockUnits, item.section)
+              : undefined;
+          const kpNode = matchedUnit ?? blockChapter;
+          const newKp: KnowledgePoint = {
+            id: data.knowledgePoints.reduce((m, k) => Math.max(m, k.id), 0) + 1,
+            courseId: material.courseId,
+            chapterId: kpNode?.id ?? null,
+            blockId: null,
+            name: trimmedName,
+            content: item.description,
+            mastery: "unlearn",
+            sourceAssetIds: String(material.id),
+            prevKpIds: "",
+            chapterName: matchedUnit ? matchedUnit.name : block.title,
+            sort: 0,
+            createTime: new Date().toISOString(),
+          };
+          data.knowledgePoints.push(newKp);
+          // 加入快照，确保同批后续同名知识点去重
+          existingKps.push(newKp);
+          newCount++;
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`第 ${i + 1} 块失败：${msg}`);
+    }
+  }
+
+  await saveData(data);
+  return { newCount, updateCount: 0, duplicateCount, totalChunks: blocks.length, errors };
+}
+
+const extractAbortFlags = new Map<number, { aborted: boolean }>();
+
+export function startExtractTask(materialId: number, courseId: number): void {
+  if (isExtractingMaterial(materialId)) return;
+  const flag = { aborted: false };
+  extractAbortFlags.set(materialId, flag);
+  void runExtractTask(materialId, courseId, flag);
+}
+
+export function cancelExtractTask(materialId: number): void {
+  const flag = extractAbortFlags.get(materialId);
+  if (flag) flag.aborted = true;
+}
+
+async function runExtractTask(
+  materialId: number,
+  courseId: number,
+  flag: { aborted: boolean },
+): Promise<void> {
+  const notify = useNotifyStore();
+  const extractTaskId = materialTaskId(materialId, "extract");
+  let extractTask: ReturnType<typeof startBgTask> | null = null;
+  try {
+    const data = await getData();
+    const material = data.materials.find((m) => m.id === materialId);
+    if (!material) throw new Error("资料不存在或已删除");
+    extractTask = startBgTask({
+      taskId: extractTaskId,
+      taskType: "extract",
+      label: material.name,
+      materialId,
+      courseId,
+      message: "准备中…",
+    });
+    const result = await extractKnowledgePoints(materialId, {
+      isAborted: () => flag.aborted,
+      onProgress: (current, total, blockTitle) => {
+        if (total > 0) {
+          extractTask?.progress({
+            done: current,
+            total,
+            message: `知识点抽取：第 ${current}/${total} 块${blockTitle ? " · " + blockTitle : ""}`,
+          });
+        }
+      },
+    });
+    if (flag.aborted) {
+      extractTask?.canceled();
+      return;
+    }
+    let msg = `抽取完成：新增 ${result.newCount} 个知识点，合并重复 ${result.duplicateCount} 个`;
+    if (result.errors.length > 0) msg += `；${result.errors.length} 块失败（${result.errors[0]}）`;
+    extractTask?.done(msg);
+  } catch (e) {
+    extractTask?.fail(e, "知识点抽取失败");
+  } finally {
+    extractAbortFlags.delete(materialId);
+  }
+}
+
+/** 标签输入解析：中英文逗号/分号分隔，去空白去重 */
+export function parseTagsInput(input: string): string[] {
+  return [...new Set(input.split(/[,，;；]/).map((t) => t.trim()).filter(Boolean))];
+}
+

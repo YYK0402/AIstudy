@@ -3,20 +3,20 @@
     <div class="page-title"><h1>知识图谱</h1><div class="desc">前置关系 · 掌握度着色 · 点击查看详情</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <template v-else>
       <div class="card graph-toolbar-card">
         <div class="graph-toolbar">
           <button class="btn sm primary" :disabled="inferring || knowledgePoints.length === 0" @click="infer">
-            {{ inferring ? "推理中…" : "⚡ AI 推理关系" }}
+            <AppIcon name="spark" :size="14" /> {{ inferring ? "推理中…" : "AI 推理关系" }}
           </button>
           <button class="btn sm ghost" :disabled="knowledgePoints.length < 2 || inferring" @click="toggleLink">
             {{ linking ? "取消连线" : "＋ 手动连线" }}
           </button>
-          <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="relayout">⟳ 自动布局</button>
-          <button class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc">⤓ 写入思源文档</button>
+          <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="relayout"><AppIcon name="refresh" :size="14" /> 自动布局</button>
+          <button class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc"><AppIcon name="book" :size="14" /> 写入思源文档</button>
           <div class="graph-legend">
             <span class="l"><i style="background:var(--as-accent)"></i>精通</span>
             <span class="l"><i style="background:var(--as-green)"></i>掌握</span>
@@ -37,10 +37,21 @@
           暂无知识点<br />上传资料并由 AI 解析出知识点后，图谱会展示它们之间的关联
         </div>
         <template v-else>
-          <div v-if="edgeCount === 0" class="graph-hint">
-            暂无前置关系，点击「⚡ AI 推理关系」由 AI 推断，或「＋ 手动连线」逐条添加
-          </div>
+          <EmptyState
+            v-if="edgeCount === 0"
+            compact
+            icon="graph"
+            text="暂无前置关系，图谱暂时只显示孤立知识点。&#10;可由 AI 推断依赖，或手动逐条连线。"
+          >
+            <button class="btn sm primary" :disabled="inferring || knowledgePoints.length === 0" @click="infer">
+              <AppIcon name="spark" :size="14" /> {{ inferring ? "推理中…" : "AI 推理关系" }}
+            </button>
+            <button class="btn sm ghost" :disabled="knowledgePoints.length < 2 || inferring" @click="toggleLink">
+              ＋ 手动连线
+            </button>
+          </EmptyState>
           <svg
+            v-if="edgeCount > 0"
             class="graph-svg"
             :viewBox="`0 0 ${layout.width} ${layout.height}`"
             preserveAspectRatio="xMidYMid meet"
@@ -108,7 +119,9 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import EmptyState from "../components/EmptyState.vue";
 import { useCourseStore } from "../stores/course";
 import {
   queryKnowledgePoints,

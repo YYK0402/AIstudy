@@ -16,7 +16,9 @@
     "dev": "vite build --watch --config vite.config.ts",
     "dev:web": "vite build --watch --config web/vite.config.ts",
     "make-install": "npm run build && node scripts/make_install.js",
-    "make-link": "node scripts/make_dev_link.js"
+    "make-link": "node scripts/make_dev_link.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -27,6 +29,7 @@
     "vite": "^5.4.0",
     "vite-plugin-singlefile": "^2.3.4",
     "vite-plugin-static-copy": "^1.0.6",
+    "vitest": "^2.1.9",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0",
     "vue-tsc": "^2.1.10"

@@ -3,7 +3,7 @@
     <div class="page-title"><h1>学习计划</h1><div class="desc">按天安排 · 点开查看当天知识点</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <template v-else>
@@ -12,12 +12,12 @@
           {{ plan ? (editing ? "重新生成学习计划" : "当前计划") : "生成学习计划" }}
           <span v-if="archived" class="tag paused" style="margin-left:6px">已归档 · 只读</span>
           <template v-if="plan && !editing && !archived">
-            <button class="btn primary sm" @click="startEdit">⚡ 重新生成</button>
+            <button class="btn primary sm" @click="startEdit"><AppIcon name="spark" :size="14" /> 重新生成</button>
           </template>
           <template v-else-if="plan && editing">
             <button class="btn sm ghost" :disabled="generating" @click="editing = false">取消</button>
             <button class="btn primary sm" :disabled="generating || !targetDate" @click="regenerate">
-              {{ generating ? "生成中…" : "确认重新生成" }}
+              <AppIcon name="spark" :size="14" /> {{ generating ? "生成中…" : "确认重新生成" }}
             </button>
           </template>
         </h3>
@@ -47,7 +47,7 @@
             @click="generate"
             style="align-self:flex-start"
           >
-            {{ generating ? "生成中…" : "⚡ 生成学习计划" }}
+            <AppIcon name="spark" :size="14" /> {{ generating ? "生成中…" : "生成学习计划" }}
           </button>
         </div>
         <div v-if="generating" class="s" style="color:var(--as-accent-strong);margin-top:10px">
@@ -114,6 +114,7 @@
               <span class="dow">{{ weekdayOf(d.date) }}</span>
               <span class="day-sum">{{ d.summary }}</span>
               <span class="day-prog">{{ d.doneCount }}/{{ d.tasks.length }} 完成</span>
+              <span class="day-prog-wrap"><ProgressBar :value="d.doneCount" :max="d.tasks.length" tone="green" sm /></span>
               <button class="link-btn day-tgl" @click.stop="toggleDay(d.date)">
                 {{ isDayOpen(d.date) ? "收起" : "展开" }}
               </button>
@@ -126,10 +127,13 @@
               <div v-else-if="r.kind === 'kp'" class="kp-row" :class="{ done: r.line.doneAll }">
                 <button
                   class="task-check"
-                  :disabled="archived"
-                  :title="archived ? '课程已归档，任务只读' : r.line.doneAll ? '撤销完成' : '标记完成'"
+                  :disabled="archived || lineBusy(r.line)"
+                  :title="archived ? '课程已归档，任务只读' : lineBusy(r.line) ? '保存中…' : r.line.doneAll ? '撤销完成' : '标记完成'"
                   @click.stop="toggleTasks(r.line.tasks)"
-                >{{ r.line.doneAll ? "✓" : r.line.partial ? "–" : "" }}</button>
+                >
+                  <span v-if="lineBusy(r.line)" class="task-check-spinner" />
+                  <template v-else>{{ r.line.doneAll ? "✓" : r.line.partial ? "–" : "" }}</template>
+                </button>
                 <span class="kp-name">{{ r.line.name }}</span>
                 <span class="kp-types">
                   <span v-for="ty in r.line.types" :key="ty" class="tag" :class="ty">
@@ -151,31 +155,27 @@
                   >顺延</button>
                 </span>
               </div>
-              <div v-else class="kp-row" :class="{ done: r.task.status === 'done' }">
-                <button
-                  class="task-check"
-                  :disabled="archived"
-                  :title="archived ? '课程已归档，任务只读' : r.task.status === 'done' ? '撤销完成' : '标记完成'"
-                  @click.stop="toggleTasks([r.task])"
-                >{{ r.task.status === "done" ? "✓" : "" }}</button>
-                <span class="kp-name">{{ r.task.title }}</span>
-                <span class="kp-types">
-                  <span class="tag" :class="r.task.taskType">
-                    <span class="d"></span>{{ taskTypeLabel(r.task.taskType) }}
-                  </span>
-                </span>
-                <span class="kp-acts">
-                  <router-link v-if="taskAction(r.task)" class="kp-act" :to="taskAction(r.task)!.to">
-                    {{ taskAction(r.task)!.label }} →
-                  </router-link>
+              <StudyTaskRow
+                v-else
+                :title="r.task.title"
+                :task-type="r.task.taskType"
+                :done="r.task.status === 'done'"
+                :disabled="archived"
+                :busy="pendingTaskIds.has(r.task.id)"
+                :kp-id="r.task.kpId"
+                :chapter-id="r.task.chapterId"
+                dense
+                @toggle="toggleTasks([r.task])"
+              >
+                <template #extra>
                   <button
                     v-if="d.date === 'overdue' && !archived"
                     class="btn sm ghost"
                     :disabled="overdueBusy"
                     @click.stop="postponeTasks([r.task])"
                   >顺延</button>
-                </span>
-              </div>
+                </template>
+              </StudyTaskRow>
             </template>
             <template v-if="d.date === today && dueReviews.length">
               <div class="day-ch">间隔复习</div>
@@ -199,6 +199,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import {
@@ -217,6 +218,9 @@ import {
   formatLocalDate,
   DATA_SAVED_EVENT,
 } from "../api";
+import StudyTaskRow from "../components/StudyTaskRow.vue";
+import ProgressBar from "../components/ProgressBar.vue";
+import { taskTypeLabel } from "../constants/tasks";
 import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, ReviewDueItem } from "../api";
 
 const courseStore = useCourseStore();
@@ -298,6 +302,12 @@ const displayGroups = computed<TaskGroup[]>(() => {
 });
 
 const overdueBusy = ref(false);
+/** 正在写入的任务：防止连点，勾选框显示转圈 */
+const pendingTaskIds = ref<Set<number>>(new Set());
+
+function lineBusy(line: { tasks: StudyTask[] }): boolean {
+  return line.tasks.some((t) => pendingTaskIds.value.has(t.id));
+}
 
 async function postponeAll() {
   if (!plan.value) return;
@@ -318,29 +328,6 @@ const unscheduledCount = computed(() => {
   const covered = new Set(tasks.value.filter((t) => t.taskType === "learn" && t.kpId != null).map((t) => t.kpId));
   return knowledgePoints.value.filter((kp) => !covered.has(kp.id)).length;
 });
-
-const taskTypeLabel = (t: string): string => {
-  const map: Record<string, string> = { learn: "新知", review: "复习", practice: "练习", test: "测评" };
-  return map[t] ?? t;
-};
-
-/** 任务行专属去处：学→双栏学习 / 练→专项刷题 / 复→定向复习 / 测→章节组卷或结业模考 */
-function taskAction(t: StudyTask): { to: { path: string; query: Record<string, string> }; label: string } | null {
-  if (t.taskType === "learn" && t.kpId != null) {
-    return { to: { path: "/study", query: { kp: String(t.kpId) } }, label: "去学习" };
-  }
-  if (t.taskType === "practice") {
-    return { to: { path: "/quiz", query: t.kpId != null ? { kp: String(t.kpId) } : {} }, label: "去刷题" };
-  }
-  if (t.taskType === "review") {
-    return { to: { path: "/review", query: t.kpId != null ? { kp: String(t.kpId) } : {} }, label: "去复习" };
-  }
-  if (t.taskType === "test") {
-    const query: Record<string, string> = t.chapterId ? { set: String(t.chapterId) } : { exam: "1" };
-    return { to: { path: "/quiz", query }, label: "去测评" };
-  }
-  return null;
-}
 
 /** 日摘要行：默认全部收起（今日除外），任务集变化时重置（nextId 按列表算，重新生成的计划可能复用旧 id，故不能只按 planId 判重） */
 const collapsedDays = ref<Set<string>>(new Set());
@@ -646,14 +633,24 @@ async function doSync() {
 /** 整行勾选：未全完成 → 全部标记完成；已全完成 → 全部撤销 */
 async function toggleTasks(list: StudyTask[]) {
   if (!list.length || archived.value) return;
+  if (list.some((t) => pendingTaskIds.value.has(t.id))) return;
   const next: "todo" | "done" = list.every((t) => t.status === "done") ? "todo" : "done";
   const ids = list.filter((t) => t.status !== next).map((t) => t.id);
+  if (ids.length === 0) return;
+  pendingTaskIds.value = new Set([...pendingTaskIds.value, ...list.map((t) => t.id)]);
+  // setStudyTasksStatus 会就地改后端对象，失败时必须把行状态恢复回点击前
+  const snapshot = list.map((t) => ({ task: t, status: t.status }));
   try {
     await setStudyTasksStatus(ids, next);
     for (const t of list) t.status = next;
   } catch (e) {
+    for (const { task, status } of snapshot) task.status = status;
     console.error("更新任务状态失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+  } finally {
+    const nextPending = new Set(pendingTaskIds.value);
+    for (const t of list) nextPending.delete(t.id);
+    pendingTaskIds.value = nextPending;
   }
 }
 

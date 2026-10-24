@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 import { useThemeStore } from "./stores/theme";
+import { installModalGlobals, uninstallModalGlobals } from "./utils/modals";
 import cssText from "./style.css?inline";
 
 let app: VueApp | null = null;
@@ -23,11 +24,13 @@ export function mount(el: Element): void {
   app.use(pinia);
   app.use(router);
   app.mount(el);
+  installModalGlobals(el);
 
   useThemeStore().apply();
 }
 
 export function unmount(): void {
+  uninstallModalGlobals();
   if (app) {
     app.unmount();
     app = null;

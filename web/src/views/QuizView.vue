@@ -3,7 +3,7 @@
     <div class="page-title"><h1>刷题练习</h1><div class="desc">筛选 · 组卷 · 即时批改</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <template v-else>
@@ -116,10 +116,10 @@
           开始刷题（{{ selfTestPool.length }} 题）
         </button>
         <button v-else class="btn primary" :disabled="selfTestBusy" @click="generateSelfTest">
-          {{ selfTestBusy ? "出题中…" : "⚡ 生成自测题并开始" }}
+          <AppIcon name="spark" :size="14" /> {{ selfTestBusy ? "出题中…" : "生成自测题并开始" }}
         </button>
         <button class="btn ghost sm" @click="kpChangeOpen = true">换一个</button>
-        <button class="st-close" title="关闭" @click="selfTestKpId = null">✕</button>
+        <button class="st-close" title="关闭" @click="selfTestKpId = null"><AppIcon name="x" :size="14" /></button>
       </div>
 
       <div v-show="!practicing && !archived" class="card">
@@ -127,7 +127,7 @@
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">从已抽取的知识点命题</span>
         </h3>
         <div v-if="knowledgePoints.length === 0" class="empty-state" style="padding:20px 0">
-          <span class="ico">🌱</span> 暂无知识点，请先上传资料并抽取知识点
+          <span class="ico"><AppIcon name="spark" :size="28" /></span> 暂无知识点，请先上传资料并抽取知识点
         </div>
         <template v-else>
           <div class="gen-scope">
@@ -138,24 +138,24 @@
           <div class="gen-form">
             <div class="field">
               <label>题型</label>
-              <select v-model="genQType" :disabled="generating">
+              <select v-model="genQType" :disabled="generating" aria-label="题型">
                 <option v-for="(label, key) in QUESTION_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
               </select>
             </div>
             <div class="field">
               <label>难度</label>
-              <select v-model="genDifficulty" :disabled="generating">
+              <select v-model="genDifficulty" :disabled="generating" aria-label="难度">
                 <option v-for="(label, key) in QUESTION_DIFFICULTY_LABELS" :key="key" :value="key">{{ label }}</option>
               </select>
             </div>
             <div class="field">
               <label>数量</label>
-              <select v-model.number="genCount" :disabled="generating">
+              <select v-model.number="genCount" :disabled="generating" aria-label="数量">
                 <option v-for="n in 5" :key="n" :value="n">{{ n }} 题</option>
               </select>
             </div>
-            <button class="btn primary" :disabled="generating || selectedKpIds.length === 0" @click="generate" style="align-self:stretch">
-              {{ generating ? "出题中…" : "⚡ 开始出题" }}
+            <button class="btn primary gen-submit" :disabled="generating || selectedKpIds.length === 0" @click="generate">
+              <AppIcon name="spark" :size="14" /> {{ generating ? "出题中…" : "开始出题" }}
             </button>
           </div>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
@@ -272,6 +272,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";

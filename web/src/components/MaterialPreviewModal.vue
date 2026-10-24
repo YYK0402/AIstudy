@@ -25,7 +25,7 @@
       </div>
       <div class="mp-content">
         <div v-if="material && material.contentText">{{ material.contentText }}</div>
-        <div v-else style="color:var(--as-text-faint)">（无文本内容）</div>
+        <EmptyState v-else compact icon="book" text="该资料没有可预览的文本内容" />
       </div>
     </div>
   </div>
@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import EmptyState from "./EmptyState.vue";
 import { materialSourceLabel, openSiyuanDoc } from "../api";
 import type { Material } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
@@ -74,65 +75,3 @@ const headings = computed<ParsedHeading[]>(() => {
 });
 </script>
 
-<style scoped>
-.mp-modal {
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 20px;
-}
-.mp-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-.mp-header h2 {
-  margin: 0;
-  font-size: 18px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mp-close {
-  flex-shrink: 0;
-  margin-left: 12px;
-  color: var(--as-text-faint);
-}
-.mp-toc {
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  background: var(--as-bg-elev2);
-  border: 1px solid var(--as-border);
-  border-radius: var(--as-radius-sm);
-  max-height: 140px;
-  overflow-y: auto;
-}
-.mp-toc-title {
-  font-size: 11px;
-  color: var(--as-text-faint);
-  margin-bottom: 6px;
-  letter-spacing: .06em;
-}
-.mp-toc-item {
-  font-size: 12.5px;
-  line-height: 1.9;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mp-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 14px;
-  border: 1px solid var(--as-border);
-  border-radius: var(--as-radius-sm);
-  font-size: 13px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-  word-break: break-word;
-  user-select: text;
-  -webkit-user-select: text;
-}
-</style>

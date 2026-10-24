@@ -3,7 +3,7 @@
     <div class="page-title"><h1>闪卡本</h1><div class="desc">双面闪卡 · AI 生成 · SM2 间隔复习</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <template v-else>
@@ -13,7 +13,7 @@
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">每个知识点一张卡（正面问题 / 背面答案要点）</span>
         </h3>
         <div v-if="knowledgePoints.length === 0" class="empty-state" style="padding:20px 0">
-          <span class="ico">🌱</span> 暂无知识点，请先上传资料并抽取知识点
+          <span class="ico"><AppIcon name="spark" :size="28" /></span> 暂无知识点，请先上传资料并抽取知识点
         </div>
         <template v-else>
           <div class="gen-scope">
@@ -26,7 +26,7 @@
           </div>
           <div style="margin-top:10px">
             <button class="btn primary" :disabled="generating || selectedKpIds.length === 0" @click="generate">
-              {{ generating ? `生成中 ${genProgress}…` : "⚡ 开始生成" }}
+              <AppIcon name="spark" :size="14" /> {{ generating ? `生成中 ${genProgress}…` : "开始生成" }}
             </button>
           </div>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
@@ -46,9 +46,12 @@
             开始复习{{ dueCardCount > 0 ? `（${dueCardCount} 张到期）` : "" }}
           </button>
         </h3>
-        <div v-if="cards.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">🃏</span> 暂无闪卡，选择知识点点「开始生成」或手动添加
-        </div>
+        <EmptyState
+          v-if="cards.length === 0"
+          compact
+          icon="cards"
+          text="暂无闪卡。&#10;选择知识点后点「开始生成」，或手动添加一张。"
+        />
         <div v-else class="fc-list">
           <div v-for="c in cards" :key="c.id" class="fc-item">
             <div class="fc-front">{{ c.front }}</div>
@@ -86,7 +89,9 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import EmptyState from "../components/EmptyState.vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {

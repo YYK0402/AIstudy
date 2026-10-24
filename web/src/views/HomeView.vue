@@ -30,12 +30,15 @@
           <span>创建于 {{ formatDate(c.createTime) }}</span>
           <span v-if="courseStats[c.id]">{{ courseStats[c.id]!.kpTotal }} 个知识点 · 已掌握 {{ courseStats[c.id]!.mastered }}</span>
         </div>
+        <div v-if="courseStats[c.id] && courseStats[c.id]!.kpTotal > 0" class="cc-progress">
+          <ProgressBar :value="courseStats[c.id]!.mastered" :max="courseStats[c.id]!.kpTotal" tone="green" />
+        </div>
         <div class="cc-foot">
           <span class="cc-todo" style="color:var(--as-text-faint)">
-            {{ isArchived(c) ? "🗄️ 已归档 · 只读" : courseStats[c.id] && courseStats[c.id]!.kpTotal > 0 ? "● 学习中" : "○ 暂无学习记录" }}
+            {{ isArchived(c) ? "已归档 · 只读" : courseStats[c.id] && courseStats[c.id]!.kpTotal > 0 ? "● 学习中" : "○ 暂无学习记录" }}
           </span>
           <button class="btn sm ghost card-archive-btn" @click.stop="toggleArchive(c)" :title="isArchived(c) ? '取消归档' : '归档课程（归档后仅可查看）'">
-            {{ isArchived(c) ? "↩ 恢复" : "🗄 归档" }}
+            <AppIcon :name="isArchived(c) ? 'refresh' : 'archive'" :size="12" /> {{ isArchived(c) ? "恢复" : "归档" }}
           </button>
           <span class="cc-go">{{ isArchived(c) ? "查看 →" : "开始学习 →" }}</span>
         </div>
@@ -47,32 +50,40 @@
     </div>
 
     <div class="section-head">
-      <h2>今日任务</h2><span class="hint">跨课程汇总 · 学习计划 + 到期间隔复习</span>
+      <h2>今日任务</h2><span class="hint">按课程汇总 · 学习计划 + 到期间隔复习</span>
     </div>
     <div class="card">
-      <div v-if="todayTasks.length === 0" class="empty-state">
-        <span class="ico">📭</span>
+      <div v-if="todayGroups.length === 0" class="empty-state">
+        <span class="ico"><AppIcon name="folder" :size="28" /></span>
         暂无待办任务，生成学习计划或出现到期复习后会显示在这里
       </div>
-      <div v-else class="today-list" style="padding:4px 0">
-        <div v-for="task in todayTasks" :key="task.id" class="today-item" :class="{ done: task.done }" @click="openTask(task)">
-          <span v-if="task.kind === 'plan'" class="tp-check" @click.stop="toggleTask(task)">{{ task.done ? "✓" : "" }}</span>
-          <div class="ico" :style="{ background: task.color }"><span style="font-size:14px">{{ task.icon }}</span></div>
-          <div class="info"><div class="t">{{ task.title }}</div><div class="s">{{ task.sub }}</div></div>
-          <router-link
-            v-if="task.kind === 'plan' && (task.kpId != null || task.taskType === 'test')"
-            class="task-act"
-            :to="taskActionRoute(task)"
-            @click.stop
-          >{{ taskActionLabel(task) }}</router-link>
-          <router-link
-            v-else-if="task.kind === 'review'"
-            class="task-act"
-            :to="task.kpId != null ? { path: '/review', query: { kp: String(task.kpId) } } : '/review'"
-            @click.stop
-          >去复习</router-link>
-          <span class="today-badge">{{ task.course }}</span>
-          <div class="done"></div>
+      <div v-else class="today-groups">
+        <div v-for="g in todayGroups" :key="g.courseId" class="today-group">
+          <div class="today-course" @click="toggleCourse(g.courseId)">
+            <span class="tc-emoji">{{ emojiOf(g.courseId) }}</span>
+            <span class="tc-name">{{ g.courseName }}</span>
+            <span class="tc-sum">{{ g.tasks.length }} 个任务 · {{ groupSummary(g) }}</span>
+            <span class="tc-prog">{{ g.doneCount }}/{{ g.tasks.length }} 完成</span>
+            <ProgressBar :value="g.doneCount" :max="g.tasks.length" tone="green" sm />
+            <button class="link-btn tc-tgl" @click.stop="toggleCourse(g.courseId)">
+              {{ isCourseOpen(g.courseId) ? "收起" : "展开" }}
+            </button>
+          </div>
+          <div v-if="isCourseOpen(g.courseId)" class="today-list">
+            <StudyTaskRow
+              v-for="task in g.tasks"
+              :key="task.kind + '-' + task.id"
+              :title="task.title"
+              :task-type="task.taskType"
+              :done="task.done"
+              :checkable="task.kind === 'plan'"
+              :busy="pendingTaskIds.has(task.id)"
+              :action="taskAction(task)"
+              dense
+              @click="openTask(task)"
+              @toggle="toggleTask(task)"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -80,11 +91,15 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
 import { emojiOf } from "../utils";
+import StudyTaskRow from "../components/StudyTaskRow.vue";
+import ProgressBar from "../components/ProgressBar.vue";
+import { TASK_TYPES, TASK_TYPE_LABELS, taskAction } from "../constants/tasks";
 import {
   getData,
   queryStudyPlans,
@@ -151,6 +166,7 @@ const courseStats = reactive<Record<number, { kpTotal: number; mastered: number 
 
 interface TodayTaskItem {
   id: number;
+  courseId: number;
   /** plan=计划任务（可手动勾选）；review=到期 SM2 复习项（评级即完成，id 取负 schedule.id 防冲突） */
   kind: "plan" | "review";
   planId: number;
@@ -160,45 +176,70 @@ interface TodayTaskItem {
   scheduledDate: string;
   sort: number;
   title: string;
-  sub: string;
   course: string;
-  icon: string;
-  color: string;
   done: boolean;
 }
 
 const todayTasks = reactive<TodayTaskItem[]>([]);
+/** 正在写入的任务：防止连点，勾选框显示转圈 */
+const pendingTaskIds = ref<Set<number>>(new Set());
 
-const TASK_ICONS: Array<{ icon: string; color: string }> = [
-  { icon: "📖", color: "var(--as-accent-soft)" },
-  { icon: "✏️", color: "var(--as-blue-soft)" },
-  { icon: "🔁", color: "var(--as-green-soft)" },
-  { icon: "💡", color: "var(--as-red-soft)" },
-];
-
-const taskTypeLabel = (t: string): string => {
-  const map: Record<string, string> = { learn: "新知", review: "复习", practice: "练习", test: "测评" };
-  return map[t] ?? t;
-};
-
-/** 各类型专属去处：学→双栏学习 / 练→专项刷题 / 复→定向复习 / 测→章节组卷或结业模考 */
-function taskActionRoute(task: TodayTaskItem): { path: string; query: Record<string, string> } {
-  const kpQuery = { kp: String(task.kpId) };
-  if (task.taskType === "practice") return { path: "/quiz", query: kpQuery };
-  if (task.taskType === "review") return { path: "/review", query: kpQuery };
-  if (task.taskType === "test") {
-    return task.chapterId
-      ? { path: "/quiz", query: { set: String(task.chapterId) } }
-      : { path: "/quiz", query: { exam: "1" } };
-  }
-  return { path: "/study", query: kpQuery };
+interface CourseDayGroup {
+  courseId: number;
+  courseName: string;
+  tasks: TodayTaskItem[];
+  counts: Record<string, number>;
+  doneCount: number;
 }
 
-function taskActionLabel(task: TodayTaskItem): string {
-  if (task.taskType === "practice") return "去刷题";
-  if (task.taskType === "review") return "去复习";
-  if (task.taskType === "test") return "去测评";
-  return "去学习";
+/** 今日任务按课程归组（组间保持课程原顺序，组内未完成在前） */
+const todayGroups = computed<CourseDayGroup[]>(() => {
+  const map = new Map<number, CourseDayGroup>();
+  for (const t of todayTasks) {
+    const g = map.get(t.courseId) ?? {
+      courseId: t.courseId,
+      courseName: t.course,
+      tasks: [],
+      counts: {},
+      doneCount: 0,
+    };
+    g.tasks.push(t);
+    g.counts[t.taskType] = (g.counts[t.taskType] ?? 0) + 1;
+    if (t.done) g.doneCount += 1;
+    map.set(t.courseId, g);
+  }
+  return [...map.values()];
+});
+
+function groupSummary(g: CourseDayGroup): string {
+  return TASK_TYPES.filter((key) => g.counts[key])
+    .map((key) => `${TASK_TYPE_LABELS[key]} ${g.counts[key]}`)
+    .join(" · ");
+}
+
+/** 课程行展开状态：仅一门课程有任务时默认展开，多门默认收起 */
+const expandedCourses = ref<Set<number>>(new Set());
+let loadedGroupsKey = "";
+
+function isCourseOpen(courseId: number): boolean {
+  return expandedCourses.value.has(courseId);
+}
+
+function toggleCourse(courseId: number) {
+  const next = new Set(expandedCourses.value);
+  if (next.has(courseId)) next.delete(courseId);
+  else next.add(courseId);
+  expandedCourses.value = next;
+}
+
+function applyDefaultExpand() {
+  const key = todayGroups.value
+    .map((g) => `${g.courseId}:${g.tasks.map((t) => t.id).join(",")}`)
+    .join("|");
+  if (key === loadedGroupsKey) return;
+  loadedGroupsKey = key;
+  expandedCourses.value =
+    todayGroups.value.length === 1 ? new Set([todayGroups.value[0].courseId]) : new Set();
 }
 
 function enterCourse(course: Course) {
@@ -240,6 +281,7 @@ async function load() {
       for (const t of tasks) {
         items.push({
           id: t.id,
+          courseId: c.id,
           kind: "plan",
           planId: t.planId,
           chapterId: t.chapterId,
@@ -248,10 +290,7 @@ async function load() {
           scheduledDate: t.scheduledDate,
           sort: t.sort,
           title: t.title,
-          sub: taskTypeLabel(t.taskType),
           course: c.name,
-          icon: "📌",
-          color: "var(--as-accent-soft)",
           done: t.status === "done",
         });
       }
@@ -265,6 +304,7 @@ async function load() {
       const card = item.flashcard;
       items.push({
         id: -item.schedule.id,
+        courseId: c.id,
         kind: "review",
         planId: 0,
         chapterId: null,
@@ -273,31 +313,20 @@ async function load() {
         scheduledDate: item.schedule.dueTime,
         sort: 0,
         title: kp ? `复习：${kp.name}` : q ? `错题复习：${q.title}` : card ? `闪卡：${truncateText(card.front, 24)}` : `复习 #${item.schedule.id}`,
-        sub: "间隔复习",
         course: c.name,
-        icon: "🔁",
-        color: "var(--as-green-soft)",
         done: false,
       });
     }
   }
   items.sort((a, b) => Number(a.done) - Number(b.done));
-  for (let i = 0; i < items.length; i++) {
-    if (items[i].kind !== "plan") continue;
-    const style = TASK_ICONS[i % TASK_ICONS.length];
-    items[i].icon = style.icon;
-    items[i].color = style.color;
-  }
   todayTasks.splice(0, todayTasks.length, ...items);
+  applyDefaultExpand();
 }
 
 function openTask(task: TodayTaskItem) {
-  if (task.kind === "review") {
-    router.push({ path: "/review", query: task.kpId != null ? { kp: String(task.kpId) } : {} });
-    return;
-  }
-  if (task.kpId != null || task.taskType === "test") {
-    router.push(taskActionRoute(task));
+  const action = taskAction(task);
+  if (action) {
+    router.push(action.to);
     return;
   }
   router.push("/plan");
@@ -305,6 +334,8 @@ function openTask(task: TodayTaskItem) {
 }
 
 async function toggleTask(task: TodayTaskItem) {
+  if (pendingTaskIds.value.has(task.id)) return;
+  pendingTaskIds.value = new Set(pendingTaskIds.value).add(task.id);
   try {
     await updateStudyTask({
       id: task.id,
@@ -321,6 +352,10 @@ async function toggleTask(task: TodayTaskItem) {
   } catch (e) {
     console.error("更新任务状态失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+  } finally {
+    const next = new Set(pendingTaskIds.value);
+    next.delete(task.id);
+    pendingTaskIds.value = next;
   }
 }
 
@@ -341,13 +376,3 @@ watch(
 );
 </script>
 
-<style scoped>
-.today-item .tp-check {
-  width: 16px;
-  text-align: center;
-  color: var(--as-green);
-  font-weight: 600;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-</style>

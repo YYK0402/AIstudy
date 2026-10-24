@@ -3,12 +3,12 @@
     <div class="page-title"><h1>开始学习</h1><div class="desc">冯诺依曼输出式学习 · 讲解 → 评估 → 补强</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <div v-else-if="knowledgePoints.length === 0" class="card">
       <div class="empty-state">
-        <span class="ico">🌱</span>
+        <span class="ico"><AppIcon name="spark" :size="28" /></span>
         暂无待学习的知识点<br />请先在「课程内容」中上传资料并生成知识点
       </div>
       <div style="display:flex;justify-content:center;margin-top:16px">
@@ -17,43 +17,25 @@
     </div>
 
     <template v-else>
-      <div v-if="todayTasks.length" class="card">
+      <div v-if="todayTasks.length && !fromKpLink" class="card">
         <h3>今日计划
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">{{ todayDoneCount }}/{{ todayTasks.length }}</span>
         </h3>
         <div v-if="todayDoneCount === todayTasks.length" class="empty-state" style="padding:12px 0">
-          <span class="ico">🎉</span> 今日计划已完成
+          <span class="ico"><AppIcon name="check" :size="28" /></span> 今日计划已完成
         </div>
         <div v-else class="today-plan-list">
-          <div
+          <StudyTaskRow
             v-for="t in todayTasks"
             :key="t.id"
-            class="today-plan-item"
-            :class="{ done: t.status === 'done', clickable: t.status !== 'done' && t.kpId != null && t.taskType === 'learn' }"
+            :title="t.title"
+            :task-type="t.taskType"
+            :done="t.status === 'done'"
+            :checkable="false"
+            :action="studyAction(t)"
+            dense
             @click="onTodayPlanItem(t)"
-          >
-            <span class="tp-check">{{ t.status === "done" ? "✓" : "" }}</span>
-            <span class="tp-title">{{ t.title }}</span>
-            <span class="tag" :class="t.taskType"><span class="d"></span>{{ taskTypeLabel(t.taskType) }}</span>
-            <router-link
-              v-if="t.kpId != null && t.taskType === 'practice'"
-              class="task-act"
-              :to="{ path: '/quiz', query: { kp: String(t.kpId) } }"
-              @click.stop
-            >去刷题</router-link>
-            <router-link
-              v-else-if="t.kpId != null && t.taskType === 'review'"
-              class="task-act"
-              :to="{ path: '/review', query: { kp: String(t.kpId) } }"
-              @click.stop
-            >去复习</router-link>
-            <router-link
-              v-else-if="t.taskType === 'test'"
-              class="task-act"
-              :to="t.chapterId ? { path: '/quiz', query: { set: String(t.chapterId) } } : { path: '/quiz', query: { exam: '1' } }"
-              @click.stop
-            >去测评</router-link>
-          </div>
+          />
         </div>
       </div>
 
@@ -74,7 +56,11 @@
         </div>
       </div>
 
-      <div class="study-section" style="margin-top:14px">
+      <div v-if="fromKpLink" class="s" style="margin:14px 0 0;color:var(--as-text-faint)">
+        已定位到今日任务对应知识点 ·
+        <button class="link-btn" @click="fromKpLink = false">查看今日计划</button>
+      </div>
+      <div ref="studySectionRef" class="study-section" style="margin-top:14px">
         <h3>
           本轮学习
           <span v-if="queue.length" class="s" style="color:var(--as-text-faint)">{{ queueIndex + 1 }}/{{ queue.length }}</span>
@@ -106,7 +92,7 @@
               <div v-if="selectedKp.content" class="kp-body"><p>{{ selectedKp.content }}</p></div>
               <div v-else class="s" style="color:var(--as-text-faint)">该知识点暂无参考描述</div>
               <div class="src">
-                📄 资料来源：{{ sourceNames(selectedKp) || "（未关联资料）" }}
+                <AppIcon name="book" :size="13" /> 资料来源：{{ sourceNames(selectedKp) || "（未关联资料）" }}
                 <button
                   v-if="selectedKp.blockId"
                   class="btn sm ghost"
@@ -117,7 +103,7 @@
               </div>
             </template>
             <div v-else class="empty-state" style="padding:40px 0">
-              <span class="ico">📖</span>
+              <span class="ico"><AppIcon name="book" :size="28" /></span>
               未选择知识点<br />
               <span class="s" style="color:var(--as-text-faint)">点击「选择知识点」按 章-节-知识点 自选（可多选、可选整节），或点击上方今日计划任务开始</span>
             </div>
@@ -150,7 +136,7 @@
                         class="ask-reroll"
                         :disabled="askLoadingKpId != null"
                         @click="rerollAsk"
-                      >{{ askLoadingKpId === selectedKp.id ? "生成中…" : "🔄 换个问法" }}</button>
+                      >{{ askLoadingKpId === selectedKp.id ? "生成中…" : "换个问法" }}</button>
                     </div>
                     <div v-if="askLoadingKpId === selectedKp.id" class="ask-loading">🤔 正在结合这个知识点的内容为你生成提问…</div>
                     <template v-else>{{ currentAskDisplay }}</template>
@@ -200,7 +186,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import AppIcon from "../components/AppIcon.vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {
@@ -217,6 +204,8 @@ import {
   generateKpAskPrompt,
   isAskPromptFresh,
 } from "../api";
+import StudyTaskRow from "../components/StudyTaskRow.vue";
+import { taskAction } from "../constants/tasks";
 import type { KnowledgePoint, ExplainRecord, ExplainSummary, Mastery, ExplainResult, StudyTask, Chapter, Material } from "../api";
 import KpSelectModal from "../components/KpSelectModal.vue";
 
@@ -238,10 +227,10 @@ const doneKpIds = computed(() => {
   }
   return s;
 });
-const taskTypeLabel = (t: string): string => {
-  const map: Record<string, string> = { learn: "新知", review: "复习", practice: "练习", test: "测评" };
-  return map[t] ?? t;
-};
+/** 学习页内「新知」由行点击打开，其余类型走各自页面 */
+function studyAction(t: StudyTask) {
+  return t.taskType === "learn" ? null : taskAction(t);
+}
 
 // ===== 会话队列：默认由今日计划驱动，也可弹窗自选（教材序） =====
 const queue = ref<number[]>([]);
@@ -249,6 +238,9 @@ const queueIndex = ref(0);
 const kpSelectOpen = ref(false);
 
 const selectedKpId = computed<number | null>(() => queue.value[queueIndex.value] ?? null);
+/** 从 ?kp= 深链进入：隐藏今日计划并滚到本轮学习，避免目标知识点被列表挤到首屏之外 */
+const fromKpLink = ref(false);
+const studySectionRef = ref<HTMLElement | null>(null);
 const selectedKp = computed<KnowledgePoint | null>(() =>
   selectedKpId.value !== null
     ? knowledgePoints.value.find((k) => k.id === selectedKpId.value) ?? null
@@ -317,7 +309,11 @@ function enterKpStudy() {
   }
   queue.value = [kpId];
   queueIndex.value = 0;
+  fromKpLink.value = true;
   clearQuery();
+  void nextTick(() => {
+    studySectionRef.value?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
 }
 
 // ===== 选中 KP 的派生展示 =====

@@ -3,7 +3,7 @@
     <div class="page-title"><h1>错题本</h1><div class="desc">答错自动归集 · 反复训练</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <div v-else class="card">
@@ -11,9 +11,14 @@
         <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ wrongList.length }} 题（已掌握 {{ graduatedCount }} 题）</span>
         <button class="btn ghost sm" :disabled="filteredWrong.length === 0" @click="exportMarkdown" style="margin-left:12px">导出</button>
       </h3>
-      <div v-if="wrongList.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">🎯</span> 暂无错题<br />刷题时答错的题目会自动归集到这里
-      </div>
+      <EmptyState
+        v-if="wrongList.length === 0"
+        compact
+        icon="alert"
+        text="暂无错题。&#10;刷题时答错的题目会自动归集到这里。"
+      >
+        <router-link class="btn sm primary" to="/quiz">去刷题</router-link>
+      </EmptyState>
       <template v-else>
         <div class="w-filter">
           <div class="filter-chips">
@@ -80,7 +85,9 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
+import EmptyState from "../components/EmptyState.vue";
 import { useCourseStore } from "../stores/course";
 import {
   queryWrongQuestions,

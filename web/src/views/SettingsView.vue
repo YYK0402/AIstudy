@@ -10,7 +10,7 @@
       <div class="card">
         <h3>服务商 <button class="btn sm ghost" style="margin-left:auto" @click="modalStore.openNewProvider()">＋ 新增服务商</button></h3>
         <div v-if="providerStore.providers.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">🔌</span>
+          <span class="ico"><AppIcon name="link" :size="28" /></span>
           暂无服务商，新增 OpenAI 兼容接口的大模型服务
         </div>
         <div v-else class="provider-list">
@@ -24,8 +24,8 @@
                 <div v-if="testResults[p.id]" class="s" :style="{ color: testResults[p.id].ok ? 'var(--as-green)' : 'var(--as-red)' }">{{ testResults[p.id].message }}</div>
               </div>
               <button class="btn sm ghost" :disabled="testingId === p.id" @click="handleTest(p)">{{ testingId === p.id ? "测试中…" : "测试" }}</button>
-              <span class="p-action" title="编辑" @click="handleEdit(p)">✎</span>
-              <span class="p-action danger" title="删除" @click="handleDelete(p)">✕</span>
+              <span class="p-action" title="编辑" @click="handleEdit(p)"><AppIcon name="pencil" :size="13" /></span>
+              <span class="p-action danger" title="删除" @click="handleDelete(p)"><AppIcon name="x" :size="13" /></span>
               <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
             </div>
             <div v-if="expandedId === p.id" class="provider-models">
@@ -47,8 +47,8 @@
                     <span v-if="m.maxContext" class="m-id">{{ m.maxContext }} ctx</span>
                     <span v-if="m.temperature != null" class="m-id">t{{ m.temperature }}</span>
                     <span v-if="m.maxTokens != null" class="m-id">out{{ m.maxTokens }}</span>
-                    <span class="m-del" title="编辑" style="opacity:1" @click="startEditModel(m)">✎</span>
-                    <span class="m-del" title="删除" @click="removeModel(m)">✕</span>
+                    <span class="m-del" title="编辑" style="opacity:1" @click="startEditModel(m)"><AppIcon name="pencil" :size="12" /></span>
+                    <span class="m-del" title="删除" @click="removeModel(m)"><AppIcon name="x" :size="12" /></span>
                   </template>
                 </div>
                 <div v-if="fetchingModels" class="s" style="color:var(--as-text-faint)">获取模型列表中…</div>
@@ -94,7 +94,7 @@
               <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
             </select>
           </div>
-          <div v-for="t in tasks" :key="t.key" class="ta-row">
+          <div v-for="t in visibleTasks" :key="t.key" class="ta-row">
             <span class="t">{{ t.name }}</span>
             <select :value="taskModelMap[t.key] ?? ''" @change="onTaskModelChange(t.key, $event)">
               <option value="">全局默认</option>
@@ -102,12 +102,15 @@
             </select>
           </div>
         </div>
+        <button v-if="tasks.length > TASK_ASSIGN_PREVIEW" class="link-btn" style="margin-top:8px" @click="taskAssignExpanded = !taskAssignExpanded">
+          {{ taskAssignExpanded ? "收起" : `展开全部 ${tasks.length} 项` }}
+        </button>
         <div class="s" style="color:var(--as-text-faint);margin-top:10px">
           优先级：课程指定的模型（课程编辑弹窗设置）＞ 任务级 ＞ 全局默认。
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:14px">
+    <div class="card" style="margin-top:14px" @change="markDirty" @input="markDirty">
       <h3>数据与存储
         <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings" style="margin-left:auto">
           {{ settingsSaving ? "保存中…" : "保存" }}
@@ -115,7 +118,7 @@
       </h3>
       <div class="ta-row">
         <span class="t">章节识别方式</span>
-        <select v-model="settings.chapterMode">
+        <select v-model="settings.chapterMode" aria-label="章节识别方式">
           <option value="manual">手动（上传后不自动建目录）</option>
           <option value="auto">自动（上传资料后按标题识别目录）</option>
         </select>
@@ -125,18 +128,18 @@
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">资料持久化到思源</span>
-        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="settings.persistToSiyuan = !settings.persistToSiyuan"></div>
+        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="togglePersist"></div>
       </div>
       <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
         <span class="t">笔记本名称</span>
-        <input v-model="settings.notebookName" placeholder="AI 研习" style="flex:1" />
+        <input v-model="settings.notebookName" aria-label="思源笔记本名称" placeholder="AI 研习" style="flex:1" />
       </div>
       <div class="s" style="color:var(--as-text-faint);margin-top:6px">
         开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">AI 失败自动重试</span>
-        <select v-model.number="settings.aiRetryCount">
+        <select v-model.number="settings.aiRetryCount" aria-label="AI 失败重试次数">
           <option :value="0">关闭</option>
           <option :value="1">1 次（超时 / 5xx / 网络错误）</option>
           <option :value="2">2 次（超时 / 5xx / 网络错误）</option>
@@ -147,7 +150,7 @@
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">请求速率限制（次/分钟）</span>
-        <input v-model.number="settings.aiRateLimitPerMin" type="number" min="0" step="1" placeholder="0 = 不限" style="width:90px" />
+        <input v-model.number="settings.aiRateLimitPerMin" aria-label="每分钟请求上限" type="number" min="0" step="1" placeholder="0 = 不限" style="width:90px" />
       </div>
       <div class="s" style="color:var(--as-text-faint);margin-top:6px">
         0 = 不限。AI 调用（全部服务商共享窗口）超过上限时排队等待窗口释放（本地 Ollama 建议 30 以上，公网 API 建议 10-20）。
@@ -223,11 +226,18 @@
         </div>
       </template>
     </div>
+    <div v-if="settingsDirty" class="save-float">
+      <span>设置有修改</span>
+      <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings">
+        {{ settingsSaving ? "保存中…" : "保存" }}
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import AppIcon from "../components/AppIcon.vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
 import {
@@ -260,6 +270,18 @@ const settings = reactive({
   aiRateLimitPerMin: 0,
 });
 const settingsSaving = ref(false);
+/** 底栏「有修改」提示：加载阶段不置脏，之后任何字段变更都提示 */
+const settingsDirty = ref(false);
+let settingsReady = false;
+
+function markDirty() {
+  if (settingsReady) settingsDirty.value = true;
+}
+
+function togglePersist() {
+  settings.persistToSiyuan = !settings.persistToSiyuan;
+  markDirty();
+}
 const logPage = ref(1);
 const LOG_PAGE_SIZE = 10;
 /** 当前展开明细的日志 id（同一时间只展开一条） */
@@ -295,6 +317,12 @@ const modelFetchError = ref("");
 const modelUseManual = ref(true);
 
 const tasks = AI_TASKS;
+/** 任务分配默认只展示常用项，避免设置页过long */
+const TASK_ASSIGN_PREVIEW = 5;
+const taskAssignExpanded = ref(false);
+const visibleTasks = computed(() =>
+  taskAssignExpanded.value ? tasks : tasks.slice(0, TASK_ASSIGN_PREVIEW),
+);
 const taskModelMap = computed(() => providerStore.taskModelMap);
 
 // ===== 提示词模板 Tab =====
@@ -567,6 +595,7 @@ async function saveSettings() {
       aiRateLimitPerMin: Number(settings.aiRateLimitPerMin) || 0,
     });
     settings.notebookName = settings.notebookName.trim() || "AI 研习";
+    settingsDirty.value = false;
     window.siyuanAiStudy.showMessage("设置已保存");
   } catch (error) {
     console.error("保存应用设置失败:", error);
@@ -592,11 +621,7 @@ function formatFullTime(iso: string): string {
 
 onMounted(async () => {
   void loadPromptTemplates();
-  try {
-    await providerStore.load();
-  } catch (error) {
-    console.error("加载模型配置失败:", error);
-  }
+  // 先加载应用设置（本地数据，快），再拉服务商/模型，避免慢请求拖住「有修改」判定
   try {
     const s = await getSettings();
     settings.chapterMode = s.chapterMode;
@@ -604,8 +629,16 @@ onMounted(async () => {
     settings.notebookName = s.notebookName;
     settings.aiRetryCount = (s.aiRetryCount === 1 || s.aiRetryCount === 2 ? s.aiRetryCount : 0) as 0 | 1 | 2;
     settings.aiRateLimitPerMin = Number(s.aiRateLimitPerMin) || 0;
+    // 等 watch 消化完加载赋值再允许置脏，避免一进页面就提示「有修改」
+    await nextTick();
+    settingsReady = true;
   } catch (error) {
     console.error("加载应用设置失败:", error);
+  }
+  try {
+    await providerStore.load();
+  } catch (error) {
+    console.error("加载模型配置失败:", error);
   }
 });
 </script>

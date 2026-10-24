@@ -3,7 +3,7 @@
     <div class="page-title"><h1>课程内容</h1><div class="desc">章节 · 单元 · 知识点 · 关联资料</div></div>
 
     <div v-if="archived" class="archived-banner" style="margin-bottom:14px">
-      <span>🗄️ 课程已归档 · 内容只读，如需修改请先在「课程主页」取消归档</span>
+      <span>课程已归档 · 内容只读，如需修改请先在「课程主页」取消归档</span>
     </div>
 
     <div class="two-col">
@@ -12,15 +12,15 @@
         <h3>目录结构
           <template v-if="!archived">
             <button class="btn sm ghost" :disabled="!currentCourseId() || reidentifying" @click="reidentifyChapters">
-              {{ reidentifying ? "识别中…" : "🔄 重新识别目录" }}
+              <AppIcon name="refresh" :size="14" /> {{ reidentifying ? "识别中…" : "重新识别目录" }}
             </button>
-            <button v-if="!batchMode" class="btn sm ghost" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode">☑ 批量删除</button>
+            <button v-if="!batchMode" class="btn sm ghost" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /> 批量删除</button>
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           </template>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
-          <span class="ico">📭</span> 请先选择课程
+          <span class="ico"><AppIcon name="folder" :size="28" /></span> 请先选择课程
         </div>
         <div v-else-if="chapters.length === 0" class="empty-state" style="padding:24px 0">
           <span class="ico">🗂️</span> 暂无章节，点击「添加章节」搭建目录
@@ -42,9 +42,14 @@
               <template v-if="!archived && !batchMode">
                 <span class="drag-handle" title="拖拽换序 / 移入小节" draggable="true" @click.stop @dragstart="onDragStart('chapter', ch.id)" @dragend="onDragEnd">⋮⋮</span>
                 <button class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
-                <button class="btn sm ghost" @click.stop="openReview(ch)">复盘</button>
-                <button class="btn sm ghost" @click.stop="editChapter(ch)">编辑</button>
-                <button class="btn sm ghost" @click.stop="delChapter(ch)">删除</button>
+                <span class="row-more">
+                  <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="toggleRowMenu(ch.id)">⋯</button>
+                  <div v-if="rowMenuId === ch.id" class="row-menu" @click.stop>
+                    <button @click.stop="closeRowMenu(); openReview(ch)">复盘</button>
+                    <button @click.stop="closeRowMenu(); editChapter(ch)">编辑</button>
+                    <button class="danger" @click.stop="closeRowMenu(); delChapter(ch)">删除</button>
+                  </div>
+                </span>
               </template>
             </div>
             <div class="tree-children">
@@ -63,8 +68,13 @@
                   <span class="count">{{ kpCountOf(u.id) }}</span>
                   <template v-if="!archived && !batchMode">
                     <span class="drag-handle" title="拖拽换序 / 跨章移动" draggable="true" @click.stop @dragstart="onDragStart('unit', u.id)" @dragend="onDragEnd">⋮⋮</span>
-                    <button class="btn sm ghost" @click.stop="editChapter(u)">编辑</button>
-                    <button class="btn sm ghost" @click.stop="delChapter(u)">删除</button>
+                    <span class="row-more">
+                      <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="toggleRowMenu(u.id)">⋯</button>
+                      <div v-if="rowMenuId === u.id" class="row-menu" @click.stop>
+                        <button @click.stop="closeRowMenu(); editChapter(u)">编辑</button>
+                        <button class="danger" @click.stop="closeRowMenu(); delChapter(u)">删除</button>
+                      </div>
+                    </span>
                   </template>
                 </div>
               </div>
@@ -80,28 +90,38 @@
 
       <!-- 知识点 -->
       <div class="card">
-        <h3>知识点<span v-if="selectedChapterName"> · {{ selectedChapterName }}</span>
-          <span v-if="unassignedCount > 0" class="up-chip" :class="{ active: showUnassigned }" @click="toggleUnassigned">未分配 {{ unassignedCount }}</span>
-          <template v-if="!archived">
-            <button v-if="unassignedCount > 0 && chapters.length > 0" class="btn sm ghost" :disabled="relinking" @click="autoRelink">
-              {{ relinking ? "归位中…" : "⚡ 自动归位" }}
-            </button>
-            <button v-if="!kpBatchMode" class="btn sm ghost" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode">☑ 批量删除</button>
-            <button v-else class="btn sm ghost" @click="exitKpBatchMode">取消</button>
-          </template>
-          <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ filteredKnowledgePoints.length }} 个</span>
+        <h3 class="kp-head">
+          <span class="kp-head-title">
+            知识点<span
+              v-if="selectedChapterName"
+              class="kp-chapter-name"
+              :title="selectedChapterName"
+            > · {{ selectedChapterName }}</span>
+          </span>
+          <span class="kp-head-actions">
+            <span v-if="unassignedCount > 0" class="up-chip" :class="{ active: showUnassigned }" @click="toggleUnassigned">未分配 {{ unassignedCount }}</span>
+            <template v-if="!archived">
+              <button v-if="unassignedCount > 0 && chapters.length > 0" class="btn sm ghost" :disabled="relinking" @click="autoRelink">
+                <AppIcon name="spark" :size="14" /> {{ relinking ? "归位中…" : "自动归位" }}
+              </button>
+              <button v-if="!kpBatchMode" class="btn sm ghost" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode"><AppIcon name="check-square" :size="13" /> 批量删除</button>
+              <button v-else class="btn sm ghost" @click="exitKpBatchMode">取消</button>
+            </template>
+            <span class="kp-count">共 {{ filteredKnowledgePoints.length }} 个</span>
+          </span>
         </h3>
         <input
           v-model="searchKeyword"
           class="search-input"
           type="text"
+          aria-label="搜索知识点名称或内容"
           placeholder="搜索知识点名称 / 内容…"
         />
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
-          <span class="ico">📭</span> 请先选择课程
+          <span class="ico"><AppIcon name="folder" :size="28" /></span> 请先选择课程
         </div>
         <div v-else-if="filteredKnowledgePoints.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">🌱</span> {{ searchKeyword ? "未找到匹配的知识点" : "暂无知识点，上传资料后点击「抽取知识点」生成" }}
+          <span class="ico"><AppIcon name="spark" :size="28" /></span> {{ searchKeyword ? "未找到匹配的知识点" : "暂无知识点，上传资料后点击「抽取知识点」生成" }}
         </div>
         <div v-else class="kp-list">
           <div
@@ -159,9 +179,12 @@
         </div>
       </h3>
       <div v-if="fullExtracting" class="s" style="color:var(--as-accent-strong);padding:8px 0 4px">{{ fullExtractLabel }}</div>
-      <div v-if="materials.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">📚</span> 暂无资料，点击右上「＋ 上传资料」导入讲义 / Word / PDF / PPT
-      </div>
+      <EmptyState
+        v-if="materials.length === 0"
+        compact
+        icon="folder"
+        text="暂无资料。&#10;点击右上「＋ 上传资料」导入讲义 / Word / PDF / PPT。"
+      />
       <div v-else class="material-list">
         <div v-for="m in materials" :key="m.id" class="material-item">
           <div>
@@ -172,7 +195,7 @@
             <div class="m-meta">.{{ m.fileType }} · {{ m.contentText.length }} 字 · {{ formatTime(m.createTime) }}</div>
             <div v-if="orgTaskOf(m)" class="s" style="margin-top:4px">
               <span v-if="orgTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
-                🔄 {{ orgTaskOf(m)!.message }}
+                <AppIcon name="refresh" :size="12" /> {{ orgTaskOf(m)!.message }}
               </span>
               <span v-else-if="orgTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ orgTaskOf(m)!.message }}</span>
               <span v-else-if="orgTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ orgTaskOf(m)!.message }}</span>
@@ -180,7 +203,7 @@
             </div>
             <div v-if="extractTaskOf(m)" class="s" style="margin-top:4px">
               <span v-if="extractTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
-                🔄 {{ extractTaskOf(m)!.message }}
+                <AppIcon name="refresh" :size="12" /> {{ extractTaskOf(m)!.message }}
               </span>
               <span v-else-if="extractTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ extractTaskOf(m)!.message }}</span>
               <span v-else-if="extractTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ extractTaskOf(m)!.message }}</span>
@@ -234,7 +257,9 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import EmptyState from "../components/EmptyState.vue";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
 import {
@@ -299,6 +324,15 @@ const editingChapter = ref<Chapter | null>(null);
 // 展开的章节 id 集合（空 = 全部收起；重进页面/切换课程后自然回到默认全收起）
 const expandedChapters = ref<Set<number>>(new Set());
 const selectedChapterId = ref<number | null>(null);
+/** 章/节行「⋯」菜单：同一时间只开一个 */
+const rowMenuId = ref<number | null>(null);
+
+function toggleRowMenu(id: number) {
+  rowMenuId.value = rowMenuId.value === id ? null : id;
+}
+function closeRowMenu() {
+  rowMenuId.value = null;
+}
 const showUnassigned = ref(false);
 const relinking = ref(false);
 const kpBatchMode = ref(false);
@@ -923,10 +957,12 @@ function onAnyDataSaved() {
   loadKnowledgePoints();
 }
 onMounted(() => {
+  document.addEventListener("click", closeRowMenu);
   load();
   window.addEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
 });
 onBeforeUnmount(() => {
+  document.removeEventListener("click", closeRowMenu);
   window.removeEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
 });
 </script>

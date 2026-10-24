@@ -4,15 +4,15 @@
       <div class="greet">
         {{ courseName }}<small>{{ courseDesc || "暂无简介" }}</small>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button v-if="courseStore.currentCourse" class="btn sm" @click="openEdit">✎ 编辑课程信息</button>
-          <button v-if="!archived && questionCount > 0" class="btn sm primary" @click="startFinalExam">🎓 结业模考</button>
+          <button v-if="courseStore.currentCourse" class="btn sm" @click="openEdit"><AppIcon name="pencil" :size="13" /> 编辑课程信息</button>
+          <button v-if="!archived && questionCount > 0" class="btn sm primary" @click="startFinalExam"><AppIcon name="quiz" :size="13" /> 结业模考</button>
         </div>
       </div>
       <div class="streak"><div class="num">{{ masteredCount }}</div><div class="lbl">已掌握知识点</div></div>
     </div>
 
     <div v-if="archived" class="archived-banner">
-      <span>🗄️ 本课程已归档 · 内容只读（生成计划 / 出题 / 上传资料等入口已隐藏）</span>
+      <span>本课程已归档 · 内容只读（生成计划 / 出题 / 上传资料等入口已隐藏）</span>
       <button class="btn sm" @click="unarchive">取消归档</button>
     </div>
 
@@ -31,21 +31,28 @@
       <div class="card">
         <h3>本课程今日任务</h3>
         <div v-if="todayTasks.length === 0" class="empty-state">
-          <span class="ico">📭</span>
+          <span class="ico"><AppIcon name="folder" :size="28" /></span>
           {{ stats && stats.kp.total > 0 ? "今天没有学习任务" : "暂无学习任务，先生成学习计划" }}
         </div>
         <div v-else class="course-today-list">
-          <div v-for="t in todayTasks" :key="t.id" class="course-today-item" :class="{ done: t.status === 'done' }">
-            <span class="tp-check">{{ t.status === "done" ? "✓" : "" }}</span>
-            <span class="t">{{ t.title }}</span>
-            <span class="task-type-tag">{{ taskTypeLabel(t.taskType) }}</span>
-          </div>
+          <StudyTaskRow
+            v-for="t in todayTasks"
+            :key="t.id"
+            :title="t.title"
+            :task-type="t.taskType"
+            :done="t.status === 'done'"
+            :disabled="archived"
+            :busy="pendingTaskIds.has(t.id)"
+            dense
+            @click="openTask(t)"
+            @toggle="toggleTask(t)"
+          />
         </div>
       </div>
       <div class="card">
         <h3>掌握度分布</h3>
         <div v-if="!stats || stats.kp.total === 0" class="empty-state">
-          <span class="ico">🌱</span>
+          <span class="ico"><AppIcon name="spark" :size="28" /></span>
           暂无知识点，上传资料后由 AI 解析生成
         </div>
         <div v-else class="dist-list">
@@ -61,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
@@ -71,9 +79,12 @@ import {
   queryQuestions,
   queryTodayPlanTasks,
   setCourseStatus,
+  updateStudyTask,
   DATA_SAVED_EVENT,
 } from "../api";
 import type { CourseStats, StudyTask, Mastery } from "../api";
+import StudyTaskRow from "../components/StudyTaskRow.vue";
+import { taskAction } from "../constants/tasks";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
@@ -87,6 +98,8 @@ const stats = ref<CourseStats | null>(null);
 const dueReviewCount = ref(0);
 const questionCount = ref(0);
 const todayTasks = ref<StudyTask[]>([]);
+/** 正在写入的任务：防止连点，勾选框显示转圈 */
+const pendingTaskIds = ref<Set<number>>(new Set());
 
 const masteredCount = computed(
   () => (stats.value?.kp.distribution.mastered ?? 0) + (stats.value?.kp.distribution.proficient ?? 0),
@@ -110,9 +123,25 @@ const distributionRows = computed(() => {
   }));
 });
 
-function taskTypeLabel(t: string): string {
-  const map: Record<string, string> = { learn: "新知", review: "复习", practice: "练习", test: "测评" };
-  return map[t] ?? t;
+function openTask(t: StudyTask) {
+  const action = taskAction(t);
+  if (action) router.push(action.to);
+}
+
+async function toggleTask(t: StudyTask) {
+  if (archived.value || pendingTaskIds.value.has(t.id)) return;
+  pendingTaskIds.value = new Set(pendingTaskIds.value).add(t.id);
+  try {
+    await updateStudyTask({ ...t, status: t.status === "done" ? "todo" : "done" });
+    t.status = t.status === "done" ? "todo" : "done";
+  } catch (e) {
+    console.error("更新任务状态失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+  } finally {
+    const next = new Set(pendingTaskIds.value);
+    next.delete(t.id);
+    pendingTaskIds.value = next;
+  }
 }
 
 function openEdit() {

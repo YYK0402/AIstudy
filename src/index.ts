@@ -545,11 +545,33 @@ export default class AiStudyPlugin extends Plugin {
     await this.commitData(data);
   }
 
-  /** 统一写入口：先迁移明文 API Key 为密文，再落盘 */
+  /** 统一写入口：先迁移明文 API Key 为密文，再落盘。
+   *  失败时从磁盘回滚内存缓存，避免「保存失败但内存已脏」，前端的失败回滚才有意义。 */
   private async commitData(data: AppData) {
     await migrateProviderKeys(data);
-    this.data[DATA_STORAGE] = data;
-    return await this.saveData(DATA_STORAGE, data);
+    try {
+      const res = await this.saveData(DATA_STORAGE, data);
+      const r = (res ?? {}) as { code?: number };
+      if (typeof r.code === "number" && r.code !== 0) {
+        await this.restoreFromDisk();
+        return res;
+      }
+      this.data[DATA_STORAGE] = data;
+      return res;
+    } catch (e) {
+      await this.restoreFromDisk();
+      throw e;
+    }
+  }
+
+  /** 保存失败后把内存缓存恢复到磁盘版本（best-effort） */
+  private async restoreFromDisk() {
+    try {
+      const disk = (await this.loadData(DATA_STORAGE)) as AppData | null;
+      this.data[DATA_STORAGE] = disk ?? createEmptyData();
+    } catch {
+      // 读取磁盘也失败时保留现有内存，交由下一次成功保存覆盖
+    }
   }
 
   private appendLog(

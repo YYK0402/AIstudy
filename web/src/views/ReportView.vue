@@ -3,7 +3,7 @@
     <div class="page-title"><h1>学习报告</h1><div class="desc">学习统计 · 薄弱知识点分析</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <template v-else>
@@ -26,7 +26,7 @@
           <span v-if="trendHasData" style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">{{ formatDuration(stats.study.totalSeconds) }} / 30 天</span>
         </h3>
         <div v-if="!trendHasData" class="empty-state" style="padding:20px 0">
-          <span class="ico">⏱</span> 近 30 天暂无学习记录（答题、讲解、复习、打卡会自动计入）
+          <span class="ico"><AppIcon name="clock" :size="28" /></span> 近 30 天暂无学习记录（答题、讲解、复习、打卡会自动计入）
         </div>
         <div v-else class="trend-wrap">
           <svg class="trend-svg" :viewBox="`0 0 ${trendWidth} ${TREND_H + 22}`" preserveAspectRatio="xMidYMax meet">
@@ -147,7 +147,7 @@
             <button v-if="report" class="btn sm ghost" :disabled="generating" @click="copyReport">复制全文</button>
             <button v-if="report" class="btn sm ghost" :disabled="generating" @click="downloadReport">下载 .md</button>
             <button class="btn primary sm" :disabled="generating" @click="generate">
-              {{ generating ? "生成中…" : report ? "重新生成" : "⚡ 生成报告" }}
+              <AppIcon name="spark" :size="14" /> {{ generating ? "生成中…" : report ? "重新生成" : "生成报告" }}
             </button>
           </span>
         </h3>
@@ -163,6 +163,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useCourseStore } from "../stores/course";
 import { queryCourseStats, generateCourseReport, getData, queryWrongQuestions, parseQuestionKpIds } from "../api";

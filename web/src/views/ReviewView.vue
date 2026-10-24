@@ -3,7 +3,7 @@
     <div class="page-title"><h1>复习计划</h1><div class="desc">间隔重复 · 到期自动浮现 · 记忆保鲜</div></div>
 
     <div v-if="!currentCourseId()" class="card">
-      <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
+      <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
     <!-- 定向复习：?kp= 进入，单知识点 回想→揭示→自评，评「牢固」自动勾掉计划对应复习任务 -->
@@ -40,9 +40,14 @@
           {{ dueList.length }} 项
         </span>
       </h3>
-        <div v-if="dueList.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">☀️</span> 今日无到期复习项<br />答错的题目、讲解达标的知识点和闪卡会自动进入复习计划
-        </div>
+        <EmptyState
+          v-if="dueList.length === 0"
+          compact
+          icon="clock"
+          text="今日无到期复习项。&#10;答错的题目、讲解达标的知识点和闪卡会自动进入复习计划。"
+        >
+          <router-link class="btn sm primary" to="/study">去学习</router-link>
+        </EmptyState>
       <template v-else>
         <div v-for="item in dueList" :key="item.schedule.id" class="review-item">
           <!-- 知识点触点 -->
@@ -128,7 +133,9 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "../components/AppIcon.vue";
 import { onMounted, reactive, ref, watch } from "vue";
+import EmptyState from "../components/EmptyState.vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { queryDueReviews, queryKnowledgePoints, submitReview, submitKpReview, submitAnswer, QUESTION_TYPE_LABELS } from "../api";
