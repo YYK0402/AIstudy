@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <div class="page-title"><h1>学习计划</h1><div class="desc">按章节拆分每日任务 · 支持手动调整</div></div>
+    <div class="page-title"><h1>学习计划</h1><div class="desc">按天安排 · 点开查看当天知识点</div></div>
 
     <div v-if="!currentCourseId()" class="card">
       <div class="empty-state"><span class="ico">📭</span> 请先在「课程主页」选择或创建一个课程</div>
@@ -12,8 +12,6 @@
           {{ plan ? (editing ? "重新生成学习计划" : "当前计划") : "生成学习计划" }}
           <span v-if="archived" class="tag paused" style="margin-left:6px">已归档 · 只读</span>
           <template v-if="plan && !editing && !archived">
-            <span class="s" style="font-weight:400">{{ plan.dailyHour }} 小时/天 · 目标 {{ plan.targetDate }}</span>
-            <span v-if="overdueTasks.length" class="tag overdue" style="margin-left:6px">过期 {{ overdueTasks.length }}</span>
             <button class="btn primary sm" @click="startEdit">⚡ 重新生成</button>
           </template>
           <template v-else-if="plan && editing">
@@ -56,8 +54,16 @@
           ⏳ 生成中… AI 正在根据章节与知识点规划任务，通常需要数十秒，请稍候
         </div>
         <div v-if="generateError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ generateError }}</div>
-        <div v-if="plan && !editing" class="plan-meta">
-          {{ plan.startDate ? `${plan.startDate} → ` : "" }}生成于 {{ formatTime(plan.createTime) }}
+        <div v-if="plan && !editing" class="plan-summary">
+          <span>{{ plan.dailyHour }} 小时/天</span>
+          <span class="sep">·</span>
+          <span>{{ plan.startDate }} → {{ plan.targetDate }}</span>
+          <template v-for="s in planTypeStats" :key="s.label">
+            <span class="sep">·</span>
+            <span>{{ s.label }} {{ s.count }}</span>
+          </template>
+          <span v-if="overdueTasks.length" class="tag overdue">过期 {{ overdueTasks.length }}</span>
+          <span class="gen-at">生成于 {{ formatTime(plan.createTime) }}</span>
         </div>
         <div v-if="plan && !editing && !archived" class="plan-ops">
           <button class="btn sm ghost" @click="togglePause">{{ plan.status === "paused" ? "▶ 恢复" : "⏸ 暂停" }}</button>
@@ -77,114 +83,112 @@
         </div>
       </div>
 
-      <div v-if="plan && displayGroups.length" class="card" style="margin-top:14px">
-        <h3>任务列表
-          <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">
-            共 {{ tasks.length }} 条 · 已完成 {{ doneCount }} 条
-          </span>
+      <div v-if="plan && displayDays.length" class="card" style="margin-top:14px">
+        <h3>
+          任务列表
+          <span class="day-total">共 {{ tasks.length }} 条 · 已完成 {{ doneCount }} 条</span>
         </h3>
-        <div v-for="g in displayGroups" :key="g.date" class="task-group" :class="{ past: g.date !== 'overdue' && g.date < today }">
+        <div
+          v-for="d in displayDays"
+          :key="d.date"
+          class="day-group"
+          :class="{ past: d.date !== 'overdue' && d.date < today }"
+        >
           <div
-            class="task-date"
-            :class="{ overdue: g.date === 'overdue', dim: g.date !== 'overdue' && g.date < today, today: g.date === today, open: isDayOpen(g.date) }"
-            @click="g.date !== 'overdue' && toggleDay(g.date)"
+            class="day-head"
+            :class="{ overdue: d.date === 'overdue', today: d.date === today }"
+            @click="d.date !== 'overdue' && toggleDay(d.date)"
           >
-            <template v-if="g.date === 'overdue'">⚠ 过期 {{ g.tasks.length }} 条 · 未按时完成</template>
+            <template v-if="d.date === 'overdue'">
+              <span>⚠ 过期 {{ d.tasks.length }} 条 · 未按时完成</span>
+              <button
+                v-if="!archived"
+                class="btn sm primary"
+                style="margin-left:auto"
+                :disabled="overdueBusy"
+                @click.stop="postponeAll"
+              >全部顺延到今天</button>
+            </template>
             <template v-else>
-              <span class="d">{{ g.date }}</span>
-              <span class="dow">{{ weekdayOf(g.date) }}</span>
-              <span class="sum">学{{ countType(g, "learn") }} · 练{{ countType(g, "practice") }} · 复{{ countType(g, "review") }} · 测{{ countType(g, "test") }}</span>
-              <span class="prog">{{ doneOf(g) }}/{{ g.tasks.length }} 完成</span>
-              <button class="link-btn" @click.stop="kpPanelDay = kpPanelDay === g.date ? null : g.date">
-                涉及知识点 ({{ kpsOfGroup(g).count }}) {{ kpPanelDay === g.date ? "▾" : "▸" }}
+              <span class="d">{{ d.date }}</span>
+              <span class="dow">{{ weekdayOf(d.date) }}</span>
+              <span class="day-sum">{{ d.summary }}</span>
+              <span class="day-prog">{{ d.doneCount }}/{{ d.tasks.length }} 完成</span>
+              <button class="link-btn day-tgl" @click.stop="toggleDay(d.date)">
+                {{ isDayOpen(d.date) ? "收起" : "展开" }}
               </button>
-              <span class="task-chev">{{ isDayOpen(g.date) ? "▾" : "▸" }}</span>
             </template>
-            <button
-              v-if="g.date === 'overdue' && !archived"
-              class="btn sm primary"
-              :disabled="overdueBusy"
-              @click.stop="postponeAll"
-            >全部顺延到今天</button>
           </div>
-          <div v-if="kpPanelDay === g.date" class="kp-involved">
-            <template v-for="ch in kpsOfGroup(g).chapters" :key="ch.name">
-              <div class="ki-ch">{{ ch.name }}</div>
-              <template v-for="u in ch.units" :key="u.name">
-                <div class="ki-unit">{{ u.name }}</div>
-                <div v-for="n in u.kps" :key="n.kpId" class="ki-kp">
-                  <span>{{ n.name }}</span>
-                  <span class="ki-types">{{ n.types.map(taskTypeLabel).join(" · ") }}</span>
-                </div>
-              </template>
-              <div v-for="n in ch.direct" :key="'d' + n.kpId" class="ki-kp">
-                <span>{{ n.name }}</span>
-                <span class="ki-types">{{ n.types.map(taskTypeLabel).join(" · ") }}</span>
-              </div>
-            </template>
-            <div v-for="n in kpsOfGroup(g).loose" :key="'l' + n.kpId" class="ki-kp ki-loose">
-              <span>{{ n.name }}</span>
-              <span class="ki-types">{{ n.types.map(taskTypeLabel).join(" · ") }}</span>
-            </div>
-          </div>
-          <div v-if="isDayOpen(g.date)" class="task-list">
-            <template v-for="t in g.tasks" :key="t.id">
-              <div class="task-item">
-                <div
-                  class="task-row"
-                  :class="{ done: t.status === 'done', overdue: g.date === 'overdue', expanded: expandedTaskId === t.id }"
-                  @click="toggleExpand(t)"
-                >
-                  <button class="task-check" :disabled="archived" :title="archived ? '课程已归档，任务只读' : t.status === 'done' ? '撤销完成' : '标记完成'" @click.stop="toggleTask(t)">
-                    {{ t.status === "done" ? "✓" : "" }}
-                  </button>
-                  <div class="task-main">
-                    <div class="task-title">{{ t.title }}</div>
-                    <div class="task-meta">
-                      <span class="tag" :class="t.taskType">
-                        <span class="d"></span>{{ taskTypeLabel(t.taskType) }}
-                      </span>
-                      <span v-if="t.chapterId && chapterName(t.chapterId)" class="s">《{{ chapterName(t.chapterId) }}》</span>
-                      <span v-if="g.date === 'overdue'" class="s overdue-s">原定 {{ t.scheduledDate }}</span>
-                    </div>
-                  </div>
+          <div v-if="isDayOpen(d.date)" class="day-body">
+            <template v-for="(r, i) in d.rows" :key="i">
+              <div v-if="r.kind === 'chapter'" class="day-ch">{{ r.label }}</div>
+              <div v-else-if="r.kind === 'unit'" class="day-unit">{{ r.label }}</div>
+              <div v-else-if="r.kind === 'kp'" class="kp-row" :class="{ done: r.line.doneAll }">
+                <button
+                  class="task-check"
+                  :disabled="archived"
+                  :title="archived ? '课程已归档，任务只读' : r.line.doneAll ? '撤销完成' : '标记完成'"
+                  @click.stop="toggleTasks(r.line.tasks)"
+                >{{ r.line.doneAll ? "✓" : r.line.partial ? "–" : "" }}</button>
+                <span class="kp-name">{{ r.line.name }}</span>
+                <span class="kp-types">
+                  <span v-for="ty in r.line.types" :key="ty" class="tag" :class="ty">
+                    <span class="d"></span>{{ taskTypeLabel(ty) }}
+                  </span>
+                </span>
+                <span class="kp-acts">
+                  <router-link
+                    v-for="a in lineActions(r.line)"
+                    :key="a.label"
+                    class="kp-act"
+                    :to="a.to"
+                  >{{ a.label }} →</router-link>
                   <button
-                    v-if="g.date === 'overdue' && !archived"
+                    v-if="d.date === 'overdue' && !archived"
                     class="btn sm ghost"
                     :disabled="overdueBusy"
-                    @click.stop="postponeOne(t)"
-                  >顺延到今天</button>
-                  <router-link
-                    v-if="taskAction(t)"
-                    class="task-act"
-                    :to="taskAction(t)!.to"
-                    @click.stop
-                  >{{ taskAction(t)!.label }}</router-link>
-                  <span class="task-chev">{{ expandedTaskId === t.id ? "▾" : "▸" }}</span>
-                </div>
-                <div v-if="expandedTaskId === t.id" class="task-detail">
-                  <div><span class="k">章节</span>{{ taskDetail(t).chapter }}</div>
-                  <div><span class="k">知识点</span>{{ taskDetail(t).kpName }}</div>
-                  <div v-if="taskDetail(t).kpContent" class="task-detail-content">{{ taskDetail(t).kpContent }}</div>
-                  <div><span class="k">排期</span>{{ t.scheduledDate }}</div>
-                </div>
+                    @click.stop="postponeTasks(r.line.tasks)"
+                  >顺延</button>
+                </span>
+              </div>
+              <div v-else class="kp-row" :class="{ done: r.task.status === 'done' }">
+                <button
+                  class="task-check"
+                  :disabled="archived"
+                  :title="archived ? '课程已归档，任务只读' : r.task.status === 'done' ? '撤销完成' : '标记完成'"
+                  @click.stop="toggleTasks([r.task])"
+                >{{ r.task.status === "done" ? "✓" : "" }}</button>
+                <span class="kp-name">{{ r.task.title }}</span>
+                <span class="kp-types">
+                  <span class="tag" :class="r.task.taskType">
+                    <span class="d"></span>{{ taskTypeLabel(r.task.taskType) }}
+                  </span>
+                </span>
+                <span class="kp-acts">
+                  <router-link v-if="taskAction(r.task)" class="kp-act" :to="taskAction(r.task)!.to">
+                    {{ taskAction(r.task)!.label }} →
+                  </router-link>
+                  <button
+                    v-if="d.date === 'overdue' && !archived"
+                    class="btn sm ghost"
+                    :disabled="overdueBusy"
+                    @click.stop="postponeTasks([r.task])"
+                  >顺延</button>
+                </span>
               </div>
             </template>
-            <template v-if="g.date === today">
-              <div v-for="item in dueReviews" :key="'rev' + item.schedule.id" class="task-row review-due-row">
+            <template v-if="d.date === today && dueReviews.length">
+              <div class="day-ch">间隔复习</div>
+              <div v-for="item in dueReviews" :key="'rev' + item.schedule.id" class="kp-row">
                 <span class="task-check" style="visibility:hidden"></span>
-                <div class="task-main">
-                  <div class="task-title">
-                    {{ item.knowledgePoint ? `复习：${item.knowledgePoint.name}` : item.question ? `错题复习：${item.question.title}` : `复习 #${item.schedule.id}` }}
-                  </div>
-                  <div class="task-meta">
-                    <span class="tag review"><span class="d"></span>间隔复习</span>
-                  </div>
-                </div>
-                <router-link
-                  class="task-act"
-                  :to="item.schedule.kpId != null ? { path: '/review', query: { kp: String(item.schedule.kpId) } } : '/review'"
-                >去复习</router-link>
+                <span class="kp-name">{{ reviewLabel(item) }}</span>
+                <span class="kp-types"><span class="tag review"><span class="d"></span>复习</span></span>
+                <span class="kp-acts">
+                  <router-link
+                    class="kp-act"
+                    :to="item.schedule.kpId != null ? { path: '/review', query: { kp: String(item.schedule.kpId) } } : '/review'"
+                  >去复习 →</router-link>
+                </span>
               </div>
             </template>
           </div>
@@ -201,7 +205,7 @@ import {
   generateStudyPlan,
   queryStudyPlans,
   queryStudyTasks,
-  updateStudyTask,
+  setStudyTasksStatus,
   queryChapters,
   queryKnowledgePoints,
   queryDueReviews,
@@ -247,6 +251,29 @@ interface TaskGroup {
   tasks: StudyTask[];
 }
 
+interface KpLine {
+  kpId: number;
+  name: string;
+  chapterId: number | null;
+  sort: number;
+  types: string[];
+  tasks: StudyTask[];
+  doneAll: boolean;
+  partial: boolean;
+}
+
+type DayRow =
+  | { kind: "chapter"; label: string }
+  | { kind: "unit"; label: string }
+  | { kind: "kp"; line: KpLine }
+  | { kind: "task"; task: StudyTask };
+
+interface DayView extends TaskGroup {
+  rows: DayRow[];
+  summary: string;
+  doneCount: number;
+}
+
 /** 过期任务：未完成且排期早于今天（从历史组中抽出，单独置顶处置） */
 const overdueTasks = computed(() => tasks.value.filter((t) => t.status === "todo" && t.scheduledDate < today));
 
@@ -270,33 +297,7 @@ const displayGroups = computed<TaskGroup[]>(() => {
   return [{ date: "overdue", tasks: overdueTasks.value }, ...groupedTasks.value];
 });
 
-const expandedTaskId = ref<number | null>(null);
-function toggleExpand(t: StudyTask) {
-  expandedTaskId.value = expandedTaskId.value === t.id ? null : t.id;
-}
-
-/** 任务下钻详情：章节 / 知识点（名称+内容） */
-function taskDetail(t: StudyTask) {
-  const kp = t.kpId != null ? knowledgePoints.value.find((k) => k.id === t.kpId) ?? null : null;
-  return {
-    chapter: t.chapterId && chapterName(t.chapterId) ? `《${chapterName(t.chapterId)}》` : "未分章",
-    kpName: kp ? kp.name : t.kpId != null ? `#${t.kpId}（已删除）` : "全课程",
-    kpContent: kp?.content ?? "",
-  };
-}
-
 const overdueBusy = ref(false);
-
-async function postponeOne(t: StudyTask) {
-  if (!plan.value) return;
-  try {
-    await postponeOverdueTasks(plan.value.id, t.id);
-    await load();
-    window.siyuanAiStudy.showMessage("已顺延到今天");
-  } catch (e) {
-    failMsg(e, "顺延失败");
-  }
-}
 
 async function postponeAll() {
   if (!plan.value) return;
@@ -328,11 +329,11 @@ function taskAction(t: StudyTask): { to: { path: string; query: Record<string, s
   if (t.taskType === "learn" && t.kpId != null) {
     return { to: { path: "/study", query: { kp: String(t.kpId) } }, label: "去学习" };
   }
-  if (t.taskType === "practice" && t.kpId != null) {
-    return { to: { path: "/quiz", query: { kp: String(t.kpId) } }, label: "去刷题" };
+  if (t.taskType === "practice") {
+    return { to: { path: "/quiz", query: t.kpId != null ? { kp: String(t.kpId) } : {} }, label: "去刷题" };
   }
-  if (t.taskType === "review" && t.kpId != null) {
-    return { to: { path: "/review", query: { kp: String(t.kpId) } }, label: "去复习" };
+  if (t.taskType === "review") {
+    return { to: { path: "/review", query: t.kpId != null ? { kp: String(t.kpId) } : {} }, label: "去复习" };
   }
   if (t.taskType === "test") {
     const query: Record<string, string> = t.chapterId ? { set: String(t.chapterId) } : { exam: "1" };
@@ -343,7 +344,6 @@ function taskAction(t: StudyTask): { to: { path: string; query: Record<string, s
 
 /** 日摘要行：默认全部收起（今日除外），任务集变化时重置（nextId 按列表算，重新生成的计划可能复用旧 id，故不能只按 planId 判重） */
 const collapsedDays = ref<Set<string>>(new Set());
-const kpPanelDay = ref<string | null>(null);
 let loadedTasksKey = "";
 
 function isDayOpen(date: string): boolean {
@@ -372,82 +372,148 @@ function applyDefaultCollapse() {
   loadedTasksKey = key;
   const dates = new Set(tasks.value.map((t) => t.scheduledDate));
   collapsedDays.value = new Set([...dates].filter((d) => d !== today));
-  kpPanelDay.value = null;
 }
 
 function weekdayOf(date: string): string {
   return "周" + "日一二三四五六"[new Date(date + "T00:00:00").getDay()];
 }
 
-function countType(g: TaskGroup, type: string): number {
-  return g.tasks.filter((t) => t.taskType === type).length;
-}
+/** 任务类型展示顺序（学 → 练 → 复 → 测） */
+const TYPE_ORDER = ["learn", "practice", "review", "test"];
 
-function doneOf(g: TaskGroup): number {
-  return g.tasks.filter((t) => t.status === "done").length;
-}
-
-interface KpInvolvedNode {
-  kpId: number;
-  name: string;
-  types: string[];
-  sort: number;
-}
-
-interface KpUnitNode {
-  name: string;
-  kps: KpInvolvedNode[];
-}
-
-interface KpChapterNode {
-  name: string;
-  units: KpUnitNode[];
-  direct: KpInvolvedNode[];
-}
-
-/** 该日任务涉及的知识点，按 章→节→知识点（教材序）归组，附任务类型徽标 */
-function kpsOfGroup(g: TaskGroup): { chapters: KpChapterNode[]; loose: KpInvolvedNode[]; count: number } {
-  const typeMap = new Map<number, Set<string>>();
-  for (const t of g.tasks) {
-    if (t.kpId == null) continue;
-    const s = typeMap.get(t.kpId) ?? new Set<string>();
-    s.add(t.taskType);
-    typeMap.set(t.kpId, s);
+/** 有知识点的任务按「知识点+类型」去重；无知识点的任务（测评/整体复习）按条数计 */
+function countTaskTypes(list: StudyTask[]): Record<string, number> {
+  const seen = new Set<string>();
+  const counts: Record<string, number> = { learn: 0, practice: 0, review: 0, test: 0 };
+  for (const t of list) {
+    if (t.kpId == null) {
+      counts[t.taskType] = (counts[t.taskType] ?? 0) + 1;
+      continue;
+    }
+    const key = `${t.kpId}:${t.taskType}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    counts[t.taskType] = (counts[t.taskType] ?? 0) + 1;
   }
-  const kpNodes: (KpInvolvedNode & { chapterId: number | null })[] = [...typeMap.entries()].map(([id, types]) => {
-    const kp = knowledgePoints.value.find((k) => k.id === id) ?? null;
+  return counts;
+}
+
+function summaryText(list: StudyTask[]): string {
+  const c = countTaskTypes(list);
+  const parts: string[] = [];
+  if (c.learn) parts.push(`新知 ${c.learn}`);
+  if (c.practice) parts.push(`练习 ${c.practice}`);
+  if (c.review) parts.push(`复习 ${c.review}`);
+  if (c.test) parts.push(`测评 ${c.test}`);
+  return parts.join(" · ") || "无任务";
+}
+
+/** 同日同知识点的任务合并成一行（勾选即整行完成/撤销） */
+function buildKpLines(list: StudyTask[]): KpLine[] {
+  const map = new Map<number, StudyTask[]>();
+  for (const t of list) {
+    if (t.kpId == null) continue;
+    const bucket = map.get(t.kpId) ?? [];
+    bucket.push(t);
+    map.set(t.kpId, bucket);
+  }
+  return [...map.entries()].map(([kpId, bucket]) => {
+    const kp = knowledgePoints.value.find((k) => k.id === kpId) ?? null;
+    const done = bucket.filter((t) => t.status === "done").length;
     return {
-      kpId: id,
-      name: kp ? kp.name : `#${id}（已删除）`,
-      types: [...types],
-      sort: kp?.sort ?? 0,
+      kpId,
+      name: kp ? kp.name : `#${kpId}（已删除）`,
       chapterId: kp?.chapterId ?? null,
+      sort: kp?.sort ?? 0,
+      types: [...new Set(bucket.map((t) => t.taskType))].sort(
+        (a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b),
+      ),
+      tasks: bucket,
+      doneAll: done === bucket.length,
+      partial: done > 0 && done < bucket.length,
     };
   });
+}
+
+/** 当日详情行：章 → 节 → 知识点（教材序），末尾单列无知识点的测评任务 */
+function buildDayRows(list: StudyTask[]): DayRow[] {
+  const lines = buildKpLines(list);
   const topLevel = chapters.value.filter((c) => c.level === "chapter").sort((a, b) => a.sort - b.sort);
-  const out: KpChapterNode[] = [];
+  const rows: DayRow[] = [];
   const covered = new Set<number>();
   for (const ch of topLevel) {
     const unitNodes = chapters.value.filter((c) => c.parentId === ch.id).sort((a, b) => a.sort - b.sort);
-    const inCh = kpNodes.filter(
+    const inCh = lines.filter(
       (n) => n.chapterId != null && (n.chapterId === ch.id || unitNodes.some((u) => u.id === n.chapterId)),
     );
     if (!inCh.length) continue;
-    const units: KpUnitNode[] = [];
+    rows.push({ kind: "chapter", label: ch.name });
     for (const u of unitNodes) {
       const kps = inCh.filter((n) => n.chapterId === u.id).sort((a, b) => a.sort - b.sort);
-      if (kps.length) units.push({ name: u.name, kps });
+      if (!kps.length) continue;
+      rows.push({ kind: "unit", label: u.name });
+      for (const line of kps) rows.push({ kind: "kp", line });
     }
-    const direct = inCh.filter((n) => n.chapterId === ch.id).sort((a, b) => a.sort - b.sort);
-    out.push({ name: ch.name, units, direct });
+    for (const line of inCh.filter((n) => n.chapterId === ch.id).sort((a, b) => a.sort - b.sort)) {
+      rows.push({ kind: "kp", line });
+    }
     inCh.forEach((n) => covered.add(n.kpId));
   }
-  const loose = kpNodes.filter((n) => !covered.has(n.kpId)).sort((a, b) => a.sort - b.sort);
-  return { chapters: out, loose, count: kpNodes.length };
+  for (const line of lines.filter((n) => !covered.has(n.kpId)).sort((a, b) => a.sort - b.sort)) {
+    rows.push({ kind: "kp", line });
+  }
+  // 无知识点的任务单独归组：整体复习/练习 → 「其他任务」，测评 → 「测评」
+  const noKp = list.filter((t) => t.kpId == null).sort((a, b) => a.sort - b.sort);
+  const others = noKp.filter((t) => t.taskType !== "test");
+  const tests = noKp.filter((t) => t.taskType === "test");
+  if (others.length) {
+    rows.push({ kind: "chapter", label: "其他任务" });
+    for (const t of others) rows.push({ kind: "task", task: t });
+  }
+  if (tests.length) {
+    rows.push({ kind: "chapter", label: "测评" });
+    for (const t of tests) rows.push({ kind: "task", task: t });
+  }
+  return rows;
 }
 
-function chapterName(id: number): string {
-  return chapters.value.find((c) => c.id === id)?.name ?? "";
+/** 展示用天视图：预计算详情行/摘要/完成数，模板只做渲染 */
+const displayDays = computed<DayView[]>(() =>
+  displayGroups.value.map((g) => ({
+    ...g,
+    rows: buildDayRows(g.tasks),
+    summary: summaryText(g.tasks),
+    doneCount: g.tasks.filter((t) => t.status === "done").length,
+  })),
+);
+
+/** 计划整体规模：按知识点+类型去重（测评按任务条数） */
+const planTypeStats = computed(() => {
+  const c = countTaskTypes(tasks.value);
+  return [
+    { label: "新知", count: c.learn },
+    { label: "练习", count: c.practice },
+    { label: "复习", count: c.review },
+    { label: "测评", count: c.test },
+  ].filter((x) => x.count > 0);
+});
+
+/** 知识点行操作入口：每种当日任务类型给一个跳转 */
+function lineActions(line: KpLine): { to: { path: string; query: Record<string, string> }; label: string }[] {
+  const map: Record<string, { path: string; label: string }> = {
+    learn: { path: "/study", label: "去学习" },
+    practice: { path: "/quiz", label: "去刷题" },
+    review: { path: "/review", label: "去复习" },
+  };
+  return line.types
+    .filter((ty) => map[ty])
+    .map((ty) => ({ to: { path: map[ty].path, query: { kp: String(line.kpId) } }, label: map[ty].label }));
+}
+
+function reviewLabel(item: ReviewDueItem): string {
+  if (item.knowledgePoint) return `复习：${item.knowledgePoint.name}`;
+  if (item.question) return `错题复习：${item.question.title}`;
+  return `复习 #${item.schedule.id}`;
 }
 
 function formatTime(iso: string): string {
@@ -577,13 +643,36 @@ async function doSync() {
   }
 }
 
-async function toggleTask(t: StudyTask) {
+/** 整行勾选：未全完成 → 全部标记完成；已全完成 → 全部撤销 */
+async function toggleTasks(list: StudyTask[]) {
+  if (!list.length || archived.value) return;
+  const next: "todo" | "done" = list.every((t) => t.status === "done") ? "todo" : "done";
+  const ids = list.filter((t) => t.status !== next).map((t) => t.id);
   try {
-    await updateStudyTask({ ...t, status: t.status === "done" ? "todo" : "done" });
-    t.status = t.status === "done" ? "todo" : "done";
+    await setStudyTasksStatus(ids, next);
+    for (const t of list) t.status = next;
   } catch (e) {
     console.error("更新任务状态失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+  }
+}
+
+/** 过期行顺延：逐条调用（同知识点可能有多条过期任务） */
+async function postponeTasks(list: StudyTask[]) {
+  if (!plan.value || !list.length) return;
+  overdueBusy.value = true;
+  try {
+    for (const t of list) {
+      if (t.status === "todo" && t.scheduledDate < today) {
+        await postponeOverdueTasks(plan.value.id, t.id);
+      }
+    }
+    await load();
+    window.siyuanAiStudy.showMessage("已顺延到今天");
+  } catch (e) {
+    failMsg(e, "顺延失败");
+  } finally {
+    overdueBusy.value = false;
   }
 }
 

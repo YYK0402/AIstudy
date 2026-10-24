@@ -21,10 +21,33 @@
       </div>
       <div class="field">
         <label>归属章节</label>
-        <select v-model="chapterId">
-          <option value="0">（未分配）</option>
-          <option v-for="c in chapters" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
+        <div class="chapter-tree" ref="treeWrap">
+          <button type="button" class="chapter-tree-trigger" :title="selectedLabel" @click="treeOpen = !treeOpen">
+            <span v-if="selectedLabel">{{ selectedLabel }}</span>
+            <span v-else style="color:var(--as-text-faint)">（未分配）</span>
+          </button>
+          <div v-if="treeOpen" class="chapter-tree-panel">
+            <div class="ct-row" :class="{ active: chapterId === 0 }" @click="pickChapter(0)">
+              <span style="color:var(--as-text-faint)">（未分配）</span>
+            </div>
+            <template v-for="ch in chapterTree" :key="ch.id">
+              <div class="ct-row" :class="{ active: chapterId === ch.id }" @click="pickChapter(ch.id)">
+                <span class="tp-tag chapter">章</span>
+                <span class="ct-name">{{ ch.name }}</span>
+              </div>
+              <div
+                v-for="u in ch.units"
+                :key="u.id"
+                class="ct-row unit"
+                :class="{ active: chapterId === u.id }"
+                @click="pickChapter(u.id)"
+              >
+                <span class="tp-tag unit">节</span>
+                <span class="ct-name">{{ u.name }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label>标签</label>
@@ -45,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
 import type { Chapter, KnowledgePoint, SiyuanDocSelection } from "../api";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
@@ -63,6 +86,36 @@ const tagsText = ref("");
 const binding = ref<SiyuanDocSelection | null>(null);
 const chapters = ref<Chapter[]>([]);
 const saving = ref(false);
+const treeOpen = ref(false);
+const treeWrap = ref<HTMLElement | null>(null);
+
+interface ChapterTreeRow {
+  id: number;
+  name: string;
+  units: Chapter[];
+}
+
+/** 章节树：章按 sort 排序，节挂在所属章下 */
+const chapterTree = computed<ChapterTreeRow[]>(() => {
+  const sorted = [...chapters.value].sort((a, b) => a.sort - b.sort || a.id - b.id);
+  return sorted
+    .filter((c) => c.level === "chapter")
+    .map((ch) => ({ id: ch.id, name: ch.name, units: sorted.filter((c) => c.level === "unit" && c.parentId === ch.id) }));
+});
+
+const selectedLabel = computed(() => chapters.value.find((c) => c.id === chapterId.value)?.name ?? "");
+
+function pickChapter(id: number) {
+  chapterId.value = id;
+  treeOpen.value = false;
+}
+
+// 点击面板外区域关闭
+function onDocClick(e: MouseEvent) {
+  if (treeOpen.value && treeWrap.value && !treeWrap.value.contains(e.target as Node)) {
+    treeOpen.value = false;
+  }
+}
 
 function loadChapters() {
   if (!props.knowledgePoint) return;
@@ -92,6 +145,11 @@ watch(
 
 onMounted(() => {
   loadChapters();
+  document.addEventListener("click", onDocClick);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", onDocClick);
 });
 
 watch(

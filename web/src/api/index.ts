@@ -3204,6 +3204,29 @@ export async function updateStudyTask(task: StudyTask): Promise<void> {
   }
 }
 
+/** 批量设置任务状态：学习计划按知识点合并勾选时一次写盘，避免逐条 saveData */
+export async function setStudyTasksStatus(ids: number[], status: "todo" | "done"): Promise<void> {
+  if (ids.length === 0) return;
+  const data = await getData();
+  const idSet = new Set(ids);
+  let changed = false;
+  for (const t of data.studyTasks) {
+    if (!idSet.has(t.id) || t.status === status) continue;
+    // 手动打卡（todo → done）：记一条 0 秒日志，让打卡动作进入时长趋势
+    if (status === "done") {
+      const plan = data.studyPlans.find((p) => p.id === t.planId);
+      if (plan) {
+        logStudyInData(data, { courseId: plan.courseId, kpId: t.kpId, taskId: t.id, action: "task_done", durationSec: 0 });
+      }
+    }
+    t.status = status;
+    changed = true;
+  }
+  if (changed) {
+    await saveData(data);
+  }
+}
+
 export async function deleteStudyPlan(planId: number): Promise<void> {
   const data = await getData();
   data.studyPlans = data.studyPlans.filter((p) => p.id !== planId);

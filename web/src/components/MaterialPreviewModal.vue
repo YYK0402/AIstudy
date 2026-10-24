@@ -1,8 +1,11 @@
 <template>
   <div class="modal-mask" :class="{ open }" @click.self="$emit('close')">
-    <div class="modal modal--lg">
-      <h2>{{ material?.name }}</h2>
-      <div v-if="material" class="s" style="margin:-12px 0 14px;display:flex;align-items:center;gap:10px">
+    <div class="modal modal--lg mp-modal">
+      <div class="mp-header">
+        <h2>{{ material?.name }}</h2>
+        <button class="btn sm ghost mp-close" @click="$emit('close')">✕</button>
+      </div>
+      <div v-if="material" class="s" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         .{{ material.fileType }} · {{ material.contentText.length }} 字 · {{ materialSourceLabel(material) }}
         <template v-if="material.siyuanDocId">
           <span style="color:var(--as-text-faint)">（内容快照，原文可能已更新）</span>
@@ -20,7 +23,10 @@
           :style="{ paddingLeft: `${(h.level - 1) * 14}px` }"
         >{{ h.text }}</div>
       </div>
-      <div v-if="material" class="mp-content">{{ material.contentText || "（无文本内容）" }}</div>
+      <div class="mp-content">
+        <div v-if="material && material.contentText">{{ material.contentText }}</div>
+        <div v-else style="color:var(--as-text-faint)">（无文本内容）</div>
+      </div>
     </div>
   </div>
 </template>
@@ -69,13 +75,38 @@ const headings = computed<ParsedHeading[]>(() => {
 </script>
 
 <style scoped>
+.mp-modal {
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px;
+}
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.mp-header h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-close {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: var(--as-text-faint);
+}
 .mp-toc {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   padding: 10px 14px;
   background: var(--as-bg-elev2);
   border: 1px solid var(--as-border);
   border-radius: var(--as-radius-sm);
-  max-height: 160px;
+  max-height: 140px;
   overflow-y: auto;
 }
 .mp-toc-title {
@@ -92,7 +123,7 @@ const headings = computed<ParsedHeading[]>(() => {
   white-space: nowrap;
 }
 .mp-content {
-  max-height: 46vh;
+  flex: 1;
   overflow-y: auto;
   padding: 12px 14px;
   border: 1px solid var(--as-border);
@@ -101,5 +132,7 @@ const headings = computed<ParsedHeading[]>(() => {
   line-height: 1.8;
   white-space: pre-wrap;
   word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
 }
 </style>
