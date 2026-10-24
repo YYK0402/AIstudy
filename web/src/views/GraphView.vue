@@ -234,17 +234,27 @@ const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; h
     const row = levels[lv] ?? (levels[lv] = []);
     row.push(k);
   }
-  const maxPerLevel = Math.max(1, ...levels.map((l) => l.length));
-  const width = maxPerLevel * (NODE_W + GAP_X) + GAP_X;
-  const height = (maxLevel + 1) * (NODE_H + GAP_Y) + GAP_Y;
+  // 同层节点过多时按行折返（最多 8 个/行），避免整层排成超宽一行导致节点被压成线
+  const MAX_PER_ROW = 8;
+  const rows: KnowledgePoint[][] = [];
+  for (const row of levels) {
+    if (row.length === 0) {
+      rows.push([]);
+      continue;
+    }
+    for (let i = 0; i < row.length; i += MAX_PER_ROW) rows.push(row.slice(i, i + MAX_PER_ROW));
+  }
+  const maxPerRow = Math.max(1, ...rows.map((r) => r.length));
+  const width = maxPerRow * (NODE_W + GAP_X) + GAP_X;
+  const height = rows.length * (NODE_H + GAP_Y) + GAP_Y;
   const pos = new Map<number, { x: number; y: number }>();
-  levels.forEach((row, lv) => {
-    const rowW = row.length * NODE_W + (row.length - 1) * GAP_X;
+  rows.forEach((row, idx) => {
+    const rowW = row.length * NODE_W + Math.max(0, row.length - 1) * GAP_X;
     const startX = (width - rowW) / 2 + NODE_W / 2;
     row.forEach((k, i) => {
       pos.set(k.id, {
         x: startX + i * (NODE_W + GAP_X),
-        y: GAP_Y / 2 + lv * (NODE_H + GAP_Y) + NODE_H / 2,
+        y: GAP_Y / 2 + idx * (NODE_H + GAP_Y) + NODE_H / 2,
       });
     });
   });
