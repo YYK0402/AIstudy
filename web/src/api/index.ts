@@ -2483,6 +2483,31 @@ export async function importChapterTree(
     existing.push(chapter);
     created++;
   }
+  // 按 nodes 文档顺序重编号 sort：重复导入时新建行要落回文档序位置，不能全部追加到末尾
+  const renumber = (rows: Chapter[], orderedIds: number[]) => {
+    const unique = orderedIds.filter((id, i) => orderedIds.indexOf(id) === i);
+    const rest = rows
+      .filter((c) => !unique.includes(c.id))
+      .sort((a, b) => a.sort - b.sort || a.id - b.id)
+      .map((c) => c.id);
+    unique.concat(rest).forEach((id, i) => {
+      const c = data.chapters.find((x) => x.id === id);
+      if (c) c.sort = i + 1;
+    });
+  };
+  const chapterRows = existing.filter((c) => c.level === "chapter");
+  const topIds = nodes
+    .filter((n) => !n.parentName)
+    .map((n) => chapterRows.find((c) => norm(c.name) === norm(n.name.trim()))?.id)
+    .filter((id): id is number => id != null);
+  renumber(existing.filter((c) => c.parentId === null), topIds);
+  for (const ch of chapterRows) {
+    const unitIds = nodes
+      .filter((n) => n.parentName && norm(n.parentName) === norm(ch.name))
+      .map((n) => existing.find((c) => c.parentId === ch.id && norm(c.name) === norm(n.name.trim()))?.id)
+      .filter((id): id is number => id != null);
+    renumber(existing.filter((c) => c.parentId === ch.id), unitIds);
+  }
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
   await saveData(data);
