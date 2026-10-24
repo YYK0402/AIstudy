@@ -25,16 +25,16 @@ export interface HeadingChunk {
   content: string;
 }
 
-// 判断一行是否为标题（markdown #/## 或编号模式：第X章/第X节/X.X）
+// 判断一行是否为标题（markdown #/##/### 或编号模式：第X章/第X节/X.X）
 function isHeadingLine(line: string): boolean {
   if (!line || line.length > 40) return false;
-  if (/^#{1,2}\s+/.test(line)) return true;
+  if (/^#{1,3}\s+/.test(line)) return true;
   if (/^第[一二三四五六七八九十百\d]+[章节部编]/.test(line)) return true;
   if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(line)) return true;
   return false;
 }
 
-// 判断一行是否为章级标题（markdown 单 #，或「第X章/部/编/讲」；##、第X节、X.X 均属节级）
+// 判断一行是否为章级标题（markdown 单 #，或「第X章/部/编/讲」；##、###、第X节、X.X 均属非章级）
 function isChapterHeadingLine(line: string): boolean {
   if (!line || line.length > 40) return false;
   if (/^#\s+/.test(line)) return true;
@@ -84,7 +84,7 @@ export function chunkByMarkdownHeadings(text: string): HeadingChunk[] {
     const trimmed = line.trim();
     if (isHeadingLine(trimmed)) {
       flush();
-      title = trimmed.replace(/^#{1,2}\s+/, "");
+      title = trimmed.replace(/^#{1,3}\s+/, "");
       contentLines = [];
     } else {
       contentLines.push(line);

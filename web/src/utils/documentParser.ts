@@ -28,7 +28,7 @@ interface ParsedContent {
   headings: ParsedHeading[];
 }
 
-/** 判断标题层级：1=章，2=节，0=非标题。只识别明确的章/节编号（第X章/第X节/X.X），避免误判三级标题 */
+/** 判断标题层级：1=章，2=节，3=子标题。识别明确的章/节编号（第X章/第X节/X.X），以及三级编号（一、二、/（一）（二）） */
 function detectHeadingLevel(text: string): number {
   // 章：第X章 / 第X部 / 第X编
   if (/^第[一二三四五六七八九十百\d]+[章部编]/.test(text)) return 1;
@@ -36,16 +36,20 @@ function detectHeadingLevel(text: string): number {
   if (/^第[一二三四五六七八九十百\d]+节/.test(text)) return 2;
   // 节：X.X / X.X.X
   if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(text)) return 2;
+  // 子标题：一、二、三、四、...
+  if (/^[一二三四五六七八九十]+[、.．．]\s/.test(text)) return 3;
+  // 子标题：（一）（二）（三）...
+  if (/^（[一二三四五六七八九十]+）\s?/.test(text)) return 3;
   return 0;
 }
 
-/** 从 markdown 中提取一级/二级标题（### 及更深层级忽略）。支持编号模式识别（无 # 标记的纯文本标题）。 */
+/** 从 markdown 中提取一级/二级/三级标题。支持编号模式识别（无 # 标记的纯文本标题）。 */
 export function extractHeadingsFromMarkdown(markdown: string): ParsedHeading[] {
   const headings: ParsedHeading[] = [];
   for (const line of markdown.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const m = trimmed.match(/^(#{1,2})\s+(.+?)\s*$/);
+    const m = trimmed.match(/^(#{1,3})\s+(.+?)\s*$/);
     const markLevel = m ? m[1].length : 0;
     const text = m ? m[2].trim() : trimmed;
     if (!text || text.length > 40) continue;
@@ -188,6 +192,9 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
     } else if (level === 2) {
       markdown += `## ${line.text}\n\n`;
       headings.push({ level: 2, text: line.text });
+    } else if (level === 3) {
+      markdown += `### ${line.text}\n\n`;
+      headings.push({ level: 3, text: line.text });
     } else {
       markdown += `${line.text}\n`;
     }
