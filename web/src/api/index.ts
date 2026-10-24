@@ -9,7 +9,7 @@ import { parseFlashcardsJson } from "../utils/flashcardGen";
 import type { StudyTrend } from "../utils/studyTrend";
 import { PROMPT_TASKS, findPromptTask, resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import type { PromptVarInfo } from "./promptTemplates";
-import { useNotifyStore } from "../stores/notify";
+import { useNotifyStore, materialTaskId, courseTaskId } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
 export type { AiProvider, AiModel, TaskModel, CallLog, Course, Chapter, KnowledgePoint, Material, MaterialChapter, Question, AnswerRecord, WrongQuestion, StudyPlan, StudyTask, ExplainRecord, ReviewSchedule, FlashCard, StudyLog, AppData, AppSettings, Mastery, PromptTemplateDef } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
@@ -1194,6 +1194,23 @@ export async function generateQuestions(
   const qTypeLabel = QUESTION_TYPE_LABELS[input.qType];
   const diffLabel = QUESTION_DIFFICULTY_LABELS[input.difficulty];
 
+  // 铃铛：出题是单次长调用，无分段进度（total=0 不显示进度条）
+  const notify = useNotifyStore();
+  const qTaskId = courseTaskId(courseId, "gen_question");
+  notify.upsertTask({
+    taskId: qTaskId,
+    label: course.name,
+    courseId,
+    taskType: "gen_question",
+    status: "running",
+    done: 0,
+    total: 0,
+    message: `AI 出题中（${kps.length} 个知识点 → ${input.count} 题）…`,
+    unread: false,
+    startedAt: now(),
+    finishedAt: null,
+  });
+
   const kpLines = kps.map((k) => `- ${k.id}. ${k.name}：${truncateText(k.content, 200) || "暂无描述"}`).join("\n");
 
   const questionVars = {
@@ -1205,65 +1222,76 @@ export async function generateQuestions(
     diffLabel,
     kpLines,
   };
-  const questionTpl = resolvePromptTemplate(data, "gen_question");
-  const baseMessages = [
-    { role: "system", content: renderPrompt(questionTpl.system, questionVars) },
-    { role: "user", content: renderPrompt(questionTpl.user, questionVars) },
-  ];
+  try {
+    const questionTpl = resolvePromptTemplate(data, "gen_question");
+    const baseMessages = [
+      { role: "system", content: renderPrompt(questionTpl.system, questionVars) },
+      { role: "user", content: renderPrompt(questionTpl.user, questionVars) },
+    ];
 
-  // 解析失败自动重试一次：把上次无法解析的原始输出交还给模型自纠正
-  let items: AiQuestionItem[] = [];
-  let messages = baseMessages;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await window.siyuanAiStudy.callAi({
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      taskKey: "gen_question",
-      messages,
-    });
-    items = parseAiQuestionResponse(res.content, input.qType);
-    if (items.length > 0) break;
-    if (attempt === 1) {
-      messages = [
-        ...baseMessages,
-        { role: "assistant", content: res.content },
-        {
-          role: "user",
-          content:
-            "你上次的输出无法解析为题目 JSON。请重新输出：只返回包含 " +
-            input.count +
-            " 道题目的 JSON 数组，每项字段为 qType、kpIds、title、options、answer、analysis、difficulty，不要输出任何其他文字。",
-        },
-      ];
+    // 解析失败自动重试一次：把上次无法解析的原始输出交还给模型自纠正
+    let items: AiQuestionItem[] = [];
+    let messages = baseMessages;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const res = await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey: "gen_question",
+        messages,
+      });
+      items = parseAiQuestionResponse(res.content, input.qType);
+      if (items.length > 0) break;
+      if (attempt === 1) {
+        messages = [
+          ...baseMessages,
+          { role: "assistant", content: res.content },
+          {
+            role: "user",
+            content:
+              "你上次的输出无法解析为题目 JSON。请重新输出：只返回包含 " +
+              input.count +
+              " 道题目的 JSON 数组，每项字段为 qType、kpIds、title、options、answer、analysis、difficulty，不要输出任何其他文字。",
+          },
+        ];
+      }
     }
-  }
-  if (items.length === 0) {
-    throw new Error("AI 两次输出格式异常，请重试或更换模型");
-  }
-  const kpIdSet = new Set(input.kpIds);
+    if (items.length === 0) {
+      throw new Error("AI 两次输出格式异常，请重试或更换模型");
+    }
+    const kpIdSet = new Set(input.kpIds);
 
-  const questions: Question[] = [];
-  let nextQuestionId = nextId(data.questions);
-  for (const item of items) {
-    // 模型漏给 kpIds 时回退绑定全部所选知识点，避免产生无归属题
-    const bound = item.kpIds.filter((n) => kpIdSet.has(n));
-    questions.push({
-      id: nextQuestionId++,
-      courseId,
-      kpIds: (bound.length > 0 ? bound : input.kpIds).join(","),
-      title: item.title,
-      options: JSON.stringify(item.options),
-      answer: item.answer,
-      analysis: item.analysis,
-      qType: item.qType,
-      difficulty: item.difficulty,
-      source: "ai",
-      createTime: now(),
+    const questions: Question[] = [];
+    let nextQuestionId = nextId(data.questions);
+    for (const item of items) {
+      // 模型漏给 kpIds 时回退绑定全部所选知识点，避免产生无归属题
+      const bound = item.kpIds.filter((n) => kpIdSet.has(n));
+      questions.push({
+        id: nextQuestionId++,
+        courseId,
+        kpIds: (bound.length > 0 ? bound : input.kpIds).join(","),
+        title: item.title,
+        options: JSON.stringify(item.options),
+        answer: item.answer,
+        analysis: item.analysis,
+        qType: item.qType,
+        difficulty: item.difficulty,
+        source: "ai",
+        createTime: now(),
+      });
+    }
+    data.questions.push(...questions);
+    await saveData(data);
+    notify.patchTask(qTaskId, { status: "done", unread: true, finishedAt: now(), message: `已生成 ${questions.length} 道题` });
+    return questions;
+  } catch (e) {
+    notify.patchTask(qTaskId, {
+      status: "failed",
+      unread: true,
+      finishedAt: now(),
+      message: e instanceof Error ? e.message : String(e),
     });
+    throw e;
   }
-  data.questions.push(...questions);
-  await saveData(data);
-  return questions;
 }
 
 export function truncateText(s: string, n: number): string {
@@ -1421,6 +1449,7 @@ export const AI_TASKS = [
   { key: "recognize_toc", name: "目录识别矫正" },
   { key: "organize_doc", name: "文档结构梳理" },
   { key: "gen_flashcard", name: "AI 闪卡生成" },
+  { key: "gen_ask", name: "费曼提问生成" },
 ] as const;
 
 export const GLOBAL_DEFAULT_KEY = "global_default";
@@ -1638,6 +1667,7 @@ async function runOrganizeTask(
   flag: { aborted: boolean },
 ): Promise<void> {
   const notify = useNotifyStore();
+  const orgTaskId = materialTaskId(materialId, "organize");
   try {
     const data = await getData();
     const material = data.materials.find((m) => m.id === materialId);
@@ -1660,8 +1690,9 @@ async function runOrganizeTask(
     }
     if (!source.trim()) throw new Error("资料没有可梳理的文本内容");
     notify.upsertTask({
+      taskId: orgTaskId,
+      label: material.name,
       materialId,
-      materialName: material.name,
       courseId,
       taskType: "organize",
       status: "running",
@@ -1677,17 +1708,17 @@ async function runOrganizeTask(
       courseId,
       (done, total) => {
         if (total > 0) {
-          notify.patchTask(materialId, "organize", { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
+          notify.patchTask(orgTaskId, { done, total, message: `AI 梳理中：第 ${Math.min(done + 1, total)}/${total} 段…` });
         }
       },
       () => flag.aborted,
     );
     if (flag.aborted) {
-      notify.patchTask(materialId, "organize", { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
+      notify.patchTask(orgTaskId, { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
       return;
     }
     if (!res.organized) {
-      notify.patchTask(materialId, "organize", {
+      notify.patchTask(orgTaskId, {
         status: "failed",
         unread: true,
         finishedAt: now(),
@@ -1717,13 +1748,13 @@ async function runOrganizeTask(
     let msg = `梳理完成：识别 ${chCount} 章 ${headings.length - chCount} 节`;
     if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
     if (siyuanSyncFailed) msg += "；同步思源文档失败";
-    notify.patchTask(materialId, "organize", { status: "done", unread: true, finishedAt: now(), message: msg });
+    notify.patchTask(orgTaskId, { status: "done", unread: true, finishedAt: now(), message: msg });
     // 自动目录模式：梳理完成后弹目录预览（梳理后的标题比梳理前的启发式识别更干净）
     if (latest.settings.chapterMode === "auto" && headings.length > 0) {
       useModalStore().openChapterPreview(courseId, headings, materialId);
     }
   } catch (e) {
-    notify.patchTask(materialId, "organize", {
+    notify.patchTask(orgTaskId, {
       status: "failed",
       unread: true,
       finishedAt: now(),
@@ -2261,13 +2292,15 @@ async function runExtractTask(
   flag: { aborted: boolean },
 ): Promise<void> {
   const notify = useNotifyStore();
+  const extractTaskId = materialTaskId(materialId, "extract");
   try {
     const data = await getData();
     const material = data.materials.find((m) => m.id === materialId);
     if (!material) throw new Error("资料不存在或已删除");
     notify.upsertTask({
+      taskId: extractTaskId,
+      label: material.name,
       materialId,
-      materialName: material.name,
       courseId,
       taskType: "extract",
       status: "running",
@@ -2282,23 +2315,23 @@ async function runExtractTask(
       isAborted: () => flag.aborted,
       onProgress: (current, total, blockTitle) => {
         if (total > 0) {
-          notify.patchTask(
-            materialId,
-            "extract",
-            { done: current, total, message: `知识点抽取：第 ${current}/${total} 块${blockTitle ? " · " + blockTitle : ""}` },
-          );
+          notify.patchTask(extractTaskId, {
+            done: current,
+            total,
+            message: `知识点抽取：第 ${current}/${total} 块${blockTitle ? " · " + blockTitle : ""}`,
+          });
         }
       },
     });
     if (flag.aborted) {
-      notify.patchTask(materialId, "extract", { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
+      notify.patchTask(extractTaskId, { status: "canceled", unread: true, finishedAt: now(), message: "任务已取消" });
       return;
     }
     let msg = `抽取完成：新增 ${result.newCount} 个知识点，合并重复 ${result.duplicateCount} 个`;
     if (result.errors.length > 0) msg += `；${result.errors.length} 块失败（${result.errors[0]}）`;
-    notify.patchTask(materialId, "extract", { status: "done", unread: true, finishedAt: now(), message: msg });
+    notify.patchTask(extractTaskId, { status: "done", unread: true, finishedAt: now(), message: msg });
   } catch (e) {
-    notify.patchTask(materialId, "extract", {
+    notify.patchTask(extractTaskId, {
       status: "failed",
       unread: true,
       finishedAt: now(),
@@ -2959,80 +2992,114 @@ export async function generateFlashcards(
     .map((id) => data.knowledgePoints.find((k) => k.id === id && k.courseId === courseId))
     .filter((k): k is KnowledgePoint => !!k);
   if (kps.length === 0) throw new Error("所选知识点不存在，可能已被删除");
+  // 铃铛：分批生成，进度按知识点数
+  const notify = useNotifyStore();
+  const fcTaskId = courseTaskId(courseId, "gen_flashcard");
+  const fcTotal = kps.length;
+  notify.upsertTask({
+    taskId: fcTaskId,
+    label: course.name,
+    courseId,
+    taskType: "gen_flashcard",
+    status: "running",
+    done: 0,
+    total: fcTotal,
+    message: "AI 闪卡生成中…",
+    unread: false,
+    startedAt: now(),
+    finishedAt: null,
+  });
   const tpl = resolvePromptTemplate(data, "gen_flashcard");
   const result: GenerateFlashcardsResult = { created: 0, updated: 0, skipped: 0, parseSkipped: 0, errors: [] };
-  const total = kps.length;
-  for (let i = 0; i < kps.length; i += FLASHCARD_GEN_BATCH) {
-    const batch = kps.slice(i, i + FLASHCARD_GEN_BATCH);
-    const kpLines = batch.map((k, idx) => `${idx}. ${k.name}：${truncateText(k.content, 300) || "（暂无描述）"}`).join("\n");
-    const baseMessages = [
-      { role: "system", content: renderPrompt(tpl.system, { courseName: course.name, kpLines }) },
-      { role: "user", content: renderPrompt(tpl.user, { courseName: course.name, kpLines }) },
-    ];
-    let parsed = parseFlashcardsJson(
-      (await window.siyuanAiStudy.callAi({
-        providerId: binding.providerId,
-        modelId: binding.modelId,
-        taskKey: "gen_flashcard",
-        messages: baseMessages,
-      })).content,
-      batch.length,
-    );
-    if (parsed.items.length === 0) {
-      // 重试一次：追加自纠正指令再调一次
-      const retryRaw = (await window.siyuanAiStudy.callAi({
-        providerId: binding.providerId,
-        modelId: binding.modelId,
-        taskKey: "gen_flashcard",
-        messages: [
-          ...baseMessages,
-          {
-            role: "user",
-            content:
-              "你上次的输出无法解析为闪卡 JSON。请重新输出：只返回包含 " +
-              batch.length +
-              " 个元素的 JSON 数组，每项字段为 index（0 起整数，与输入知识点顺序对应）、front（问题）、back（答案要点），不要输出任何其他文字。",
-          },
-        ],
-      })).content;
-      const retry = parseFlashcardsJson(retryRaw, batch.length);
-      if (retry.items.length > 0 || retry.errors.length === 0) parsed = retry;
-    }
-    for (const e of parsed.errors) result.errors.push(e);
-    result.parseSkipped += parsed.skipped;
-    const latest = await getData();
-    for (const item of parsed.items) {
-      const kp = batch[item.index];
-      const prev = latest.flashCards.find((c) => c.courseId === courseId && c.kpId === kp.id);
-      if (prev && !options.overwrite) {
-        result.skipped++;
-        continue;
+  try {
+    const total = kps.length;
+    for (let i = 0; i < kps.length; i += FLASHCARD_GEN_BATCH) {
+      const batch = kps.slice(i, i + FLASHCARD_GEN_BATCH);
+      const kpLines = batch.map((k, idx) => `${idx}. ${k.name}：${truncateText(k.content, 300) || "（暂无描述）"}`).join("\n");
+      const baseMessages = [
+        { role: "system", content: renderPrompt(tpl.system, { courseName: course.name, kpLines }) },
+        { role: "user", content: renderPrompt(tpl.user, { courseName: course.name, kpLines }) },
+      ];
+      let parsed = parseFlashcardsJson(
+        (await window.siyuanAiStudy.callAi({
+          providerId: binding.providerId,
+          modelId: binding.modelId,
+          taskKey: "gen_flashcard",
+          messages: baseMessages,
+        })).content,
+        batch.length,
+      );
+      if (parsed.items.length === 0) {
+        // 重试一次：追加自纠正指令再调一次
+        const retryRaw = (await window.siyuanAiStudy.callAi({
+          providerId: binding.providerId,
+          modelId: binding.modelId,
+          taskKey: "gen_flashcard",
+          messages: [
+            ...baseMessages,
+            {
+              role: "user",
+              content:
+                "你上次的输出无法解析为闪卡 JSON。请重新输出：只返回包含 " +
+                batch.length +
+                " 个元素的 JSON 数组，每项字段为 index（0 起整数，与输入知识点顺序对应）、front（问题）、back（答案要点），不要输出任何其他文字。",
+            },
+          ],
+        })).content;
+        const retry = parseFlashcardsJson(retryRaw, batch.length);
+        if (retry.items.length > 0 || retry.errors.length === 0) parsed = retry;
       }
-      if (prev) {
-        prev.front = item.front;
-        prev.back = item.back;
-        prev.source = "ai";
-        prev.updateTime = now();
-        result.updated++;
-      } else {
-        const card: FlashCard = {
-          id: nextId(latest.flashCards),
-          courseId,
-          kpId: kp.id,
-          front: item.front,
-          back: item.back,
-          source: "ai",
-          createTime: now(),
-        };
-        latest.flashCards.push(card);
-        ensureCardReviewInData(latest, card.id);
-        result.created++;
+      for (const e of parsed.errors) result.errors.push(e);
+      result.parseSkipped += parsed.skipped;
+      const latest = await getData();
+      for (const item of parsed.items) {
+        const kp = batch[item.index];
+        const prev = latest.flashCards.find((c) => c.courseId === courseId && c.kpId === kp.id);
+        if (prev && !options.overwrite) {
+          result.skipped++;
+          continue;
+        }
+        if (prev) {
+          prev.front = item.front;
+          prev.back = item.back;
+          prev.source = "ai";
+          prev.updateTime = now();
+          result.updated++;
+        } else {
+          const card: FlashCard = {
+            id: nextId(latest.flashCards),
+            courseId,
+            kpId: kp.id,
+            front: item.front,
+            back: item.back,
+            source: "ai",
+            createTime: now(),
+          };
+          latest.flashCards.push(card);
+          ensureCardReviewInData(latest, card.id);
+          result.created++;
+        }
       }
+      await saveData(latest);
+      const done = Math.min(total, i + FLASHCARD_GEN_BATCH);
+      options.onProgress?.(done, total);
+      notify.patchTask(fcTaskId, { done, message: `AI 闪卡生成：第 ${done}/${total} 个知识点…` });
     }
-    await saveData(latest);
-    options.onProgress?.(Math.min(total, i + FLASHCARD_GEN_BATCH), total);
+    let msg = `生成完成：新增 ${result.created} 张`;
+    if (result.updated > 0) msg += `、覆盖 ${result.updated} 张`;
+    if (result.skipped > 0) msg += `、跳过已有 ${result.skipped} 张`;
+    if (result.parseSkipped > 0) msg += `；${result.parseSkipped} 个知识点输出异常未生成`;
+    notify.patchTask(fcTaskId, { status: "done", unread: true, finishedAt: now(), message: msg });
+    return result;
+  } catch (e) {
+    notify.patchTask(fcTaskId, {
+      status: "failed",
+      unread: true,
+      finishedAt: now(),
+      message: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
   }
-  return result;
 }
 
 // ===== AI 学习计划生成 =====

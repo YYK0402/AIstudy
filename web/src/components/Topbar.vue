@@ -16,23 +16,28 @@
       <div v-if="notifyStore.panelOpen" class="notify-panel">
         <div class="notify-head">
           <b>任务通知</b>
-          <button class="btn sm ghost" @click="notifyStore.clearAll()">清空</button>
+          <div class="notify-head-actions">
+            <button class="btn sm ghost" :disabled="notifyStore.doneCount === 0" @click="notifyStore.clearDone()">清除已完成</button>
+            <button class="btn sm ghost" @click="notifyStore.clearAll()">清空</button>
+          </div>
         </div>
-        <div v-for="t in sortedTasks" :key="`${t.materialId}-${t.taskType}`" class="notify-item">
+        <div v-for="t in sortedTasks" :key="t.taskId" class="notify-item">
           <div class="notify-main">
             <div class="notify-name">
               <span class="notify-ico">{{ statusIcon(t.status) }}</span>
-              <span class="muted">{{ taskTypeLabel(t.taskType) }}</span> {{ t.materialName }}
+              <span class="muted">{{ taskTypeLabel(t.taskType) }}</span> {{ t.label }}
             </div>
             <div class="notify-msg">{{ t.message }}</div>
             <div v-if="t.status === 'running' && t.total > 0" class="notify-progress"><i :style="{ width: progressPct(t) }"></i></div>
           </div>
           <div class="notify-actions">
-            <button v-if="t.status === 'done' && t.taskType === 'organize'" class="btn sm ghost" @click="viewToc(t)">查看目录</button>
-            <button v-if="t.status === 'done'" class="btn sm ghost" @click="goContent(t)">资料</button>
-            <button v-if="t.status === 'failed'" class="btn sm ghost" @click="retryTask(t)">重试</button>
-            <button v-if="t.status === 'running'" class="btn sm ghost" @click="cancelTask(t)">取消</button>
-            <button class="btn sm ghost" @click="notifyStore.clearTask(t.materialId, t.taskType)">移除</button>
+            <template v-if="t.materialId != null">
+              <button v-if="t.status === 'done' && t.taskType === 'organize'" class="btn sm ghost" @click="viewToc(t)">查看目录</button>
+              <button v-if="t.status === 'done'" class="btn sm ghost" @click="goContent(t)">资料</button>
+              <button v-if="t.status === 'failed'" class="btn sm ghost" @click="retryTask(t)">重试</button>
+              <button v-if="t.status === 'running'" class="btn sm ghost" @click="cancelTask(t)">取消</button>
+            </template>
+            <button class="btn sm ghost" @click="notifyStore.clearTask(t.taskId)">移除</button>
           </div>
         </div>
       </div>
@@ -54,7 +59,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useThemeStore } from "../stores/theme";
 import { useCourseStore } from "../stores/course";
-import { useNotifyStore, type OrgTaskState } from "../stores/notify";
+import { useNotifyStore, type BgTaskState, type BgTaskType } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
 import type { ParsedHeading } from "../utils/documentParser";
 import {
@@ -111,18 +116,25 @@ const sortedTasks = computed(() =>
   }),
 );
 
-function statusIcon(status: OrgTaskState["status"]): string {
+const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
+  organize: "AI 梳理",
+  extract: "知识点抽取",
+  gen_question: "AI 出题",
+  gen_flashcard: "AI 闪卡",
+};
+
+function statusIcon(status: BgTaskState["status"]): string {
   if (status === "running") return "🔄";
   if (status === "done") return "✅";
   if (status === "failed") return "❌";
   return "⏹️";
 }
 
-function taskTypeLabel(taskType: OrgTaskState["taskType"]): string {
-  return taskType === "extract" ? "知识点抽取" : "AI 梳理";
+function taskTypeLabel(taskType: BgTaskType): string {
+  return TASK_TYPE_LABELS[taskType];
 }
 
-function progressPct(t: OrgTaskState): string {
+function progressPct(t: BgTaskState): string {
   if (t.total <= 0) return "0%";
   return `${Math.min(100, Math.round((t.done / t.total) * 100))}%`;
 }
@@ -140,18 +152,18 @@ function onDocClick(e: MouseEvent) {
   }
 }
 
-async function switchToCourse(t: OrgTaskState) {
+async function switchToCourse(t: BgTaskState) {
   if (courseStore.currentCourseId !== t.courseId) courseStore.setCurrent(t.courseId);
 }
 
-function goContent(t: OrgTaskState) {
+function goContent(t: BgTaskState) {
   void switchToCourse(t);
   router.push({ name: "content" });
   notifyStore.panelOpen = false;
 }
 
 // 查看目录：切课程 → 课程内容页 → 弹目录预览（用该资料最新标题）
-async function viewToc(t: OrgTaskState) {
+async function viewToc(t: BgTaskState) {
   try {
     await switchToCourse(t);
     router.push({ name: "content" });
@@ -166,12 +178,14 @@ async function viewToc(t: OrgTaskState) {
   }
 }
 
-function retryTask(t: OrgTaskState) {
+function retryTask(t: BgTaskState) {
+  if (t.materialId == null) return;
   if (t.taskType === "extract") startExtractTask(t.materialId, t.courseId);
   else startOrganizeTask(t.materialId, t.courseId);
 }
 
-function cancelTask(t: OrgTaskState) {
+function cancelTask(t: BgTaskState) {
+  if (t.materialId == null) return;
   if (t.taskType === "extract") cancelExtractTask(t.materialId);
   else cancelOrganizeTask(t.materialId);
 }

@@ -1,4 +1,6 @@
 .ai-study-app {
+  user-select: text;
+  -webkit-user-select: text;
   --as-bg: #0d110e;
   --as-bg-elev: #141a15;
   --as-bg-elev2: #1b231c;
@@ -92,7 +94,7 @@
   pointer-events: none;
 }
 .notify-panel {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 100;
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 300;
   width: 400px; max-height: 440px; overflow-y: auto;
   padding: 12px;
   background: var(--as-bg-elev);
@@ -101,6 +103,7 @@
   box-shadow: var(--as-shadow);
 }
 .notify-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
+.notify-head-actions { display: flex; gap: 6px; }
 .notify-item {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px; margin-bottom: 8px;

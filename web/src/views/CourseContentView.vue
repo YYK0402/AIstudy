@@ -262,7 +262,7 @@ import {
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
-import { useNotifyStore } from "../stores/notify";
+import { useNotifyStore, materialTaskId } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
 import { expandChapterNodeIds } from "../utils/chapterScope";
 import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
@@ -277,10 +277,10 @@ const notifyStore = useNotifyStore();
 
 // 资料后台任务状态（AI 梳理 / 知识点抽取，进度见右上铃铛）
 function orgTaskOf(m: Material) {
-  return notifyStore.taskOf(m.id, "organize");
+  return notifyStore.taskOf(materialTaskId(m.id, "organize"));
 }
 function extractTaskOf(m: Material) {
-  return notifyStore.taskOf(m.id, "extract");
+  return notifyStore.taskOf(materialTaskId(m.id, "extract"));
 }
 function startOrganize(m: Material) {
   if (!currentCourseId()) return;

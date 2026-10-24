@@ -1,18 +1,21 @@
-// 后台任务通知：AI 梳理 / 知识点抽取任务状态，localStorage 持久化（切页/刷新不丢）
+// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / AI 出题 / AI 闪卡生成），localStorage 持久化（切页/刷新不丢）
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-export type OrgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type OrgTaskType = "organize" | "extract";
+export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
+export type BgTaskType = "organize" | "extract" | "gen_question" | "gen_flashcard";
 
-export interface OrgTaskState {
-  materialId: number;
-  materialName: string;
+export interface BgTaskState {
+  /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} */
+  taskId: string;
+  taskType: BgTaskType;
+  /** 显示目标名（资料名 / 课程名） */
+  label: string;
   courseId: number;
-  /** 任务类型（旧数据无此字段，按 organize 兼容） */
-  taskType: OrgTaskType;
-  status: OrgTaskStatus;
-  /** 已完成段数/块数（进行中时展示进度） */
+  /** 仅资料任务有，供「查看目录 / 资料」导航 */
+  materialId?: number;
+  status: BgTaskStatus;
+  /** 已完成段数/批次数（total > 0 时进行中显示进度条） */
   done: number;
   total: number;
   message: string;
@@ -21,30 +24,68 @@ export interface OrgTaskState {
   finishedAt: string | null;
 }
 
+/** 资料级任务键（AI 梳理 / 知识点抽取） */
+export function materialTaskId(materialId: number, taskType: "organize" | "extract"): string {
+  return `${taskType}-${materialId}`;
+}
+
+/** 课程级任务键（AI 出题 / AI 闪卡生成） */
+export function courseTaskId(courseId: number, taskType: "gen_question" | "gen_flashcard"): string {
+  return `${taskType}-${courseId}`;
+}
+
 const STORAGE_KEY = "ai-study:org-tasks";
 
-function loadPersisted(): OrgTaskState[] {
+type LegacyTask = Partial<BgTaskState> & { materialName?: string };
+
+function loadPersisted(): BgTaskState[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const arr = JSON.parse(raw) as OrgTaskState[];
+    const arr = JSON.parse(raw) as LegacyTask[];
     if (!Array.isArray(arr)) return [];
     return arr
-      .filter((t) => t && typeof t.materialId === "number" && typeof t.status === "string")
-      .map((t) => {
-        // 旧数据无 taskType 字段，按 organize 兼容
-        const taskType: OrgTaskType = t.taskType === "extract" ? "extract" : "organize";
+      .filter((t) => t && typeof t.status === "string")
+      .map((t, i) => {
+        // 旧数据兼容：无 taskId/label 字段，按 taskType + materialId 派生
+        const taskType: BgTaskType =
+          t.taskType === "extract"
+            ? "extract"
+            : t.taskType === "gen_question"
+              ? "gen_question"
+              : t.taskType === "gen_flashcard"
+                ? "gen_flashcard"
+                : "organize";
+        const base: BgTaskState = {
+          taskId:
+            typeof t.taskId === "string" && t.taskId
+              ? t.taskId
+              : typeof t.materialId === "number"
+                ? materialTaskId(t.materialId, taskType === "extract" ? "extract" : "organize")
+                : `legacy-${taskType}-${i}`,
+          taskType,
+          label: typeof t.label === "string" ? t.label : (t.materialName ?? ""),
+          courseId: typeof t.courseId === "number" ? t.courseId : 0,
+          materialId: typeof t.materialId === "number" ? t.materialId : undefined,
+          status: t.status as BgTaskStatus,
+          done: typeof t.done === "number" ? t.done : 0,
+          total: typeof t.total === "number" ? t.total : 0,
+          message: typeof t.message === "string" ? t.message : "",
+          unread: !!t.unread,
+          startedAt: typeof t.startedAt === "string" ? t.startedAt : "",
+          finishedAt: t.finishedAt ?? null,
+        };
         // 页面刷新/页签重开后，进行中的任务已无法继续：标记失败供重试
-        return t.status === "running"
-          ? { ...t, taskType, status: "failed" as const, message: "任务中断（页面刷新或关闭），请重试" }
-          : { ...t, taskType };
+        return base.status === "running"
+          ? { ...base, status: "failed" as const, message: "任务中断（页面刷新或关闭），请重试" }
+          : base;
       });
   } catch {
     return [];
   }
 }
 
-function persist(tasks: OrgTaskState[]) {
+function persist(tasks: BgTaskState[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   } catch {
@@ -53,32 +94,32 @@ function persist(tasks: OrgTaskState[]) {
 }
 
 export const useNotifyStore = defineStore("notify", () => {
-  const tasks = ref<OrgTaskState[]>(loadPersisted());
+  const tasks = ref<BgTaskState[]>(loadPersisted());
   const panelOpen = ref(false);
 
   const unreadCount = computed(() => tasks.value.filter((t) => t.unread).length);
+  const doneCount = computed(() => tasks.value.filter((t) => t.status === "done").length);
 
   function save() {
     persist(tasks.value);
   }
 
-  /** 按 (materialId, taskType) upsert（一份资料同类任务同一时刻最多一个） */
-  function upsertTask(t: OrgTaskState) {
-    const idx = tasks.value.findIndex((x) => x.materialId === t.materialId && x.taskType === t.taskType);
+  function upsertTask(t: BgTaskState) {
+    const idx = tasks.value.findIndex((x) => x.taskId === t.taskId);
     if (idx >= 0) tasks.value[idx] = t;
     else tasks.value.push(t);
     save();
   }
 
-  function patchTask(materialId: number, taskType: OrgTaskType, patch: Partial<OrgTaskState>) {
-    const t = tasks.value.find((x) => x.materialId === materialId && x.taskType === taskType);
+  function patchTask(taskId: string, patch: Partial<BgTaskState>) {
+    const t = tasks.value.find((x) => x.taskId === taskId);
     if (!t) return;
     Object.assign(t, patch);
     save();
   }
 
-  function taskOf(materialId: number, taskType: OrgTaskType): OrgTaskState | null {
-    return tasks.value.find((x) => x.materialId === materialId && x.taskType === taskType) ?? null;
+  function taskOf(taskId: string): BgTaskState | null {
+    return tasks.value.find((x) => x.taskId === taskId) ?? null;
   }
 
   function markAllRead() {
@@ -86,8 +127,14 @@ export const useNotifyStore = defineStore("notify", () => {
     save();
   }
 
-  function clearTask(materialId: number, taskType: OrgTaskType) {
-    tasks.value = tasks.value.filter((t) => !(t.materialId === materialId && t.taskType === taskType));
+  function clearTask(taskId: string) {
+    tasks.value = tasks.value.filter((t) => t.taskId !== taskId);
+    save();
+  }
+
+  /** 移除所有已完成任务（进行中/失败/取消保留） */
+  function clearDone() {
+    tasks.value = tasks.value.filter((t) => t.status !== "done");
     save();
   }
 
@@ -96,5 +143,5 @@ export const useNotifyStore = defineStore("notify", () => {
     save();
   }
 
-  return { tasks, panelOpen, unreadCount, upsertTask, patchTask, taskOf, markAllRead, clearTask, clearAll };
+  return { tasks, panelOpen, unreadCount, doneCount, upsertTask, patchTask, taskOf, markAllRead, clearTask, clearDone, clearAll };
 });
