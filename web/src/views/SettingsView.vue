@@ -30,8 +30,13 @@
                 <div v-if="testResults[p.id]" class="s" :style="{ color: testResults[p.id].ok ? 'var(--as-green)' : 'var(--as-red)' }">{{ testResults[p.id].message }}</div>
               </div>
               <button class="btn sm ghost" :disabled="testingId === p.id" @click="handleTest(p)">{{ testingId === p.id ? "测试中…" : "测试" }}</button>
-              <span class="p-action" title="编辑" @click="handleEdit(p)"><AppIcon name="pencil" :size="13" /></span>
-              <span class="p-action danger" title="删除" @click="handleDelete(p)"><AppIcon name="x" :size="13" /></span>
+              <span class="row-more">
+                <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="toggleProviderMenu(p.id)">⋯</button>
+                <div v-if="providerMenuId === p.id" class="row-menu" @click.stop>
+                  <button @click.stop="closeProviderMenu(); handleEdit(p)">编辑</button>
+                  <button class="danger" @click.stop="closeProviderMenu(); handleDelete(p)">删除</button>
+                </div>
+              </span>
               <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
             </div>
             <div v-if="expandedId === p.id" class="provider-models">
@@ -237,7 +242,7 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
 import {
@@ -270,6 +275,15 @@ const settings = reactive({
   aiRateLimitPerMin: 0,
 });
 const settingsSaving = ref(false);
+/** 服务商行「⋯」菜单：同一时间只开一个 */
+const providerMenuId = ref<number | null>(null);
+
+function toggleProviderMenu(id: number) {
+  providerMenuId.value = providerMenuId.value === id ? null : id;
+}
+function closeProviderMenu() {
+  providerMenuId.value = null;
+}
 /** 底栏「有修改」提示：加载阶段不置脏，之后任何字段变更都提示 */
 const settingsDirty = ref(false);
 let settingsReady = false;
@@ -621,6 +635,7 @@ function formatFullTime(iso: string): string {
 }
 
 onMounted(async () => {
+  document.addEventListener("click", closeProviderMenu);
   void loadPromptTemplates();
   // 先加载应用设置（本地数据，快），再拉服务商/模型，避免慢请求拖住「有修改」判定
   try {
@@ -641,5 +656,9 @@ onMounted(async () => {
   } catch (error) {
     console.error("加载模型配置失败:", error);
   }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", closeProviderMenu);
 });
 </script>

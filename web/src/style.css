@@ -730,7 +730,10 @@
 .kp-tag-filter .s { font-size: 11px; color: var(--as-text-faint); margin-right: 2px; }
 .kp-tags { display: inline-flex; gap: 4px; align-items: center; }
 .tag-chip { display: inline-block; padding: 1px 8px; font-size: 10.5px; border: 1px solid var(--as-border); border-radius: 999px; background: var(--as-bg-elev2); color: var(--as-text-faint); white-space: nowrap; }
-.gen-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; max-width: 640px; margin-top: 14px; align-items: end; }
+.gen-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; max-width: 640px; align-items: end; }
+.gen-bar { display: flex; flex-direction: column; gap: 12px; }
+.gen-actions { display: flex; align-items: center; gap: 10px; }
+.gen-scope-extra { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .gen-form .gen-submit { grid-column: 1 / -1; justify-self: start; }
 .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 4px 14px; font-size: 12px; border: 1px solid var(--as-border); border-radius: 999px; background: transparent; color: var(--as-text-dim); cursor: pointer; transition: all .15s; }
@@ -1178,6 +1181,8 @@
 
 /* ===== 掌握度热力图 ===== */
 .hm-list { display: flex; flex-direction: column; gap: 10px; }
+.hm-row.clickable { cursor: pointer; border-radius: 6px; }
+.hm-row.clickable:hover { background: var(--as-bg-elev2); }
 .hm-row { display: flex; align-items: flex-start; gap: 12px; }
 .hm-head { flex-shrink: 0; width: 150px; }
 .hm-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

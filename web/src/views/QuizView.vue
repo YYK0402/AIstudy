@@ -130,34 +130,34 @@
           <span class="ico"><AppIcon name="spark" :size="28" /></span> 暂无知识点，请先上传资料并抽取知识点
         </div>
         <template v-else>
-          <div class="gen-scope">
-            <button class="btn sm" :disabled="generating" @click="genKpOpen = true">选择知识点</button>
-            <span v-if="selectedKpIds.length > 0" class="s" style="color:var(--as-text-dim)">已选 {{ selectedKpIds.length }} 个知识点</span>
-            <span v-else class="s" style="color:var(--as-text-faint)">未选择知识点（按 章-节-知识点 选择）</span>
-          </div>
-          <div class="gen-form">
-            <div class="field">
-              <label>题型</label>
-              <select v-model="genQType" :disabled="generating" aria-label="题型">
-                <option v-for="(label, key) in QUESTION_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>难度</label>
-              <select v-model="genDifficulty" :disabled="generating" aria-label="难度">
-                <option v-for="(label, key) in QUESTION_DIFFICULTY_LABELS" :key="key" :value="key">{{ label }}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>数量</label>
-              <select v-model.number="genCount" :disabled="generating" aria-label="数量">
-                <option v-for="n in 5" :key="n" :value="n">{{ n }} 题</option>
-              </select>
-            </div>
-            <button class="btn primary gen-submit" :disabled="generating || selectedKpIds.length === 0" @click="generate">
-              <AppIcon name="spark" :size="14" /> {{ generating ? "出题中…" : "开始出题" }}
-            </button>
-          </div>
+          <GenConfigBar
+            :selected-count="selectedKpIds.length"
+            :disabled="generating"
+            :action-label="generating ? '出题中…' : '开始出题'"
+            @select="genKpOpen = true"
+            @action="generate"
+          >
+            <template #options>
+              <div class="field">
+                <label>题型</label>
+                <select v-model="genQType" :disabled="generating" aria-label="题型">
+                  <option v-for="(label, key) in QUESTION_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>难度</label>
+                <select v-model="genDifficulty" :disabled="generating" aria-label="难度">
+                  <option v-for="(label, key) in QUESTION_DIFFICULTY_LABELS" :key="key" :value="key">{{ label }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>数量</label>
+                <select v-model.number="genCount" :disabled="generating" aria-label="数量">
+                  <option v-for="n in 5" :key="n" :value="n">{{ n }} 题</option>
+                </select>
+              </div>
+            </template>
+          </GenConfigBar>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
           <div v-else-if="genCreated.length > 0" class="gen-done">
             <span style="color:var(--as-green)">✓ 已生成 {{ genCreated.length }} 道题目</span>
@@ -272,6 +272,7 @@
 </template>
 
 <script setup lang="ts">
+import GenConfigBar from "../components/GenConfigBar.vue";
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";

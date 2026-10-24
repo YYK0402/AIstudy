@@ -29,6 +29,7 @@
           <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: expandedChapters.has(ch.id) }">
             <div
               class="row"
+              :data-chapter-id="ch.id"
               :class="[{ active: selectedChapterId === ch.id }, rowDropClass(ch.id)]"
               @click="batchMode ? toggleSelect(ch.id) : selectChapter(ch.id)"
               @dragover.prevent="onRowDragOver($event, 'chapter', ch.id)"
@@ -56,6 +57,7 @@
               <div v-for="u in ch.units" :key="u.id" class="tree-node">
                 <div
                   class="row"
+                  :data-chapter-id="u.id"
                   :class="[{ active: selectedChapterId === u.id }, rowDropClass(u.id)]"
                   @click="batchMode ? toggleSelect(u.id) : selectChapter(u.id)"
                   @dragover.prevent="onRowDragOver($event, 'unit', u.id)"
@@ -258,8 +260,9 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
+import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
 import {
@@ -318,6 +321,8 @@ const previewMaterial = ref<Material | null>(null);
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
 const detailKp = ref<KnowledgePoint | null>(null);
+const route = useRoute();
+const router = useRouter();
 const chapters = ref<Chapter[]>([]);
 const chapterModal = ref<"edit" | "top" | "unit" | null>(null);
 const editingChapter = ref<Chapter | null>(null);
@@ -654,7 +659,27 @@ async function load() {
   await Promise.all([loadMaterials(), loadKnowledgePoints(), loadChapters()]);
   // 抽取任务状态来自 notify store（localStorage 持久化），组件重挂载后自然恢复
   if (isFullExtracting()) fullExtracting.value = true;
+  focusChapterFromQuery();
 }
+
+/** 报告热力图 → ?chapter=<id>：展开父章、选中并滚动到该行，然后清掉 query */
+function focusChapterFromQuery() {
+  const raw = route.query.chapter;
+  if (raw == null || raw === "") return;
+  const id = Number(Array.isArray(raw) ? raw[0] : raw);
+  const node = Number.isFinite(id) ? chapters.value.find((c) => c.id === id) : undefined;
+  if (node) {
+    if (node.parentId != null) expandedChapters.value.add(node.parentId);
+    expandedChapters.value.add(node.id);
+    selectedChapterId.value = node.id;
+    void nextTick(() => {
+      document.querySelector<HTMLElement>(`[data-chapter-id="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+  router.replace({ path: "/content" });
+}
+
+watch(() => route.query.chapter, focusChapterFromQuery);
 
 function addTopChapter() {
   if (!currentCourseId()) return;

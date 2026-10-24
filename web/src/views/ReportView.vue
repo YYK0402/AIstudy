@@ -64,12 +64,19 @@
       <div v-if="stats.kp.total > 0 && heatRows.length > 0" class="card" style="margin-top:14px">
         <h3>掌握度热力图</h3>
         <div class="hm-list">
-          <div v-for="row in heatRows" :key="row.chapterId ?? -1" class="hm-row">
+          <div
+            v-for="row in heatRows"
+            :key="row.chapterId ?? -1"
+            class="hm-row"
+            :class="{ clickable: row.chapterId != null }"
+            :title="row.chapterId != null ? '在课程内容中定位该章节' : ''"
+            @click="goChapter(row.chapterId)"
+          >
             <div class="hm-head">
               <span class="hm-name">{{ row.name }}</span>
               <span class="hm-progress">{{ row.mastered }}/{{ row.total }}</span>
             </div>
-            <div class="hm-dots">
+            <div class="hm-dots" @click.stop>
               <router-link
                 v-for="c in row.kps"
                 :key="c.id"
@@ -165,6 +172,7 @@
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { queryCourseStats, generateCourseReport, getData, queryWrongQuestions, parseQuestionKpIds } from "../api";
 import { rankWeakKps } from "../utils/weakKps";
@@ -196,6 +204,13 @@ const copyOk = ref(false);
 const weakKps = ref<WeakKpEntry[]>([]);
 const heatRows = ref<HeatmapRow[]>([]);
 const treeData = ref<MasteryTree>({ chapters: [], unassigned: null });
+
+const router = useRouter();
+
+/** 热力图行 → 课程内容页定位到对应章节（未分配章节仅进入内容页） */
+function goChapter(chapterId: number | null) {
+  router.push({ path: "/content", query: chapterId != null ? { chapter: String(chapterId) } : {} });
+}
 
 const MASTERY_ORDER: Mastery[] = ["proficient", "mastered", "known", "unlearn"];
 const MASTERY_LABELS: Record<Mastery, string> = { unlearn: "未学习", known: "了解", mastered: "掌握", proficient: "精通" };

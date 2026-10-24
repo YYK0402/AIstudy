@@ -16,19 +16,19 @@
           <span class="ico"><AppIcon name="spark" :size="28" /></span> 暂无知识点，请先上传资料并抽取知识点
         </div>
         <template v-else>
-          <div class="gen-scope">
-            <button class="btn sm" :disabled="generating" @click="genKpOpen = true">选择知识点</button>
-            <span v-if="selectedKpIds.length > 0" class="s" style="color:var(--as-text-dim)">已选 {{ selectedKpIds.length }} 个知识点</span>
-            <span v-else class="s" style="color:var(--as-text-faint)">未选择知识点（按 章-节-知识点 选择）</span>
-            <label class="s" style="margin-left:auto;color:var(--as-text-dim);cursor:pointer">
-              <input type="checkbox" v-model="overwrite" :disabled="generating" /> 已有卡则覆盖
-            </label>
-          </div>
-          <div style="margin-top:10px">
-            <button class="btn primary" :disabled="generating || selectedKpIds.length === 0" @click="generate">
-              <AppIcon name="spark" :size="14" /> {{ generating ? `生成中 ${genProgress}…` : "开始生成" }}
-            </button>
-          </div>
+          <GenConfigBar
+            :selected-count="selectedKpIds.length"
+            :disabled="generating"
+            :action-label="generating ? `生成中 ${genProgress}…` : '开始生成'"
+            @select="genKpOpen = true"
+            @action="generate"
+          >
+            <template #scope>
+              <label class="s" style="color: var(--as-text-dim); cursor: pointer">
+                <input type="checkbox" v-model="overwrite" :disabled="generating" /> 已有卡则覆盖
+              </label>
+            </template>
+          </GenConfigBar>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
           <div v-else-if="genResult" class="s" style="color:var(--as-green);margin-top:10px">
             ✓ 生成完成：新增 {{ genResult.created }} 张{{ genResult.updated > 0 ? `、覆盖 ${genResult.updated} 张` : "" }}{{ genResult.skipped > 0 ? `、跳过已有 ${genResult.skipped} 张` : "" }}
@@ -89,6 +89,7 @@
 </template>
 
 <script setup lang="ts">
+import GenConfigBar from "../components/GenConfigBar.vue";
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
