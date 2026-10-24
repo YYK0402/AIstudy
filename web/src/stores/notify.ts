@@ -1,6 +1,6 @@
 // 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, onScopeDispose, ref } from "vue";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
 export type BgTaskType = "organize" | "extract" | "gen_question" | "gen_flashcard" | "gen_plan";
@@ -105,6 +105,29 @@ export const useNotifyStore = defineStore("notify", () => {
   function save() {
     persist(tasks.value);
   }
+
+  // 僵尸任务检测：插件热重载（构建）/思源重启会杀死进行中的 AI 调用（Promise 永不落定），
+  // 桥实例 id 变化时把所有 running 标为失败（可重试），避免铃铛永远挂「进行中」
+  let lastInstanceId: string | undefined = window.siyuanAiStudy?.pluginInstanceId;
+  const zombieTimer = window.setInterval(() => {
+    const cur = window.siyuanAiStudy?.pluginInstanceId;
+    if (!cur) return;
+    if (lastInstanceId !== undefined && cur !== lastInstanceId) {
+      for (const t of tasks.value) {
+        if (t.status === "running") {
+          t.status = "failed";
+          t.unread = true;
+          t.finishedAt = new Date().toISOString();
+          t.message = "任务中断（插件重载或思源重启），请重试";
+        }
+      }
+      save();
+      lastInstanceId = cur;
+    } else if (lastInstanceId === undefined) {
+      lastInstanceId = cur; // 桥就绪后建立基准，避免首次比对误判
+    }
+  }, 5000);
+  onScopeDispose(() => window.clearInterval(zombieTimer));
 
   function upsertTask(t: BgTaskState) {
     const idx = tasks.value.findIndex((x) => x.taskId === t.taskId);

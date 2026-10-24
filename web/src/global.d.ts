@@ -21,6 +21,8 @@ export interface ListModelsResult extends TestProviderResult {
 }
 
 export interface SiYuanAiStudyApi {
+  /** 本次插件加载实例 id：热重载/重启插件后变化 */
+  pluginInstanceId: string;
   getData(): AppData;
   saveData(data: AppData): Promise<{ code: number; msg?: string }>;
   callAi(input: {

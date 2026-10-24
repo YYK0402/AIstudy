@@ -5,6 +5,8 @@ import { decryptApiKey, migrateProviderKeys } from "./crypto";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
+// 每次插件加载（含构建触发的热重载）模块重新求值生成新 id，前端用它检测进行中的调用是否已被旧实例杀死
+const PLUGIN_INSTANCE_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 interface CallAiMessage {
   role: string;
@@ -123,6 +125,8 @@ interface ListModelsResult extends TestProviderResult {
 
 // 暴露给前端（同渲染进程直接挂载）的数据/内核 API
 interface StudyApi {
+  /** 本次插件加载实例 id：热重载/重启插件后变化，前端据此检测僵尸任务 */
+  pluginInstanceId: string;
   getData(): AppData;
   saveData(data: AppData): Promise<{ code: number; msg?: string }>;
   callAi(input: CallAiInput): Promise<CallAiResult>;
@@ -364,6 +368,8 @@ export default class AiStudyPlugin extends Plugin {
   // 暴露数据与内核 API 到全局，供直接挂载的前端调用
   private exposeApi() {
     window.siyuanAiStudy = {
+      /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
+      pluginInstanceId: PLUGIN_INSTANCE_ID,
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         const res = await this.commitData(data);
