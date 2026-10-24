@@ -1120,7 +1120,8 @@
 .graph-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 .link-hint { margin-top: 8px; font-size: 11.5px; color: var(--as-accent-strong); }
 .graph-hint { padding: 10px 14px; font-size: 11.5px; color: var(--as-text-faint); background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); margin-bottom: 10px; }
-.graph-svg { width: 100%; height: 520px; display: block; }
+.graph-canvas { max-height: 70vh; overflow: auto; border-radius: var(--as-radius-sm); }
+.graph-svg { width: 100%; min-width: 900px; height: auto; display: block; }
 .graph-edge { fill: none; stroke: var(--as-text-dim); stroke-width: 1.4; opacity: .75; }
 .graph-node { cursor: pointer; }
 .graph-node rect { fill: var(--as-bg-elev2); stroke: var(--as-border); stroke-width: 1.2; transition: stroke .15s, fill .15s; }

@@ -44,7 +44,7 @@
         </div>
         <template v-else>
           <EmptyState
-            v-if="edgeCount === 0"
+            v-if="edgeCount === 0 && !linking"
             compact
             icon="graph"
             text="暂无前置关系，图谱暂时只显示孤立知识点。&#10;可由 AI 推断依赖，或手动逐条连线。"
@@ -56,8 +56,9 @@
               ＋ 手动连线
             </button>
           </EmptyState>
+          <div class="graph-canvas">
           <svg
-            v-if="edgeCount > 0"
+            v-if="knowledgePoints.length > 0"
             class="graph-svg"
             :viewBox="`0 0 ${layout.width} ${layout.height}`"
             preserveAspectRatio="xMidYMid meet"
@@ -79,6 +80,7 @@
               <text :x="n.x" :y="n.y + 4" text-anchor="middle">{{ n.label }}</text>
             </g>
           </svg>
+          </div>
         </template>
       </div>
     </template>
@@ -208,6 +210,22 @@ const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; h
     levelOf.set(id, lv);
     return lv;
   };
+  // 无边时所有节点同层，分层布局会排成超宽一行（节点被压成线）；
+  // 改用网格，保证节点可见、可点，手动连线才有落点。
+  if (edges.value.length === 0) {
+    const cols = Math.min(8, Math.max(1, Math.ceil(Math.sqrt(kps.length))));
+    const rows = Math.ceil(kps.length / cols);
+    const width = cols * (NODE_W + GAP_X) + GAP_X;
+    const height = rows * (NODE_H + GAP_Y) + GAP_Y;
+    const nodes: LaidNode[] = kps.map((k, i) => ({
+      kp: k,
+      x: GAP_X + (i % cols) * (NODE_W + GAP_X) + NODE_W / 2,
+      y: GAP_Y / 2 + Math.floor(i / cols) * (NODE_H + GAP_Y) + NODE_H / 2,
+      label: k.name.length > 8 ? k.name.slice(0, 8) + "…" : k.name,
+    }));
+    return { nodes, edges: [], width, height };
+  }
+
   for (const k of kps) level(k.id);
   const maxLevel = kps.length > 0 ? Math.max(...kps.map((k) => levelOf.get(k.id) ?? 0)) : 0;
   const levels: KnowledgePoint[][] = [];
