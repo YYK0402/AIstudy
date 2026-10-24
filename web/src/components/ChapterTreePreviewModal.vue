@@ -7,12 +7,19 @@
         <div v-if="chapterNodes.length === 0" class="empty-state" style="padding:16px">
           未识别到标题结构，可手动「添加章节」
         </div>
-        <div v-for="node in chapterNodes" :key="node.id" class="tp-node" :class="{ unit: node.level === 'unit' }">
-          <span class="tp-tag" :class="node.level">{{ node.level === "chapter" ? "章" : "节" }}</span>
-          <input v-model="node.name" class="tp-input" :placeholder="node.level === 'chapter' ? '章节名称' : '小节名称'" />
-          <button v-if="node.level === 'chapter'" class="btn sm ghost" @click="addUnit(node)">＋节</button>
-          <button class="btn sm ghost" @click="removeNode(node)">删除</button>
-        </div>
+        <template v-for="ch in chapterNodes" :key="ch.id">
+          <div class="tp-node">
+            <span class="tp-tag chapter">章</span>
+            <input v-model="ch.name" class="tp-input" placeholder="章节名称" />
+            <button class="btn sm ghost" @click="addUnit(ch)">＋节</button>
+            <button class="btn sm ghost" @click="removeChapter(ch)">删除</button>
+          </div>
+          <div v-for="unit in getUnits(ch)" :key="unit.id" class="tp-node unit">
+            <span class="tp-tag unit">节</span>
+            <input v-model="unit.name" class="tp-input" placeholder="小节名称" />
+            <button class="btn sm ghost" @click="removeUnit(unit)">删除</button>
+          </div>
+        </template>
         <button class="btn sm ghost" style="align-self:flex-start" @click="addChapter">＋ 添加章节</button>
       </div>
       <div class="modal-actions">
@@ -26,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { useModalStore } from "../stores/modal";
 import { importChapterTree, startExtractTask } from "../api";
 import type { ChapterTreeNode } from "../api";
@@ -34,96 +41,92 @@ import type { ChapterTreeNode } from "../api";
 const modalStore = useModalStore();
 const saving = ref(false);
 
-interface PreviewNode {
+interface PreviewChapter {
   id: number;
   name: string;
-  level: "chapter" | "unit";
-  parentId: number | null;
+  units: PreviewUnit[];
 }
 
-const chapterNodes = ref<PreviewNode[]>([]);
+interface PreviewUnit {
+  id: number;
+  name: string;
+}
 
-function buildNodes(headings: Array<{ level: number; text: string }>): PreviewNode[] {
-  const nodes: PreviewNode[] = [];
-  let currentChapterId: number | null = null;
-  let id = 1;
+const chapterNodes = ref<PreviewChapter[]>([]);
+let nextId = 1;
+
+/** 按文档顺序建树：level 1 开启一章，level 2 归入最近的前一章；三级及以下子标题是资料正文内部结构，不进课程目录 */
+function buildNodes(headings: Array<{ level: number; text: string }>): PreviewChapter[] {
+  const chapters: PreviewChapter[] = [];
+  let current: PreviewChapter | null = null;
   for (const h of headings) {
     if (h.level === 1) {
-      currentChapterId = id;
-      nodes.push({ id: id++, name: h.text, level: "chapter", parentId: null });
+      current = { id: nextId++, name: h.text, units: [] };
+      chapters.push(current);
     } else if (h.level === 2) {
-      if (currentChapterId !== null) {
-        nodes.push({ id: id++, name: h.text, level: "unit", parentId: currentChapterId });
-      } else {
-        currentChapterId = id;
-        nodes.push({ id: id++, name: h.text, level: "chapter", parentId: null });
-      }
+      if (current) current.units.push({ id: nextId++, name: h.text });
     }
   }
-  return nodes;
+  return chapters;
 }
 
 watch(
   () => modalStore.chapterPreviewOpen,
   (open) => {
     if (open) {
+      nextId = 1;
       chapterNodes.value = buildNodes(modalStore.chapterPreviewHeadings);
     }
   },
   { immediate: true },
 );
 
-function removeNode(node: PreviewNode) {
-  const ids = new Set<number>([node.id]);
-  // 级联删除子节点
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const n of chapterNodes.value) {
-      if (n.parentId !== null && ids.has(n.parentId) && !ids.has(n.id)) {
-        ids.add(n.id);
-        grew = true;
-      }
-    }
+function getUnits(chapter: PreviewChapter): PreviewUnit[] {
+  return chapter.units;
+}
+
+function removeChapter(chapter: PreviewChapter) {
+  chapterNodes.value = chapterNodes.value.filter((n) => n.id !== chapter.id);
+}
+
+function removeUnit(unit: PreviewUnit) {
+  for (const ch of chapterNodes.value) {
+    ch.units = ch.units.filter((u) => u.id !== unit.id);
   }
-  chapterNodes.value = chapterNodes.value.filter((n) => !ids.has(n.id));
 }
 
 function addChapter() {
-  const id = Math.max(0, ...chapterNodes.value.map((n) => n.id)) + 1;
-  chapterNodes.value.push({ id, name: "", level: "chapter", parentId: null });
+  chapterNodes.value.push({ id: nextId++, name: "", units: [] });
 }
 
-function addUnit(chapter: PreviewNode) {
-  const id = Math.max(0, ...chapterNodes.value.map((n) => n.id)) + 1;
-  chapterNodes.value.push({ id, name: "", level: "unit", parentId: chapter.id });
+function addUnit(chapter: PreviewChapter) {
+  chapter.units.push({ id: nextId++, name: "" });
 }
 
 async function confirm() {
-  const nodes: ChapterTreeNode[] = chapterNodes.value
-    .filter((n) => n.name.trim())
-    .map((n) => ({
-      name: n.name.trim(),
-      level: n.level,
-      parentName:
-        n.parentId !== null
-          ? chapterNodes.value.find((x) => x.id === n.parentId)?.name.trim() ?? null
-          : null,
-    }));
+  const nodes: ChapterTreeNode[] = [];
+  for (const ch of chapterNodes.value) {
+    if (ch.name.trim()) {
+      nodes.push({ name: ch.name.trim(), level: "chapter", parentName: null });
+      for (const unit of ch.units) {
+        if (unit.name.trim()) {
+          nodes.push({ name: unit.name.trim(), level: "unit", parentName: ch.name.trim() });
+        }
+      }
+    }
+  }
   if (nodes.length === 0) {
     window.siyuanAiStudy.showMessage("请至少填写一个章节名称", 4000, "error");
     return;
   }
   saving.value = true;
   try {
-    // 先取目录上下文：close() 会清空 store
     const courseId = modalStore.chapterPreviewCourseId;
     const sourceMaterialId = modalStore.chapterPreviewSourceMaterialId;
     const res = await importChapterTree(courseId, nodes);
     let msg = `已生成目录：新增 ${res.created} 个章节`;
     if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
     if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
-    // 第四步链路：目录确认且确有新增章节时，自动对来源资料启动知识点抽取（重复确认同一目录不重复抽）
     const autoExtract = sourceMaterialId !== null && res.created > 0;
     if (autoExtract) msg += "；知识点抽取已后台启动（进度见右上铃铛）";
     window.siyuanAiStudy.showMessage(msg);

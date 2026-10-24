@@ -2452,14 +2452,16 @@ export async function importChapterTree(
   const course = data.courses.find((c) => c.id === courseId);
   const coursePath = `/${course?.name ?? "课程"}`;
   const existing = data.chapters.filter((c) => c.courseId === courseId);
+  // 去空白归一化比较：AI 目录矫正可能只改空格/标点（如「第一章X」→「第一章 X」），避免误判为新章节重复建章
+  const norm = (s: string) => s.replace(/\s+/g, "");
   let created = 0;
   for (const node of nodes) {
     const name = node.name.trim();
     if (!name) continue;
-    const dup = existing.find((c) => c.name === name);
+    const dup = existing.find((c) => norm(c.name) === norm(name));
     if (dup) continue;
     const parent = node.parentName
-      ? existing.find((c) => c.level === "chapter" && c.name === node.parentName)
+      ? existing.find((c) => c.level === "chapter" && norm(c.name) === norm(node.parentName!))
       : null;
     const sort =
       data.chapters
