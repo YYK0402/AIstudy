@@ -57,7 +57,7 @@
           </template>
           <!-- 简答 -->
           <template v-else>
-            <textarea class="essay-input" v-model="userAnswer" rows="6" placeholder="写下你的回答…" :disabled="!!quizResult" />
+            <textarea class="essay-input" v-model="userAnswer" rows="6" aria-label="简答题作答" placeholder="写下你的回答…" :disabled="!!quizResult" />
             <div v-if="quizResult" class="essay-feedback">
               <div class="score" :class="{ pass: quizResult.isCorrect, fail: !quizResult.isCorrect }">{{ quizResult.score }} 分</div>
               <div class="fb">{{ quizResult.feedback || "AI 未给出具体点评" }}</div>

@@ -5,8 +5,14 @@
       <button class="settings-tab" :class="{ on: activeTab === 'models' }" @click="activeTab = 'models'">模型配置</button>
       <button class="settings-tab" :class="{ on: activeTab === 'prompts' }" @click="activeTab = 'prompts'">提示词模板</button>
     </div>
+    <div v-if="settingsDirty" class="save-float">
+      <span>设置有修改</span>
+      <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings">
+        {{ settingsSaving ? "保存中…" : "保存" }}
+      </button>
+    </div>
     <div v-show="activeTab === 'models'">
-    <div class="two-col" style="grid-template-columns:1fr 1fr">
+    <div class="two-col settings-two-col">
       <div class="card">
         <h3>服务商 <button class="btn sm ghost" style="margin-left:auto" @click="modalStore.openNewProvider()">＋ 新增服务商</button></h3>
         <div v-if="providerStore.providers.length === 0" class="empty-state" style="padding:24px 0">
@@ -33,11 +39,11 @@
                 <div v-if="modelsOf(p.id).length === 0" class="s" style="color:var(--as-text-faint)">暂无模型</div>
                 <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item">
                   <template v-if="editingModelId === m.id">
-                    <input v-model="editModel.modelId" placeholder="模型 ID" style="flex:1" />
-                    <input v-model="editModel.displayName" placeholder="显示名" style="flex:0.8" />
-                    <input v-model="editModel.maxContext" placeholder="上下文" type="number" style="width:70px" />
-                    <input v-model="editModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
-                    <input v-model="editModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
+                    <input v-model="editModel.modelId" aria-label="模型 ID" placeholder="模型 ID" style="flex:1" />
+                    <input v-model="editModel.displayName" aria-label="模型显示名" placeholder="显示名" style="flex:0.8" />
+                    <input v-model="editModel.maxContext" aria-label="上下文长度" placeholder="上下文" type="number" style="width:70px" />
+                    <input v-model="editModel.temperature" aria-label="温度" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="editModel.maxTokens" aria-label="最大输出" placeholder="最大输出" type="number" style="width:78px" />
                     <button class="btn sm" @click="saveEditModel(m)">确定</button>
                     <button class="btn sm ghost" @click="editingModelId = null">取消</button>
                   </template>
@@ -54,14 +60,14 @@
                 <div v-if="fetchingModels" class="s" style="color:var(--as-text-faint)">获取模型列表中…</div>
                 <template v-else-if="addingModelId === p.id && !modelUseManual">
                   <div class="model-item">
-                    <select v-model="newModel.modelId" @change="pickModel(newModel.modelId)" style="flex:1">
+                    <select v-model="newModel.modelId" aria-label="服务商模型" @change="pickModel(newModel.modelId)" style="flex:1">
                       <option value="">选择模型</option>
                       <option v-for="id in availableModels(p.id)" :key="id" :value="id">{{ id }}</option>
                     </select>
-                    <input v-model="newModel.displayName" placeholder="显示名（自动预填）" style="flex:0.8" />
-                    <input v-model="newModel.maxContext" placeholder="上下文" type="number" style="width:70px" />
-                    <input v-model="newModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
-                    <input v-model="newModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
+                    <input v-model="newModel.displayName" aria-label="模型显示名" placeholder="显示名（自动预填）" style="flex:0.8" />
+                    <input v-model="newModel.maxContext" aria-label="上下文长度" placeholder="上下文" type="number" style="width:70px" />
+                    <input v-model="newModel.temperature" aria-label="温度" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="newModel.maxTokens" aria-label="最大输出" placeholder="最大输出" type="number" style="width:78px" />
                     <button class="btn sm" :disabled="!newModel.modelId" @click="addModel(p.id)">确定</button>
                   </div>
                   <button class="btn sm ghost" @click="useManualInput()">手动输入模型 ID</button>
@@ -69,11 +75,11 @@
                 <template v-else-if="addingModelId === p.id">
                   <div v-if="modelFetchError" class="s" style="color:var(--as-red);margin:2px 6px">自动获取失败：{{ modelFetchError }}</div>
                   <div class="model-item">
-                    <input v-model="newModel.modelId" placeholder="模型 ID" />
-                    <input v-model="newModel.displayName" placeholder="显示名" />
-                    <input v-model="newModel.maxContext" placeholder="上下文" type="number" />
-                    <input v-model="newModel.temperature" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
-                    <input v-model="newModel.maxTokens" placeholder="最大输出" type="number" style="width:78px" />
+                    <input v-model="newModel.modelId" aria-label="模型 ID" placeholder="模型 ID" />
+                    <input v-model="newModel.displayName" aria-label="模型显示名" placeholder="显示名" />
+                    <input v-model="newModel.maxContext" aria-label="上下文长度" placeholder="上下文" type="number" />
+                    <input v-model="newModel.temperature" aria-label="温度" placeholder="温度" type="number" step="0.1" min="0" max="2" style="width:64px" />
+                    <input v-model="newModel.maxTokens" aria-label="最大输出" placeholder="最大输出" type="number" style="width:78px" />
                     <button class="btn sm" @click="addModel(p.id)">确定</button>
                   </div>
                   <button class="btn sm ghost" @click="retryFetch(p.id)">重试自动获取</button>
@@ -89,14 +95,14 @@
         <div class="task-assign">
           <div class="ta-row">
             <span class="t">全局默认模型</span>
-            <select :value="taskModelMap[GLOBAL_DEFAULT_KEY] ?? ''" @change="onTaskModelChange(GLOBAL_DEFAULT_KEY, $event)">
+            <select :value="taskModelMap[GLOBAL_DEFAULT_KEY] ?? ''" aria-label="全局默认模型" @change="onTaskModelChange(GLOBAL_DEFAULT_KEY, $event)">
               <option value="">（未设置）</option>
               <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
             </select>
           </div>
           <div v-for="t in visibleTasks" :key="t.key" class="ta-row">
             <span class="t">{{ t.name }}</span>
-            <select :value="taskModelMap[t.key] ?? ''" @change="onTaskModelChange(t.key, $event)">
+            <select :value="taskModelMap[t.key] ?? ''" :aria-label="`${t.name} 模型`" @change="onTaskModelChange(t.key, $event)">
               <option value="">全局默认</option>
               <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
             </select>
@@ -220,17 +226,11 @@
             <span v-if="t.vars.length === 0" class="prompt-var">（无变量，纯固定提示词）</span>
           </div>
           <label class="prompt-label">系统提示词（system）</label>
-          <textarea v-model="promptEdits[t.key].system" class="prompt-ta" rows="6" spellcheck="false"></textarea>
+          <textarea v-model="promptEdits[t.key].system" class="prompt-ta" rows="6" :aria-label="`${t.name} 系统提示词`" spellcheck="false"></textarea>
           <label class="prompt-label">用户提示模板（user）</label>
-          <textarea v-model="promptEdits[t.key].user" class="prompt-ta" rows="4" spellcheck="false"></textarea>
+          <textarea v-model="promptEdits[t.key].user" class="prompt-ta" rows="4" :aria-label="`${t.name} 用户提示词`" spellcheck="false"></textarea>
         </div>
       </template>
-    </div>
-    <div v-if="settingsDirty" class="save-float">
-      <span>设置有修改</span>
-      <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings">
-        {{ settingsSaving ? "保存中…" : "保存" }}
-      </button>
     </div>
   </div>
 </template>
@@ -564,6 +564,7 @@ async function saveEditModel(m: AiModel) {
 }
 
 async function removeModel(model: AiModel) {
+  if (!window.confirm(`确定删除模型「${model.displayName}」？已绑定该模型的任务将回退到全局默认。`)) return;
   try {
     await deleteModel(model.id);
     await providerStore.load();

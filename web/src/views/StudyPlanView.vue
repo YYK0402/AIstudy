@@ -24,15 +24,15 @@
         <div v-if="(!plan || editing) && !archived" class="plan-form">
           <div class="field">
             <label>开始日期</label>
-            <input type="date" v-model="startDate" :min="today" :max="targetDate || undefined" :disabled="generating" />
+            <input type="date" v-model="startDate" aria-label="开始日期" :min="today" :max="targetDate || undefined" :disabled="generating" />
           </div>
           <div class="field">
             <label>目标日期</label>
-            <input type="date" v-model="targetDate" :min="startDate" :disabled="generating" />
+            <input type="date" v-model="targetDate" aria-label="目标日期" :min="startDate" :disabled="generating" />
           </div>
           <div class="field">
             <label>每日学习时长</label>
-            <select v-model="dailyHour" :disabled="generating">
+            <select v-model="dailyHour" aria-label="每日学习时长" :disabled="generating">
               <option value="1">1 小时</option>
               <option value="2">2 小时</option>
               <option value="3">3 小时</option>
@@ -74,7 +74,7 @@
             {{ unscheduledCount ? `同步新知识点（${unscheduledCount}）` : "同步新知识点" }}
           </button>
           <template v-if="daysOp">
-            <input v-model.number="daysInput" type="number" min="1" step="1" class="days-input" @keyup.enter="applyDaysOp" />
+            <input v-model.number="daysInput" type="number" aria-label="操作天数" min="1" step="1" class="days-input" @keyup.enter="applyDaysOp" />
             <button class="btn primary sm" :disabled="!daysInput || daysInput < 1" @click="applyDaysOp">
               {{ daysOp === "shift" ? "确认延期" : "确认延长" }}
             </button>

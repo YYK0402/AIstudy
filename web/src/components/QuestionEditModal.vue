@@ -4,18 +4,18 @@
       <h2>编辑题目</h2>
       <div class="field">
         <label>题干 <span class="req">*</span></label>
-        <textarea v-model="form.title" rows="3" placeholder="输入题干…" />
+        <textarea v-model="form.title" rows="3" aria-label="题干" placeholder="输入题干…" />
       </div>
       <div class="mode-grid">
         <div class="field" style="margin-bottom:0">
           <label>题型</label>
-          <select v-model="form.qType" :disabled="saving" @change="onTypeChange">
+          <select v-model="form.qType" aria-label="题型" :disabled="saving" @change="onTypeChange">
             <option v-for="(label, key) in QUESTION_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
           </select>
         </div>
         <div class="field" style="margin-bottom:0">
           <label>难度</label>
-          <select v-model="form.difficulty" :disabled="saving">
+          <select v-model="form.difficulty" aria-label="难度" :disabled="saving">
             <option v-for="(label, key) in QUESTION_DIFFICULTY_LABELS" :key="key" :value="key">{{ label }}</option>
           </select>
         </div>
@@ -38,7 +38,7 @@
         <!-- 单选 / 判断：答案下拉 -->
         <div v-if="form.qType === 'single'" class="qe-answer">
           <label class="qe-answer-label">正确答案</label>
-          <select v-model.number="singleAnswerIdx" :disabled="saving">
+          <select v-model.number="singleAnswerIdx" aria-label="正确答案" :disabled="saving">
             <option v-for="(opt, i) in form.options" :key="i" :value="i">{{ opt || "（未填写选项）" }}</option>
           </select>
         </div>
@@ -54,7 +54,7 @@
       <!-- 判断：固定两项，选答案 -->
       <div v-else-if="form.qType === 'judge'" class="field">
         <label>正确答案 <span class="req">*</span></label>
-        <select v-model.number="singleAnswerIdx" :disabled="saving">
+        <select v-model.number="singleAnswerIdx" aria-label="正确答案" :disabled="saving">
           <option v-for="(opt, i) in form.options" :key="i" :value="i">{{ opt }}</option>
         </select>
       </div>
@@ -62,12 +62,12 @@
       <!-- 简答：参考答案 -->
       <div v-else class="field">
         <label>参考答案要点 <span class="req">*</span></label>
-        <textarea v-model="essayAnswer" rows="4" placeholder="输入参考答案要点（AI 阅卷依据）" :disabled="saving" />
+        <textarea v-model="essayAnswer" rows="4" aria-label="参考答案" placeholder="输入参考答案要点（AI 阅卷依据）" :disabled="saving" />
       </div>
 
       <div class="field">
         <label>解析</label>
-        <textarea v-model="form.analysis" rows="3" placeholder="答案解析（可选）" />
+        <textarea v-model="form.analysis" rows="3" aria-label="答案解析" placeholder="答案解析（可选）" />
       </div>
 
       <div class="field">

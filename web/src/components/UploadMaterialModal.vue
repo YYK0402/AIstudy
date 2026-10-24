@@ -13,7 +13,7 @@
       </div>
       <div class="field">
         <label>或粘贴文本</label>
-        <textarea v-model="pastedText" rows="4" placeholder="直接粘贴讲义/笔记文本..."></textarea>
+        <textarea v-model="pastedText" rows="4" aria-label="粘贴资料文本" placeholder="直接粘贴讲义/笔记文本..."></textarea>
       </div>
       <div class="field">
         <label>或从思源选择文档（绑定已有文档，不复制副本）</label>

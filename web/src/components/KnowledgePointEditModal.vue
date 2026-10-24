@@ -4,15 +4,15 @@
       <h2>编辑知识点</h2>
       <div class="field">
         <label>名称 <span class="req">*</span></label>
-        <input v-model="form.name" />
+        <input v-model="form.name" aria-label="知识点名称" />
       </div>
       <div class="field">
         <label>描述</label>
-        <textarea v-model="form.content" rows="5" />
+        <textarea v-model="form.content" rows="5" aria-label="知识点内容" />
       </div>
       <div class="field">
         <label>掌握程度</label>
-        <select v-model="form.mastery">
+        <select v-model="form.mastery" aria-label="掌握度">
           <option value="unlearn">未学习</option>
           <option value="known">了解</option>
           <option value="mastered">掌握</option>
@@ -51,7 +51,7 @@
       </div>
       <div class="field">
         <label>标签</label>
-        <input v-model="tagsText" placeholder="如：计算题高频, 易混淆（逗号分隔）" />
+        <input v-model="tagsText" aria-label="知识点标签" placeholder="如：计算题高频, 易混淆（逗号分隔）" />
       </div>
       <div class="field">
         <label>绑定思源文档（可细化到块，详情可跳转原文）</label>

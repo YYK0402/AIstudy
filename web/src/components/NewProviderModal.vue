@@ -10,19 +10,19 @@
       </div>
       <div class="field">
         <label>服务商名称 <span class="req">*</span></label>
-        <input v-model="form.name" placeholder="如：DeepSeek / OpenAI / 通义千问" />
+        <input v-model="form.name" aria-label="服务商名称" placeholder="如：DeepSeek / OpenAI / 通义千问" />
       </div>
       <div class="field">
         <label>API 接口地址 <span class="req">*</span></label>
-        <input v-model="form.baseUrl" placeholder="如：https://api.deepseek.com/v1" />
+        <input v-model="form.baseUrl" aria-label="接口地址" placeholder="如：https://api.deepseek.com/v1" />
       </div>
       <div class="field">
         <label>API Key <span v-if="keyRequired" class="req">*</span><span v-else style="color:var(--as-text-faint)">{{ isEdit ? "（留空则不修改）" : "（本地服务可留空）" }}</span></label>
-        <input v-model="form.apiKey" type="password" :placeholder="isEdit ? '留空保留原密钥' : keyRequired ? 'sk-...' : '本地服务可留空'" />
+        <input v-model="form.apiKey" type="password" aria-label="API Key" :placeholder="isEdit ? '留空保留原密钥' : keyRequired ? 'sk-...' : '本地服务可留空'" />
       </div>
       <div class="field">
         <label>请求超时时间（秒）</label>
-        <input v-model="form.timeout" type="number" min="1" placeholder="60" />
+        <input v-model="form.timeout" type="number" aria-label="超时时间（秒）" min="1" placeholder="60" />
       </div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>

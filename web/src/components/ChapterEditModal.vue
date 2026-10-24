@@ -4,7 +4,7 @@
       <h2>{{ isCreate ? "添加章节（顶层）" : "添加小节" }}</h2>
       <div class="field">
         <label>名称 <span class="req">*</span></label>
-        <input v-model="name" @keyup.enter="save" />
+        <input v-model="name" aria-label="章节名称" @keyup.enter="save" />
       </div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>

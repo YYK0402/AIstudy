@@ -13,7 +13,7 @@
         <button type="button" class="btn sm ghost" style="margin-left:8px" @click="openPicker">选择文档</button>
       </div>
       <div v-else>
-        <select v-model="notebookId" :disabled="loading" @change="onNotebookChange">
+        <select v-model="notebookId" aria-label="选择笔记本" :disabled="loading" @change="onNotebookChange">
           <option value="">选择笔记本…</option>
           <option v-for="nb in notebooks" :key="nb.id" :value="nb.id">{{ nb.name }}</option>
         </select>

@@ -10,13 +10,13 @@
         <template v-for="ch in chapterNodes" :key="ch.id">
           <div class="tp-node">
             <span class="tp-tag chapter">章</span>
-            <input v-model="ch.name" class="tp-input" placeholder="章节名称" />
+            <input v-model="ch.name" class="tp-input" aria-label="章节名称" placeholder="章节名称" />
             <button class="btn sm ghost" @click="addUnit(ch)">＋节</button>
             <button class="btn sm ghost" @click="removeChapter(ch)">删除</button>
           </div>
           <div v-for="unit in getUnits(ch)" :key="unit.id" class="tp-node unit">
             <span class="tp-tag unit">节</span>
-            <input v-model="unit.name" class="tp-input" placeholder="小节名称" />
+            <input v-model="unit.name" class="tp-input" aria-label="小节名称" placeholder="小节名称" />
             <button class="btn sm ghost" @click="removeUnit(unit)">删除</button>
           </div>
         </template>

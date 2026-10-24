@@ -43,11 +43,11 @@
             >{{ label }}</button>
           </div>
           <div class="w-filter-selects">
-            <select v-model="filterKp">
+            <select v-model="filterKp" aria-label="按知识点筛选">
               <option value="">全部知识点</option>
               <option v-for="kp in knowledgePoints" :key="kp.id" :value="kp.id">{{ kp.name }}</option>
             </select>
-            <select v-model="filterTimes">
+            <select v-model="filterTimes" aria-label="按错误次数筛选">
               <option value="">全部次数</option>
               <option value="2">答错 ≥ 2 次</option>
               <option value="3">答错 ≥ 3 次</option>

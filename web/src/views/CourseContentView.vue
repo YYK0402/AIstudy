@@ -833,7 +833,7 @@ function openUpload() {
 }
 
 async function del(m: Material) {
-  if (!window.confirm(`确定删除资料「${m.name}」？`)) return;
+  if (!window.confirm(`确定删除资料「${m.name}」？其关联的知识点不会被删除，源文件在无其他引用时会一并清理。`)) return;
   try {
     await deleteMaterial(m.id);
     await load();

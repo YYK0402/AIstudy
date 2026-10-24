@@ -4,17 +4,17 @@
       <h2>{{ card ? "编辑闪卡" : "手动添加闪卡" }}</h2>
       <div class="field">
         <label>知识点 <span class="req">*</span></label>
-        <select v-model="kpId">
+        <select v-model="kpId" aria-label="关联知识点">
           <option v-for="k in kps" :key="k.id" :value="k.id">{{ k.name }}</option>
         </select>
       </div>
       <div class="field">
         <label>正面（问题） <span class="req">*</span></label>
-        <textarea v-model="front" rows="3" placeholder="如：什么是营运资本？" />
+        <textarea v-model="front" rows="3" aria-label="闪卡正面" placeholder="如：什么是营运资本？" />
       </div>
       <div class="field">
         <label>背面（答案要点） <span class="req">*</span></label>
-        <textarea v-model="back" rows="4" placeholder="1-3 句，抓要点即可" />
+        <textarea v-model="back" rows="4" aria-label="闪卡背面" placeholder="1-3 句，抓要点即可" />
       </div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>

@@ -4,23 +4,23 @@
       <h2>{{ isEdit ? "编辑课程" : "新建课程" }}</h2>
       <div class="field">
         <label>课程名称 <span class="req">*</span></label>
-        <input v-model="form.name" placeholder="如：高等数学（上）" />
+        <input v-model="form.name" aria-label="课程名称" placeholder="如：高等数学（上）" />
       </div>
       <div class="field">
         <label>简介</label>
-        <textarea v-model="form.description" rows="2" placeholder="一句话说明这门课程…"></textarea>
+        <textarea v-model="form.description" rows="2" aria-label="课程简介" placeholder="一句话说明这门课程…"></textarea>
       </div>
       <div class="field">
         <label>学习目标</label>
-        <textarea v-model="form.target" rows="2" placeholder="如：期末 90+ / 通过考研初试"></textarea>
+        <textarea v-model="form.target" rows="2" aria-label="学习目标" placeholder="如：期末 90+ / 通过考研初试"></textarea>
       </div>
       <div class="field">
         <label>预计总周期</label>
-        <input v-model="form.totalCycle" placeholder="如：12 周 / 3 个月" />
+        <input v-model="form.totalCycle" aria-label="学习周期" placeholder="如：12 周 / 3 个月" />
       </div>
       <div class="field">
         <label>本课程指定模型</label>
-        <select v-model.number="form.modelId">
+        <select v-model.number="form.modelId" aria-label="课程模型">
           <option :value="null">跟随任务分配（模型配置页）</option>
           <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
         </select>

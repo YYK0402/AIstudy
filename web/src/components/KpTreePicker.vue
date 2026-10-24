@@ -1,7 +1,7 @@
 <template>
   <div class="kpt" :class="{ inline: inline }">
     <div class="kpsm-search">
-      <input v-model="search" placeholder="搜索知识点名称…" />
+      <input v-model="search" aria-label="搜索知识点" placeholder="搜索知识点名称…" />
       <span class="kpsm-count">已选 {{ modelValue.length }}</span>
     </div>
     <div class="kpsm-tree">
