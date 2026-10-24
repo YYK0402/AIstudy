@@ -3494,34 +3494,66 @@ export async function generateStudyPlan(
   let aiContent = "";
   const extraItems: AiPlanExtraItem[] = [];
   if (binding) {
-    const skeletonLines = dayKps
-      .map(({ date, kps: dk }) => `${date}：${dk.map((k) => `${k.id}. ${k.name}`).join("、") || "（无）"}`)
-      .join("\n");
-    const planVars = {
-      courseName: course.name,
-      today,
-      targetDate: input.targetDate,
-      days: String(days),
-      dailyHour: String(input.dailyHour),
-      skeletonLines,
-    };
-    const planTpl = resolvePromptTemplate(data, "gen_plan");
-    const res = await window.siyuanAiStudy.callAi({
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      taskKey: "gen_plan",
-      messages: [
-        { role: "system", content: renderPrompt(planTpl.system, planVars) },
-        { role: "user", content: renderPrompt(planTpl.user, planVars) },
-      ],
+    // 铃铛：计划生成是单次长调用，无分段进度（total=0 不显示进度条）；纯骨架降级路径（无绑定）不进铃铛
+    const notify = useNotifyStore();
+    const pTaskId = courseTaskId(courseId, "gen_plan");
+    notify.upsertTask({
+      taskId: pTaskId,
+      label: course.name,
+      courseId,
+      taskType: "gen_plan",
+      status: "running",
+      done: 0,
+      total: 0,
+      message: `AI 生成学习计划中（${kps.length} 个知识点 → ${days} 天）…`,
+      unread: false,
+      startedAt: now(),
+      finishedAt: null,
     });
-    aiContent = res.content;
-    const validDates = new Set(dayKps.map((d) => d.date));
-    const validKpIds = new Set(kps.map((k) => k.id));
-    for (const item of parseAiPlanExtraResponse(res.content)) {
-      if (!validDates.has(item.date)) continue;
-      if (item.kpId !== 0 && !validKpIds.has(item.kpId)) continue;
-      extraItems.push(item);
+    try {
+      const skeletonLines = dayKps
+        .map(({ date, kps: dk }) => `${date}：${dk.map((k) => `${k.id}. ${k.name}`).join("、") || "（无）"}`)
+        .join("\n");
+      const planVars = {
+        courseName: course.name,
+        today,
+        targetDate: input.targetDate,
+        days: String(days),
+        dailyHour: String(input.dailyHour),
+        skeletonLines,
+      };
+      const planTpl = resolvePromptTemplate(data, "gen_plan");
+      const res = await window.siyuanAiStudy.callAi({
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        taskKey: "gen_plan",
+        messages: [
+          { role: "system", content: renderPrompt(planTpl.system, planVars) },
+          { role: "user", content: renderPrompt(planTpl.user, planVars) },
+        ],
+      });
+      aiContent = res.content;
+      const validDates = new Set(dayKps.map((d) => d.date));
+      const validKpIds = new Set(kps.map((k) => k.id));
+      for (const item of parseAiPlanExtraResponse(res.content)) {
+        if (!validDates.has(item.date)) continue;
+        if (item.kpId !== 0 && !validKpIds.has(item.kpId)) continue;
+        extraItems.push(item);
+      }
+      notify.patchTask(pTaskId, {
+        status: "done",
+        unread: true,
+        finishedAt: now(),
+        message: `学习计划已生成：共 ${days} 天，穿插 ${extraItems.length} 个 AI 补充任务`,
+      });
+    } catch (e) {
+      notify.patchTask(pTaskId, {
+        status: "failed",
+        unread: true,
+        finishedAt: now(),
+        message: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     }
   }
 

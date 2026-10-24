@@ -121,6 +121,7 @@ const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
   extract: "知识点抽取",
   gen_question: "AI 出题",
   gen_flashcard: "AI 闪卡",
+  gen_plan: "AI 学习计划",
 };
 
 function statusIcon(status: BgTaskState["status"]): string {

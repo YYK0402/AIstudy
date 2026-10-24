@@ -1,12 +1,12 @@
-// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / AI 出题 / AI 闪卡生成），localStorage 持久化（切页/刷新不丢）
+// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type BgTaskType = "organize" | "extract" | "gen_question" | "gen_flashcard";
+export type BgTaskType = "organize" | "extract" | "gen_question" | "gen_flashcard" | "gen_plan";
 
 export interface BgTaskState {
-  /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} */
+  /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
   taskId: string;
   taskType: BgTaskType;
   /** 显示目标名（资料名 / 课程名） */
@@ -29,8 +29,8 @@ export function materialTaskId(materialId: number, taskType: "organize" | "extra
   return `${taskType}-${materialId}`;
 }
 
-/** 课程级任务键（AI 出题 / AI 闪卡生成） */
-export function courseTaskId(courseId: number, taskType: "gen_question" | "gen_flashcard"): string {
+/** 课程级任务键（AI 出题 / AI 闪卡生成 / AI 学习计划生成） */
+export function courseTaskId(courseId: number, taskType: "gen_question" | "gen_flashcard" | "gen_plan"): string {
   return `${taskType}-${courseId}`;
 }
 
@@ -55,7 +55,9 @@ function loadPersisted(): BgTaskState[] {
               ? "gen_question"
               : t.taskType === "gen_flashcard"
                 ? "gen_flashcard"
-                : "organize";
+                : t.taskType === "gen_plan"
+                  ? "gen_plan"
+                  : "organize";
         const base: BgTaskState = {
           taskId:
             typeof t.taskId === "string" && t.taskId
