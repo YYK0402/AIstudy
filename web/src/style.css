@@ -266,6 +266,8 @@
 
 /* ===== 主区域 ===== */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* 注意：.topbar 不能有 backdrop-filter —— 它会创建独立层叠上下文，
+   把铃铛面板的 z-index 困在顶栏内部，导致面板被 content/modal 盖住（按钮点不到） */
 .topbar {
   height: 60px;
   display: flex; align-items: center;
@@ -273,7 +275,6 @@
   padding: 0 26px;
   border-bottom: 1px solid var(--as-border-soft);
   background: var(--as-topbar-bg);
-  backdrop-filter: blur(8px);
 }
 .topbar .crumbs { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--as-text-faint); }
 .topbar .crumbs .cur { color: var(--as-text); font-weight: 500; }
