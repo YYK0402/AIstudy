@@ -41,11 +41,16 @@
               @click="viewMode = 'all'"
             >全部节点</button>
           </div>
+          <button class="btn sm ghost" @click="listOpen = true"><AppIcon name="layers" :size="14" /> 节点列表</button>
           <div class="graph-legend">
-            <span class="l"><i style="background:var(--as-accent)"></i>精通</span>
-            <span class="l"><i style="background:var(--as-green)"></i>掌握</span>
-            <span class="l"><i style="background:var(--as-blue)"></i>了解</span>
-            <span class="l"><i style="background:var(--as-text-faint)"></i>未学习</span>
+            <button
+              v-for="m in MASTERY_LEGEND"
+              :key="m.key"
+              class="l"
+              :class="{ on: masteryFilter === m.key }"
+              :title="`筛选：${m.label}`"
+              @click="masteryFilter = masteryFilter === m.key ? null : m.key"
+            ><i :style="{ background: m.color }"></i>{{ m.label }}</button>
           </div>
         </div>
         <div v-if="linking" class="s link-hint">
@@ -99,6 +104,24 @@
         </template>
       </div>
     </template>
+
+    <!-- 节点列表（键盘可达的图谱替代入口） -->
+    <div class="modal-mask" :class="{ open: listOpen }" @click.self="listOpen = false">
+      <div class="modal">
+        <h2>知识点列表</h2>
+        <input v-model="listQuery" class="kg-list-search" type="search" placeholder="筛选名称…" aria-label="筛选知识点" />
+        <div class="kg-list">
+          <button v-for="k in listItems" :key="k.id" class="kg-list-item" @click="focusFromList(k.id)">
+            <span class="kg-list-name">{{ k.name }}</span>
+            <span class="tag" :class="k.mastery"><span class="d"></span>{{ masteryLabel(k.mastery) }}</span>
+          </button>
+          <div v-if="listItems.length === 0" class="s" style="padding:16px 0;color:var(--as-text-faint)">没有匹配的知识点</div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" @click="listOpen = false">关闭</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 节点详情 -->
     <div v-if="selectedKp" class="modal-mask open" @click.self="selectedKpId = null">
@@ -174,6 +197,16 @@ const writingDoc = ref(false);
 const inferError = ref("");
 const inferResult = ref("");
 const viewMode = ref<"relation" | "all">("relation");
+const masteryFilter = ref<Mastery | null>(null);
+const listOpen = ref(false);
+const listQuery = ref("");
+
+const MASTERY_LEGEND: Array<{ key: Mastery; label: string; color: string }> = [
+  { key: "proficient", label: "精通", color: "var(--as-accent)" },
+  { key: "mastered", label: "掌握", color: "var(--as-green)" },
+  { key: "known", label: "了解", color: "var(--as-blue)" },
+  { key: "unlearn", label: "未学习", color: "var(--as-text-faint)" },
+];
 const savedPositions = ref<Record<string, { x: number; y: number }>>({});
 
 const relationInfo = computed(() => buildRelationView(knowledgePoints.value, edges.value));
@@ -318,8 +351,19 @@ const graphRef = ref<{
 } | null>(null);
 const searchQuery = ref("");
 
+const filteredKps = computed(() =>
+  masteryFilter.value ? visibleKps.value.filter((k) => k.mastery === masteryFilter.value) : visibleKps.value,
+);
+const listItems = computed(() => {
+  const q = listQuery.value.trim();
+  const list = masteryFilter.value
+    ? knowledgePoints.value.filter((k) => k.mastery === masteryFilter.value)
+    : knowledgePoints.value;
+  return q ? list.filter((k) => k.name.includes(q)) : list;
+});
+
 const graphNodes = computed(() =>
-  visibleKps.value.map((k) => ({
+  filteredKps.value.map((k) => ({
     id: k.id,
     label: k.name.length > 9 ? k.name.slice(0, 9) + "…" : k.name,
     mastery: k.mastery,
@@ -332,6 +376,15 @@ function onDragEnd(id: number, x: number, y: number) {
   savedPositions.value = next;
   const cid = currentCourseId();
   if (cid) saveGraphPositions(cid, next);
+}
+
+async function focusFromList(id: number) {
+  listOpen.value = false;
+  if (viewMode.value === "relation" && !relationInfo.value.visibleIds.has(id)) viewMode.value = "all";
+  masteryFilter.value = null;
+  await nextTick();
+  graphRef.value?.centerOn(id, 1.6);
+  selectedKpId.value = id;
 }
 
 async function focusSearch() {
@@ -354,6 +407,7 @@ watch(
   (cid) => {
     savedPositions.value = cid ? loadGraphPositions(cid) : {};
     viewMode.value = "relation";
+    masteryFilter.value = null;
   },
   { immediate: true },
 );

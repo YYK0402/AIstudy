@@ -3,6 +3,8 @@
     <canvas
       ref="canvasRef"
       class="kg-canvas"
+      role="img"
+      aria-label="知识图谱画布：可拖拽节点、滚轮缩放；键盘用户请使用工具栏的节点列表"
       @wheel.prevent="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"

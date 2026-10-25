@@ -613,7 +613,9 @@
 /* ===== 知识图谱 ===== */
 .graph-toolbar { display: flex; align-items: center; gap: 10px; padding: 4px 8px 12px; }
 .graph-legend { display: flex; gap: 14px; margin-left: auto; }
-.graph-legend .l { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--as-text-dim); }
+.graph-legend .l { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 999px; padding: 2px 7px; background: none; font-size: 11.5px; color: var(--as-text-dim); cursor: pointer; }
+.graph-legend .l:hover { border-color: var(--as-border); }
+.graph-legend .l.on { border-color: var(--as-accent-line); background: var(--as-accent-soft); color: var(--as-accent-strong); }
 .graph-legend .l i { width: 9px; height: 9px; border-radius: 50%; }
 
 /* ===== 题库 / 刷题 ===== */
@@ -1573,3 +1575,15 @@
   font-size: 12px; color: var(--as-text-faint);
 }
 .graph-node { touch-action: none; }
+
+/* 图谱节点列表 */
+.kg-list-search { width: 100%; margin-bottom: 10px; }
+.kg-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.kg-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: 7px;
+  background: var(--as-bg-elev2); color: var(--as-text);
+  text-align: left; cursor: pointer;
+}
+.kg-list-item:hover { border-color: var(--as-accent-line); }
+.kg-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
