@@ -17,6 +17,21 @@
           </button>
           <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="relayout"><AppIcon name="refresh" :size="14" /> 自动布局</button>
           <button class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc"><AppIcon name="book" :size="14" /> 写入思源文档</button>
+          <div class="graph-view-tabs">
+            <button
+              class="chip"
+              :class="{ on: viewMode === 'relation' }"
+              :disabled="edgeCount === 0"
+              title="只显示有前置关系的知识点"
+              @click="viewMode = 'relation'"
+            >关系图</button>
+            <button
+              class="chip"
+              :class="{ on: viewMode === 'all' }"
+              title="显示全部知识点（含未连接）"
+              @click="viewMode = 'all'"
+            >全部节点</button>
+          </div>
           <div class="graph-legend">
             <span class="l"><i style="background:var(--as-accent)"></i>精通</span>
             <span class="l"><i style="background:var(--as-green)"></i>掌握</span>
@@ -43,6 +58,10 @@
           暂无知识点<br />上传资料并由 AI 解析出知识点后，图谱会展示它们之间的关联
         </div>
         <template v-else>
+          <div v-if="edgeCount > 0 && viewMode === 'relation' && relationInfo.isolatedCount > 0" class="graph-isolated">
+            <span>还有 {{ relationInfo.isolatedCount }} 个未连接知识点</span>
+            <button class="link-btn" @click="viewMode = 'all'">查看全部</button>
+          </div>
           <EmptyState
             v-if="edgeCount === 0 && !linking"
             compact
@@ -59,7 +78,11 @@
           <div class="graph-canvas">
           <svg
             v-if="knowledgePoints.length > 0"
+            ref="svgEl"
             class="graph-svg"
+            @pointermove="onPointerMove"
+            @pointerup="onPointerUp"
+            @pointerleave="onPointerUp"
             :viewBox="`0 0 ${layout.width} ${layout.height}`"
             preserveAspectRatio="xMidYMid meet"
           >
@@ -72,7 +95,9 @@
             <g
               v-for="n in layout.nodes"
               :key="n.kp.id"
+              :data-kp-id="n.kp.id"
               class="graph-node"
+              @pointerdown="onNodePointerDown($event, n)"
               :class="{ linkable: linking, picked: linking && linkSource === n.kp.id, [`m-${n.kp.mastery}`]: true }"
               @click="onNodeClick(n.kp)"
             >
@@ -130,6 +155,8 @@
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
+import { applySavedPositions, buildRelationView, clampPosition } from "../utils/graphLayout";
+import { clearGraphPositions, loadGraphPositions, saveGraphPositions } from "../utils/graphPositions";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useCourseStore } from "../stores/course";
@@ -161,6 +188,19 @@ const writingDoc = ref(false);
 const inferError = ref("");
 const inferResult = ref("");
 const layoutKey = ref(0);
+const viewMode = ref<"relation" | "all">("relation");
+const savedPositions = ref<Record<string, { x: number; y: number }>>({});
+const dragPositions = ref<Record<string, { x: number; y: number }>>({});
+const svgEl = ref<SVGSVGElement | null>(null);
+let dragState: { id: number; moved: boolean; offsetX: number; offsetY: number } | null = null;
+let suppressClick = false;
+
+const relationInfo = computed(() => buildRelationView(knowledgePoints.value, edges.value));
+/** 关系视图只渲染有前置关系的节点；无边/全部视图渲染全部 */
+const visibleKps = computed(() => {
+  if (edgeCount.value === 0 || viewMode.value === "all") return knowledgePoints.value;
+  return knowledgePoints.value.filter((k) => relationInfo.value.visibleIds.has(k.id));
+});
 
 const selectedKp = computed<KnowledgePoint | null>(() =>
   selectedKpId.value !== null
@@ -195,7 +235,34 @@ interface LaidEdge {
 /** 分层布局：层级 = 从根（无前置）出发的最长路径，环安全；同层水平居中 */
 const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; height: number }>(() => {
   void layoutKey.value;
-  const kps = knowledgePoints.value;
+
+  /** 应用保存/拖动坐标并重新生成边路径（拖动时边必须跟随） */
+  const finalize = (base: LaidNode[], width: number, height: number) => {
+    const merged = applySavedPositions(base, { ...savedPositions.value, ...dragPositions.value }, (n) => n.kp.id);
+    const nodes = merged.map((n) => {
+      const p = clampPosition(n, width, height);
+      return { ...n, x: p.x, y: p.y };
+    });
+    const byId = new Map(nodes.map((n) => [n.kp.id, n]));
+    const laidEdges: LaidEdge[] = [];
+    for (const e of edges.value) {
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      if (!a || !b) continue;
+      const x1 = a.x;
+      const y1 = a.y + NODE_H / 2;
+      const x2 = b.x;
+      const y2 = b.y - NODE_H / 2;
+      const my = (y1 + y2) / 2;
+      laidEdges.push({
+        key: `${e.from}->${e.to}`,
+        d: `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`,
+      });
+    }
+    return { nodes, edges: laidEdges, width, height };
+  };
+
+  const kps = visibleKps.value;
   const byId = new Map(kps.map((k) => [k.id, k]));
   const levelOf = new Map<number, number>();
   const computing = new Set<number>();
@@ -223,7 +290,7 @@ const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; h
       y: GAP_Y / 2 + Math.floor(i / cols) * (NODE_H + GAP_Y) + NODE_H / 2,
       label: k.name.length > 8 ? k.name.slice(0, 8) + "…" : k.name,
     }));
-    return { nodes, edges: [], width, height };
+    return finalize(nodes, width, height);
   }
 
   for (const k of kps) level(k.id);
@@ -267,22 +334,7 @@ const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; h
       label: k.name.length > 8 ? k.name.slice(0, 8) + "…" : k.name,
     };
   });
-  const laidEdges: LaidEdge[] = [];
-  for (const e of edges.value) {
-    const a = pos.get(e.from);
-    const b = pos.get(e.to);
-    if (!a || !b) continue;
-    const x1 = a.x;
-    const y1 = a.y + NODE_H / 2;
-    const x2 = b.x;
-    const y2 = b.y - NODE_H / 2;
-    const my = (y1 + y2) / 2;
-    laidEdges.push({
-      key: `${e.from}->${e.to}`,
-      d: `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`,
-    });
-  }
-  return { nodes, edges: laidEdges, width, height };
+  return finalize(nodes, width, height);
 });
 
 const masteryLabel = (m: Mastery): string => {
@@ -351,6 +403,10 @@ function toggleLink() {
 }
 
 function onNodeClick(kp: KnowledgePoint) {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
   if (linking.value) {
     if (linkSource.value === null) {
       linkSource.value = kp.id;
@@ -387,8 +443,67 @@ async function delEdge(kp: KnowledgePoint, prev: KnowledgePoint) {
 }
 
 function relayout() {
+  const cid = currentCourseId();
+  if (cid) clearGraphPositions(cid);
+  savedPositions.value = {};
+  dragPositions.value = {};
   layoutKey.value++;
 }
+
+// ===== 节点拖动：移动后持久化坐标（localStorage，按课程隔离） =====
+function svgPoint(e: PointerEvent): { x: number; y: number } | null {
+  const svg = svgEl.value;
+  const ctm = svg?.getScreenCTM();
+  if (!svg || !ctm) return null;
+  const p = svg.createSVGPoint();
+  p.x = e.clientX;
+  p.y = e.clientY;
+  const q = p.matrixTransform(ctm.inverse());
+  return { x: q.x, y: q.y };
+}
+
+function onNodePointerDown(e: PointerEvent, n: LaidNode) {
+  if (e.button !== 0 || linking.value) return;
+  const p = svgPoint(e);
+  if (!p) return;
+  dragState = { id: n.kp.id, moved: false, offsetX: n.x - p.x, offsetY: n.y - p.y };
+  (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+  e.preventDefault();
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!dragState) return;
+  const p = svgPoint(e);
+  if (!p) return;
+  dragState.moved = true;
+  dragPositions.value = {
+    ...dragPositions.value,
+    [String(dragState.id)]: { x: p.x + dragState.offsetX, y: p.y + dragState.offsetY },
+  };
+}
+
+function onPointerUp() {
+  if (!dragState) return;
+  const { moved } = dragState;
+  dragState = null;
+  if (!moved) return;
+  suppressClick = true;
+  const next = { ...savedPositions.value, ...dragPositions.value };
+  savedPositions.value = next;
+  dragPositions.value = {};
+  const cid = currentCourseId();
+  if (cid) saveGraphPositions(cid, next);
+}
+
+watch(
+  () => currentCourseId(),
+  (cid) => {
+    savedPositions.value = cid ? loadGraphPositions(cid) : {};
+    dragPositions.value = {};
+    viewMode.value = "relation";
+  },
+  { immediate: true },
+);
 
 async function writeDoc() {
   const id = currentCourseId();

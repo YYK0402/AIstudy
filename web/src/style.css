@@ -1552,3 +1552,15 @@
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+
+/* 知识图谱视图切换 / 未连接提示 */
+.graph-view-tabs { display: flex; gap: 6px; margin-left: auto; }
+.graph-view-tabs .chip { padding: 3px 10px; font-size: 11.5px; }
+.graph-isolated {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-bottom: 10px; padding: 8px 12px;
+  border: 1px dashed var(--as-border);
+  border-radius: var(--as-radius-sm);
+  font-size: 12px; color: var(--as-text-faint);
+}
+.graph-node { touch-action: none; }
