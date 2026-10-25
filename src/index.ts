@@ -792,7 +792,8 @@ export default class AiStudyPlugin extends Plugin {
         const isBrowser = frontend === "browser-desktop" || frontend === "browser-mobile";
         const dataDir = window.siyuan.config?.system?.dataDir;
         const src = isBrowser
-          ? `/plugins/${pluginName}/web/index.js`
+          ? // 浏览器端加时间戳，避免构建后刷新仍命中旧 bundle 缓存
+            `/plugins/${pluginName}/web/index.js?v=${Date.now()}`
           : `file://${dataDir}/plugins/${pluginName}/web/index.js`;
         const script = document.createElement("script");
         script.src = src;

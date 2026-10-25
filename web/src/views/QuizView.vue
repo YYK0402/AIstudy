@@ -55,13 +55,20 @@
               <span class="d"></span>{{ opt }}
             </div>
           </template>
-          <!-- 简答 -->
+          <!-- 简答 / 填空 / 翻译 -->
           <template v-else>
-            <textarea class="essay-input" v-model="userAnswer" rows="6" aria-label="简答题作答" placeholder="写下你的回答…" :disabled="!!quizResult" />
+            <textarea
+              class="essay-input"
+              v-model="userAnswer"
+              rows="6"
+              :aria-label="getInputLabel()"
+              :placeholder="getInputPlaceholder()"
+              :disabled="!!quizResult"
+            />
             <div v-if="quizResult" class="essay-feedback">
               <div class="score" :class="{ pass: quizResult.isCorrect, fail: !quizResult.isCorrect }">{{ quizResult.score }} 分</div>
-              <div class="fb">{{ quizResult.feedback || "AI 未给出具体点评" }}</div>
-              <div class="ref">参考答案：{{ currentQuestion!.answer }}</div>
+              <div class="fb">{{ quizResult.feedback || (currentQuestion!.qType === 'translation' ? 'AI 未给出具体点评' : '') }}</div>
+              <div class="ref">{{ getAnswerLabel() }}：{{ currentQuestion!.answer }}</div>
             </div>
           </template>
 
@@ -82,11 +89,17 @@
                 @click="submitMulti"
               >{{ submitting ? "提交中…" : "提交" }}</button>
               <button
-                v-else-if="currentQuestion!.qType === 'essay'"
+                v-else-if="['essay', 'translation'].includes(currentQuestion!.qType)"
                 class="btn primary"
                 :disabled="!userAnswer.trim() || submitting"
                 @click="submitCurrent"
               >{{ submitting ? "AI 阅卷中…" : "提交（AI 阅卷）" }}</button>
+              <button
+                v-else-if="currentQuestion!.qType === 'cloze'"
+                class="btn primary"
+                :disabled="!userAnswer.trim() || submitting"
+                @click="submitCurrent"
+              >{{ submitting ? "提交中…" : "提交答案" }}</button>
               <button
                 v-else
                 class="btn primary"
@@ -171,14 +184,21 @@
         <h3>题库
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ questions.length }} 题</span>
           <button v-if="!archived" class="btn ghost sm" @click="importOpen = true" style="margin-left:12px">导入真题</button>
+          <button class="btn ghost sm" @click="paperModalOpen = true" style="margin-left:8px">试卷管理</button>
           <button class="btn ghost sm" :disabled="filteredQuestions.length === 0" @click="exportMarkdown" style="margin-left:8px">导出</button>
-          <button class="btn primary sm" :disabled="questions.length === 0" @click="openSetModal" style="margin-left:8px">
+          <button
+            class="btn primary sm"
+            :disabled="questions.length === 0"
+            :title="questions.length === 0 ? '题库为空：请先选择知识点出题，或导入真题' : '选择题型与范围开始刷题'"
+            style="margin-left:8px"
+            @click="openSetModal"
+          >
             开始刷题
           </button>
         </h3>
-        <div v-if="questions.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">✏️</span> 暂无题目，选择知识点后点「开始出题」
-        </div>
+        <EmptyState v-if="questions.length === 0" compact icon="pencil" text="题库为空。&#10;先在上方「AI 出题」选择知识点生成，或导入已有真题。">
+          <button class="btn sm primary" :disabled="!currentCourseId()" @click="scrollToGen">去出题</button>
+        </EmptyState>
         <template v-else>
           <div v-if="!archived" class="q-batch-bar">
             <button class="chip" :class="{ on: selectedAll }" @click="toggleSelectAll">
@@ -267,12 +287,19 @@
         @close="importOpen = false"
         @imported="onQuestionsImported"
       />
+      <ExamPaperModal
+        :open="paperModalOpen"
+        :course-id="currentCourseId()"
+        :on-quiz-start="beginPractice"
+        @close="paperModalOpen = false"
+      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import GenConfigBar from "../components/GenConfigBar.vue";
+import EmptyState from "../components/EmptyState.vue";
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -302,6 +329,7 @@ import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
 import QuestionSetModal from "../components/QuestionSetModal.vue";
 import QuestionImportModal from "../components/QuestionImportModal.vue";
 import KpSelectModal from "../components/KpSelectModal.vue";
+import ExamPaperModal from "../components/ExamPaperModal.vue";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -451,6 +479,10 @@ const setModalOpen = ref(false);
 /** 预填（章节复盘 ?set= / 结业模考）：知识点范围 + 标题；关闭面板后清除 */
 const setPreset = ref<{ kpIds: number[]; title: string } | null>(null);
 
+function scrollToGen() {
+  document.querySelector(".gen-bar")?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
 function openSetModal() {
   if (practicing.value) return;
   setPreset.value = null;
@@ -554,6 +586,30 @@ function endPractice() {
 function pickOption(opt: string) {
   if (quizResult.value || submitting.value) return;
   pickedSingle.value = pickedSingle.value === opt ? null : opt;
+}
+
+function getInputLabel(): string {
+  const q = currentQuestion.value;
+  if (!q) return "作答";
+  if (q.qType === "cloze") return "填空题作答";
+  if (q.qType === "translation") return "翻译题作答";
+  return "简答题作答";
+}
+
+function getInputPlaceholder(): string {
+  const q = currentQuestion.value;
+  if (!q) return "写下你的回答…";
+  if (q.qType === "cloze") return "填写空缺处的内容…";
+  if (q.qType === "translation") return "输入翻译结果…";
+  return "写下你的回答…";
+}
+
+function getAnswerLabel(): string {
+  const q = currentQuestion.value;
+  if (!q) return "参考答案";
+  if (q.qType === "cloze") return "正确答案";
+  if (q.qType === "translation") return "参考译文";
+  return "参考答案";
 }
 
 function submitPicked() {
@@ -741,6 +797,11 @@ function exportMarkdown() {
 
 // ===== 真题导入 =====
 const importOpen = ref(false);
+const paperModalOpen = ref(false);
+
+function beginPractice(questions: Question[]) {
+  beginQuiz(shuffleList(questions));
+}
 
 async function onQuestionsImported(count: number) {
   importOpen.value = false;

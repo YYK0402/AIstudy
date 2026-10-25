@@ -346,6 +346,7 @@
 }
 .btn:hover { border-color: var(--as-accent-line); background: var(--as-bg-hover); }
 .btn.primary { background: linear-gradient(135deg, var(--as-accent-strong), var(--as-accent)); border-color: transparent; color: var(--as-on-accent); font-weight: 600; }
+.btn:disabled { opacity: .48; cursor: not-allowed; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.ghost { background: transparent; }
 .btn.sm { padding: 5px 11px; font-size: 12px; }
