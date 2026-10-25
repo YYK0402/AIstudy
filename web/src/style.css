@@ -1587,3 +1587,11 @@
 }
 .kg-list-item:hover { border-color: var(--as-accent-line); }
 .kg-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+
+/* 图谱筛选空态覆盖 */
+.graph-stage { position: relative; }
+.graph-stage-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: var(--as-text-faint); font-size: 12.5px; pointer-events: none;
+}
+.graph-stage-empty .link-btn { pointer-events: auto; }

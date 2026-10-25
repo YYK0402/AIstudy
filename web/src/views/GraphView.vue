@@ -89,6 +89,7 @@
               ＋ 手动连线
             </button>
           </EmptyState>
+          <div class="graph-stage">
           <KnowledgeGraph
             ref="graphRef"
             :nodes="graphNodes"
@@ -101,6 +102,11 @@
             @link-pick="onNodeClick"
             @drag-end="onDragEnd"
           />
+          <div v-if="filteredKps.length === 0" class="graph-stage-empty">
+            <span>当前筛选下没有知识点</span>
+            <button class="link-btn" @click="masteryFilter = null">清除筛选</button>
+          </div>
+          </div>
         </template>
       </div>
     </template>
