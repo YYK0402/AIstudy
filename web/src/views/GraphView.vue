@@ -16,7 +16,16 @@
             {{ linking ? "取消连线" : "＋ 手动连线" }}
           </button>
           <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="relayout"><AppIcon name="refresh" :size="14" /> 自动布局</button>
+          <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="graphRef?.fitView()"><AppIcon name="graph" :size="14" /> 适应画布</button>
           <button class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc"><AppIcon name="book" :size="14" /> 写入思源文档</button>
+          <input
+            v-model="searchQuery"
+            class="graph-search"
+            type="search"
+            placeholder="搜索知识点…"
+            aria-label="搜索知识点"
+            @keyup.enter="focusSearch"
+          />
           <div class="graph-view-tabs">
             <button
               class="chip"
@@ -75,37 +84,18 @@
               ＋ 手动连线
             </button>
           </EmptyState>
-          <div class="graph-canvas">
-          <svg
-            v-if="knowledgePoints.length > 0"
-            ref="svgEl"
-            class="graph-svg"
-            @pointermove="onPointerMove"
-            @pointerup="onPointerUp"
-            @pointerleave="onPointerUp"
-            :viewBox="`0 0 ${layout.width} ${layout.height}`"
-            preserveAspectRatio="xMidYMid meet"
-          >
-            <defs>
-              <marker id="as-graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="var(--as-text-dim)" />
-              </marker>
-            </defs>
-            <path v-for="e in layout.edges" :key="e.key" :d="e.d" class="graph-edge" marker-end="url(#as-graph-arrow)" />
-            <g
-              v-for="n in layout.nodes"
-              :key="n.kp.id"
-              :data-kp-id="n.kp.id"
-              class="graph-node"
-              @pointerdown="onNodePointerDown($event, n)"
-              :class="{ linkable: linking, picked: linking && linkSource === n.kp.id, [`m-${n.kp.mastery}`]: true }"
-              @click="onNodeClick(n.kp)"
-            >
-              <rect :x="n.x - NODE_W / 2" :y="n.y - NODE_H / 2" :width="NODE_W" :height="NODE_H" rx="8" />
-              <text :x="n.x" :y="n.y + 4" text-anchor="middle">{{ n.label }}</text>
-            </g>
-          </svg>
-          </div>
+          <KnowledgeGraph
+            ref="graphRef"
+            :nodes="graphNodes"
+            :edges="graphEdges"
+            :saved-positions="savedPositions"
+            :linking="linking"
+            :link-source="linkSource"
+            :selected-id="selectedKpId"
+            @node-click="onNodeClick"
+            @link-pick="onNodeClick"
+            @drag-end="onDragEnd"
+          />
         </template>
       </div>
     </template>
@@ -153,9 +143,10 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
-import { applySavedPositions, buildRelationView, clampPosition } from "../utils/graphLayout";
+import KnowledgeGraph from "../components/KnowledgeGraph.vue";
+import { buildRelationView } from "../utils/graphLayout";
 import { clearGraphPositions, loadGraphPositions, saveGraphPositions } from "../utils/graphPositions";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
@@ -174,11 +165,6 @@ import type { KnowledgePoint, Mastery } from "../api";
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
 
-const NODE_W = 124;
-const NODE_H = 34;
-const GAP_X = 36;
-const GAP_Y = 84;
-
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const selectedKpId = ref<number | null>(null);
 const linking = ref(false);
@@ -187,13 +173,8 @@ const inferring = ref(false);
 const writingDoc = ref(false);
 const inferError = ref("");
 const inferResult = ref("");
-const layoutKey = ref(0);
 const viewMode = ref<"relation" | "all">("relation");
 const savedPositions = ref<Record<string, { x: number; y: number }>>({});
-const dragPositions = ref<Record<string, { x: number; y: number }>>({});
-const svgEl = ref<SVGSVGElement | null>(null);
-let dragState: { id: number; moved: boolean; offsetX: number; offsetY: number } | null = null;
-let suppressClick = false;
 
 const relationInfo = computed(() => buildRelationView(knowledgePoints.value, edges.value));
 /** 关系视图只渲染有前置关系的节点；无边/全部视图渲染全部 */
@@ -220,122 +201,6 @@ const edges = computed(() => {
   return list;
 });
 const edgeCount = computed(() => edges.value.length);
-
-interface LaidNode {
-  kp: KnowledgePoint;
-  x: number;
-  y: number;
-  label: string;
-}
-interface LaidEdge {
-  key: string;
-  d: string;
-}
-
-/** 分层布局：层级 = 从根（无前置）出发的最长路径，环安全；同层水平居中 */
-const layout = computed<{ nodes: LaidNode[]; edges: LaidEdge[]; width: number; height: number }>(() => {
-  void layoutKey.value;
-
-  /** 应用保存/拖动坐标并重新生成边路径（拖动时边必须跟随） */
-  const finalize = (base: LaidNode[], width: number, height: number) => {
-    const merged = applySavedPositions(base, { ...savedPositions.value, ...dragPositions.value }, (n) => n.kp.id);
-    const nodes = merged.map((n) => {
-      const p = clampPosition(n, width, height);
-      return { ...n, x: p.x, y: p.y };
-    });
-    const byId = new Map(nodes.map((n) => [n.kp.id, n]));
-    const laidEdges: LaidEdge[] = [];
-    for (const e of edges.value) {
-      const a = byId.get(e.from);
-      const b = byId.get(e.to);
-      if (!a || !b) continue;
-      const x1 = a.x;
-      const y1 = a.y + NODE_H / 2;
-      const x2 = b.x;
-      const y2 = b.y - NODE_H / 2;
-      const my = (y1 + y2) / 2;
-      laidEdges.push({
-        key: `${e.from}->${e.to}`,
-        d: `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`,
-      });
-    }
-    return { nodes, edges: laidEdges, width, height };
-  };
-
-  const kps = visibleKps.value;
-  const byId = new Map(kps.map((k) => [k.id, k]));
-  const levelOf = new Map<number, number>();
-  const computing = new Set<number>();
-  const level = (id: number): number => {
-    const cached = levelOf.get(id);
-    if (cached !== undefined) return cached;
-    if (computing.has(id)) return 0; // 环回边：按根处理
-    computing.add(id);
-    const prevs = parseKpPrevIds(byId.get(id)!).filter((pid) => byId.has(pid) && pid !== id);
-    const lv = prevs.length > 0 ? 1 + Math.max(...prevs.map(level)) : 0;
-    computing.delete(id);
-    levelOf.set(id, lv);
-    return lv;
-  };
-  // 无边时所有节点同层，分层布局会排成超宽一行（节点被压成线）；
-  // 改用网格，保证节点可见、可点，手动连线才有落点。
-  if (edges.value.length === 0) {
-    const cols = Math.min(8, Math.max(1, Math.ceil(Math.sqrt(kps.length))));
-    const rows = Math.ceil(kps.length / cols);
-    const width = cols * (NODE_W + GAP_X) + GAP_X;
-    const height = rows * (NODE_H + GAP_Y) + GAP_Y;
-    const nodes: LaidNode[] = kps.map((k, i) => ({
-      kp: k,
-      x: GAP_X + (i % cols) * (NODE_W + GAP_X) + NODE_W / 2,
-      y: GAP_Y / 2 + Math.floor(i / cols) * (NODE_H + GAP_Y) + NODE_H / 2,
-      label: k.name.length > 8 ? k.name.slice(0, 8) + "…" : k.name,
-    }));
-    return finalize(nodes, width, height);
-  }
-
-  for (const k of kps) level(k.id);
-  const maxLevel = kps.length > 0 ? Math.max(...kps.map((k) => levelOf.get(k.id) ?? 0)) : 0;
-  const levels: KnowledgePoint[][] = [];
-  for (const k of kps) {
-    const lv = levelOf.get(k.id) ?? 0;
-    const row = levels[lv] ?? (levels[lv] = []);
-    row.push(k);
-  }
-  // 同层节点过多时按行折返（最多 8 个/行），避免整层排成超宽一行导致节点被压成线
-  const MAX_PER_ROW = 8;
-  const rows: KnowledgePoint[][] = [];
-  for (const row of levels) {
-    if (row.length === 0) {
-      rows.push([]);
-      continue;
-    }
-    for (let i = 0; i < row.length; i += MAX_PER_ROW) rows.push(row.slice(i, i + MAX_PER_ROW));
-  }
-  const maxPerRow = Math.max(1, ...rows.map((r) => r.length));
-  const width = maxPerRow * (NODE_W + GAP_X) + GAP_X;
-  const height = rows.length * (NODE_H + GAP_Y) + GAP_Y;
-  const pos = new Map<number, { x: number; y: number }>();
-  rows.forEach((row, idx) => {
-    const rowW = row.length * NODE_W + Math.max(0, row.length - 1) * GAP_X;
-    const startX = (width - rowW) / 2 + NODE_W / 2;
-    row.forEach((k, i) => {
-      pos.set(k.id, {
-        x: startX + i * (NODE_W + GAP_X),
-        y: GAP_Y / 2 + idx * (NODE_H + GAP_Y) + NODE_H / 2,
-      });
-    });
-  });
-  const nodes: LaidNode[] = kps.map((k) => {
-    const p = pos.get(k.id)!;
-    return {
-      kp: k,
-      x: p.x,
-      y: p.y,
-      label: k.name.length > 8 ? k.name.slice(0, 8) + "…" : k.name,
-    };
-  });
-  return finalize(nodes, width, height);
-});
 
 const masteryLabel = (m: Mastery): string => {
   const map: Record<Mastery, string> = { unlearn: "未学习", known: "了解", mastered: "掌握", proficient: "精通" };
@@ -402,17 +267,13 @@ function toggleLink() {
   linkSource.value = null;
 }
 
-function onNodeClick(kp: KnowledgePoint) {
-  if (suppressClick) {
-    suppressClick = false;
-    return;
-  }
+function onNodeClick(id: number) {
   if (linking.value) {
     if (linkSource.value === null) {
-      linkSource.value = kp.id;
+      linkSource.value = id;
       return;
     }
-    if (linkSource.value === kp.id) {
+    if (linkSource.value === id) {
       linkSource.value = null;
       return;
     }
@@ -421,7 +282,7 @@ function onNodeClick(kp: KnowledgePoint) {
     void (async () => {
       inferError.value = "";
       try {
-        await addKpEdge(kp.id, prevId);
+        await addKpEdge(id, prevId);
         await load();
       } catch (e) {
         inferError.value = e instanceof Error ? e.message : String(e);
@@ -429,7 +290,7 @@ function onNodeClick(kp: KnowledgePoint) {
     })();
     return;
   }
-  selectedKpId.value = kp.id;
+  selectedKpId.value = id;
 }
 
 async function delEdge(kp: KnowledgePoint, prev: KnowledgePoint) {
@@ -446,60 +307,52 @@ function relayout() {
   const cid = currentCourseId();
   if (cid) clearGraphPositions(cid);
   savedPositions.value = {};
-  dragPositions.value = {};
-  layoutKey.value++;
+  graphRef.value?.resetLayout();
 }
 
-// ===== 节点拖动：移动后持久化坐标（localStorage，按课程隔离） =====
-function svgPoint(e: PointerEvent): { x: number; y: number } | null {
-  const svg = svgEl.value;
-  const ctm = svg?.getScreenCTM();
-  if (!svg || !ctm) return null;
-  const p = svg.createSVGPoint();
-  p.x = e.clientX;
-  p.y = e.clientY;
-  const q = p.matrixTransform(ctm.inverse());
-  return { x: q.x, y: q.y };
-}
+// ===== 拖动结束：持久化坐标（localStorage，按课程隔离） =====
+const graphRef = ref<{
+  fitView: () => void;
+  centerOn: (id: number, k?: number) => void;
+  resetLayout: () => void;
+} | null>(null);
+const searchQuery = ref("");
 
-function onNodePointerDown(e: PointerEvent, n: LaidNode) {
-  if (e.button !== 0 || linking.value) return;
-  const p = svgPoint(e);
-  if (!p) return;
-  dragState = { id: n.kp.id, moved: false, offsetX: n.x - p.x, offsetY: n.y - p.y };
-  (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-  e.preventDefault();
-}
+const graphNodes = computed(() =>
+  visibleKps.value.map((k) => ({
+    id: k.id,
+    label: k.name.length > 9 ? k.name.slice(0, 9) + "…" : k.name,
+    mastery: k.mastery,
+  })),
+);
+const graphEdges = computed(() => edges.value);
 
-function onPointerMove(e: PointerEvent) {
-  if (!dragState) return;
-  const p = svgPoint(e);
-  if (!p) return;
-  dragState.moved = true;
-  dragPositions.value = {
-    ...dragPositions.value,
-    [String(dragState.id)]: { x: p.x + dragState.offsetX, y: p.y + dragState.offsetY },
-  };
-}
-
-function onPointerUp() {
-  if (!dragState) return;
-  const { moved } = dragState;
-  dragState = null;
-  if (!moved) return;
-  suppressClick = true;
-  const next = { ...savedPositions.value, ...dragPositions.value };
+function onDragEnd(id: number, x: number, y: number) {
+  const next = { ...savedPositions.value, [String(id)]: { x, y } };
   savedPositions.value = next;
-  dragPositions.value = {};
   const cid = currentCourseId();
   if (cid) saveGraphPositions(cid, next);
+}
+
+async function focusSearch() {
+  const q = searchQuery.value.trim();
+  if (!q) return;
+  const hit = knowledgePoints.value.find((k) => k.name.includes(q));
+  if (!hit) {
+    window.siyuanAiStudy.showMessage("未找到匹配的知识点", 3000);
+    return;
+  }
+  if (viewMode.value === "relation" && !relationInfo.value.visibleIds.has(hit.id)) {
+    viewMode.value = "all";
+    await nextTick();
+  }
+  graphRef.value?.centerOn(hit.id, 1.6);
 }
 
 watch(
   () => currentCourseId(),
   (cid) => {
     savedPositions.value = cid ? loadGraphPositions(cid) : {};
-    dragPositions.value = {};
     viewMode.value = "relation";
   },
   { immediate: true },
