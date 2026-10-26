@@ -77,7 +77,7 @@ export async function submitAnswer(
   let score: string;
   let feedback = "";
 
-  if (question.qType === "essay") {
+  if (question.qType === "essay" || question.qType === "translation") {
     const binding = findTaskBinding(data, "grade_answer", question.courseId);
     if (!binding) {
       throw new Error(

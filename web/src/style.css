@@ -612,6 +612,8 @@
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(207,111,94,.4);} 50% { box-shadow: 0 0 0 8px rgba(207,111,94,0);} }
 
 /* ===== 知识图谱 ===== */
+.graph-wrap { background: var(--as-bg-elev); border: 1px solid var(--as-border); border-radius: var(--as-radius); padding: 8px; overflow: hidden; }
+.graph-canvas { width: 100%; height: 520px; }
 .graph-toolbar { display: flex; align-items: center; gap: 10px; padding: 4px 8px 12px; }
 .graph-legend { display: flex; gap: 14px; margin-left: auto; }
 .graph-legend .l { display: flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 999px; padding: 2px 7px; background: none; font-size: 11.5px; color: var(--as-text-dim); cursor: pointer; }
@@ -754,6 +756,10 @@
 .tag.judge .d { background: var(--as-green); }
 .tag.essay { color: var(--as-red); border-color: currentColor; }
 .tag.essay .d { background: var(--as-red); }
+.tag.cloze { color: var(--as-yellow); border-color: currentColor; }
+.tag.cloze .d { background: var(--as-yellow); }
+.tag.translation { color: var(--as-teal); border-color: currentColor; }
+.tag.translation .d { background: var(--as-teal); }
 .wrong-times { font-size: 11px; color: var(--as-red); }
 .w-filter { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
 .w-filter-selects { display: flex; gap: 6px; margin-left: auto; }
@@ -1121,8 +1127,9 @@
 .graph-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 .link-hint { margin-top: 8px; font-size: 11.5px; color: var(--as-accent-strong); }
 .graph-hint { padding: 10px 14px; font-size: 11.5px; color: var(--as-text-faint); background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); margin-bottom: 10px; }
-.graph-canvas { max-height: 70vh; overflow: auto; border-radius: var(--as-radius-sm); }
-.graph-svg { width: 100%; min-width: 900px; height: auto; display: block; }
+.kg-wrap { position: relative; width: 100%; height: clamp(380px, calc(100vh - 380px), 720px); }
+.kg-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.kg-canvas:active { cursor: grabbing; }
 .graph-edge { fill: none; stroke: var(--as-text-dim); stroke-width: 1.4; opacity: .75; }
 .graph-node { cursor: pointer; }
 .graph-node rect { fill: var(--as-bg-elev2); stroke: var(--as-border); stroke-width: 1.2; transition: stroke .15s, fill .15s; }
@@ -1306,6 +1313,10 @@
 .kpsm-row.ch:hover .tgl { color: var(--as-accent-strong); }
 .kpsm-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kpsm-row .cnt { font-size: 10.5px; color: var(--as-text-faint); background: var(--as-bg-elev); border: 1px solid var(--as-border-soft); border-radius: 999px; padding: 1px 8px; flex-shrink: 0; }
+/* 嵌入 .field 时（组卷刷题弹窗）阻止 .field label / .field input 规则泄漏进树：
+   .field label 会把 kp 行（label 元素）压成 block 纵排，.field input 会把复选框拉成整行宽 */
+.kpsm-tree label.kpsm-row { display: flex; margin-bottom: 0; font-size: inherit; color: inherit; }
+.kpsm-tree .kpsm-row input { width: auto; background: none; border: none; padding: 0; border-radius: 0; font-family: inherit; }
 .kpsm-children { margin-left: 15px; border-left: 1px solid var(--as-border-soft); padding-left: 8px; }
 .kpsm-kps.direct { margin-left: 15px; border-left: 1px solid var(--as-border-soft); padding-left: 8px; }
 .kpsm-empty { padding: 18px 8px; font-size: 12.5px; color: var(--as-text-faint); text-align: center; }
@@ -1429,6 +1440,19 @@
 .qimp-type { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--as-accent-soft); color: var(--as-accent); }
 .qimp-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qimp-warn { flex: none; font-size: 11px; color: var(--as-accent-strong); }
+.qimp-paper-create { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+
+/* ===== 试卷管理 ===== */
+.paper-list { display: flex; flex-direction: column; gap: 8px; }
+.paper-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: 8px;
+  background: var(--as-bg-elev2); border: 1px solid var(--as-border);
+}
+.paper-info { flex: 1; }
+.paper-name { font-size: 14px; font-weight: 600; }
+.paper-meta { font-size: 12px; color: var(--as-text-faint); margin-top: 2px; }
+.paper-actions { display: flex; gap: 6px; }
 
 
 /* ===== 统一任务行（StudyTaskRow） ===== */
@@ -1554,6 +1578,7 @@
   100% { background-position: 0 50%; }
 }
 
+
 /* 知识图谱视图切换 / 未连接提示 */
 .graph-view-tabs { display: flex; gap: 6px; }
 .graph-search {
@@ -1576,6 +1601,7 @@
   font-size: 12px; color: var(--as-text-faint);
 }
 .graph-node { touch-action: none; }
+
 
 /* 图谱节点列表 */
 .kg-list-search { width: 100%; margin-bottom: 10px; }

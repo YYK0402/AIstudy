@@ -1,6 +1,6 @@
 import type { Material } from "../types/appData";
 
-export const QUESTION_TYPES = ["single", "multiple", "judge", "essay"] as const;
+export const QUESTION_TYPES = ["single", "multiple", "judge", "essay", "cloze", "translation"] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
@@ -8,6 +8,8 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   multiple: "多选",
   judge: "判断",
   essay: "简答",
+  cloze: "填空",
+  translation: "翻译",
 };
 
 export const QUESTION_DIFFICULTIES = ["easy", "medium", "hard"] as const;
@@ -22,6 +24,7 @@ export const QUESTION_DIFFICULTY_LABELS: Record<QuestionDifficulty, string> = {
 export const QUESTION_SOURCE_LABELS: Record<string, string> = {
   ai: "AI 生成",
   import: "导入",
+  paper: "真题",
 };
 
 export function questionSourceLabel(source: string): string {

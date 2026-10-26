@@ -1,7 +1,14 @@
 import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
 import { createEmptyData } from "./data";
-import type { AppData, CallLog } from "./data";
+import type { AppData, CallLog, CourseData } from "./data";
 import { decryptApiKey, migrateProviderKeys } from "./crypto";
+import {
+  courseStorageName,
+  hasCourseEntities,
+  mergeAppData,
+  normalizeCourseData,
+  splitAppData,
+} from "./courseSplit";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
@@ -372,12 +379,12 @@ export default class AiStudyPlugin extends Plugin {
       pluginInstanceId: PLUGIN_INSTANCE_ID,
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
-        const res = await this.commitData(data);
-        // 透传内核真实结果；兼容 SiYuan Plugin.saveData 返回 any：
-        // 缺失 code 按成功处理，与原行为一致；明确拿到数字 code 且非 0 才报错
-        const r = (res ?? {}) as { code?: number; msg?: string };
-        const code = typeof r.code === "number" ? r.code : 0;
-        return { code, msg: r.msg };
+        try {
+          await this.commitData(data);
+          return { code: 0, msg: "" };
+        } catch (e) {
+          return { code: -1, msg: e instanceof Error ? e.message : String(e) };
+        }
       },
       callAi: async (input: CallAiInput) => {
         return await this.handleCallAi(input);
@@ -545,30 +552,47 @@ export default class AiStudyPlugin extends Plugin {
     await this.commitData(data);
   }
 
-  /** 统一写入口：先迁移明文 API Key 为密文，再落盘。
+  /** 统一写入口：先迁移明文 API Key 为密文，再拆成 全局文件 + 各课程文件 分别落盘
+   *  （仅写内容有变化的文件）。删课后遗留的 course-<id> 文件保留在磁盘（加载时忽略，
+   *  petal 无删除文件的 API；id 单调递增不会冲突）。
    *  失败时从磁盘回滚内存缓存，避免「保存失败但内存已脏」，前端的失败回滚才有意义。 */
   private async commitData(data: AppData) {
     await migrateProviderKeys(data);
+    const { global, courses } = splitAppData(data);
     try {
-      const res = await this.saveData(DATA_STORAGE, data);
-      const r = (res ?? {}) as { code?: number };
-      if (typeof r.code === "number" && r.code !== 0) {
-        await this.restoreFromDisk();
-        return res;
+      await this.writeStorageIfChanged(DATA_STORAGE, global);
+      for (const [id, cd] of courses) {
+        await this.writeStorageIfChanged(courseStorageName(id), cd);
       }
       this.data[DATA_STORAGE] = data;
-      return res;
     } catch (e) {
       await this.restoreFromDisk();
       throw e;
     }
   }
 
+  /** 序列化结果与已写盘状态一致则跳过写盘；写成功后更新状态记录 */
+  private async writeStorageIfChanged(name: string, value: unknown) {
+    const serialized = JSON.stringify(value);
+    if (this.writtenBaselines.get(name) === serialized) return;
+    const res = await this.saveData(name, value);
+    const r = (res ?? {}) as { code?: number };
+    if (typeof r.code === "number" && r.code !== 0) {
+      throw new Error("数据保存失败");
+    }
+    this.writtenBaselines.set(name, serialized);
+  }
+
   /** 保存失败后把内存缓存恢复到磁盘版本（best-effort） */
   private async restoreFromDisk() {
     try {
       const disk = (await this.loadData(DATA_STORAGE)) as AppData | null;
-      this.data[DATA_STORAGE] = disk ?? createEmptyData();
+      const base =
+        disk && typeof disk === "object"
+          ? { ...createEmptyData(), ...disk }
+          : createEmptyData();
+      this.data[DATA_STORAGE] = await this.loadMergedData(base);
+      this.initBaselines();
     } catch {
       // 读取磁盘也失败时保留现有内存，交由下一次成功保存覆盖
     }
@@ -848,32 +872,81 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
-  // 加载持久化数据；首次使用（文件不存在）时初始化为空结构
+  // 各数据文件的已写盘状态（序列化快照）；commitData 据此判断是否需要真实写盘
+  private writtenBaselines = new Map<string, string>();
+
+  // 加载持久化数据：全局文件 + 各课程文件合并为内存视图。
+  // 首次使用（文件不存在）初始化为空结构；
+  // 旧布局（实体混在全局文件里）做一次迁移：拆出 course-<id> 文件、全局文件只留全局配置。
   private async initData() {
     try {
       const loaded = await this.loadData(DATA_STORAGE);
       if (!loaded || typeof loaded !== "object" || Object.keys(loaded).length === 0) {
         this.data[DATA_STORAGE] = createEmptyData();
         await this.saveData(DATA_STORAGE, this.data[DATA_STORAGE]);
+        this.initBaselines();
         return;
       }
       // 与空结构合并：补齐旧版本数据文件中缺失的字段，避免后续读写崩溃
       const empty = createEmptyData();
       const partial = loaded as Partial<AppData>;
-      const merged: AppData = { ...empty, ...partial };
-      merged.settings = { ...empty.settings, ...(partial.settings ?? {}) };
+      let global: AppData = { ...empty, ...partial };
+      global.settings = { ...empty.settings, ...(partial.settings ?? {}) };
       // 首次读取即触发明文 API Key 迁移（有明文时数据会被修改）
-      await migrateProviderKeys(merged);
-      this.data[DATA_STORAGE] = merged;
-      // 仅当确有变化（字段补齐 / 密钥迁移）才落盘：
-      // SiYuan 3.8.8 会对 petal 数据文件变更触发插件整体重载，
-      // 每次加载无条件写回会形成「写文件 → 重载 → 再写」无限循环
-      if (JSON.stringify(merged) !== JSON.stringify(loaded)) {
-        await this.saveData(DATA_STORAGE, merged);
+      await migrateProviderKeys(global);
+
+      const legacy = hasCourseEntities(global);
+      if (legacy) {
+        const { global: trimmed, courses } = splitAppData(global);
+        for (const [id, cd] of courses) {
+          await this.saveData(courseStorageName(id), cd);
+        }
+        await this.saveData(DATA_STORAGE, trimmed);
+        global = trimmed;
+      } else if (JSON.stringify(splitAppData(global).global) !== JSON.stringify(loaded)) {
+        // 字段补齐 / 明文字段清理 / 密钥迁移：全局文件确有变化才写回
+        // （避免无条件写回触发内核重载循环）
+        await this.saveData(DATA_STORAGE, global);
       }
+
+      this.data[DATA_STORAGE] = await this.loadMergedData(global);
+      this.initBaselines();
     } catch (error) {
       console.error("[siyuan-ai-study] 加载数据失败:", error);
       this.data[DATA_STORAGE] = createEmptyData();
+    }
+  }
+
+  /** 全局数据 + 各课程文件 → 内存合并视图（内存中始终是完整 AppData，前端无感知） */
+  private async loadMergedData(global: AppData): Promise<AppData> {
+    let merged = global;
+    for (const course of global.courses) {
+      const cd = await this.loadCourseFile(course.id);
+      if (cd) {
+        merged = mergeAppData(merged, new Map([[course.id, cd]]));
+      }
+    }
+    return merged;
+  }
+
+  /** 读取单个课程文件；文件不存在 / 损坏返回 null（按空课程处理，不阻塞其他课程） */
+  private async loadCourseFile(courseId: number): Promise<CourseData | null> {
+    try {
+      const raw = await this.loadData(courseStorageName(courseId));
+      if (!raw || typeof raw !== "object") return null;
+      return normalizeCourseData(raw);
+    } catch (e) {
+      console.error(`[siyuan-ai-study] 读取课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
+      return null;
+    }
+  }
+
+  /** 用内存状态重建各文件的已写盘基线（加载完成后调用） */
+  private initBaselines() {
+    const { global, courses } = splitAppData(this.data[DATA_STORAGE] ?? createEmptyData());
+    this.writtenBaselines = new Map([[DATA_STORAGE, JSON.stringify(global)]]);
+    for (const [id, cd] of courses) {
+      this.writtenBaselines.set(courseStorageName(id), JSON.stringify(cd));
     }
   }
 }

@@ -75,7 +75,7 @@ export const PROMPT_TASKS: PromptTaskMeta[] = [
     name: "AI 习题生成",
     desc: "围绕选中知识点按题型/难度生成习题",
     vars: [
-      { name: "qType", desc: "题型键：single / multiple / judge / essay" },
+      { name: "qType", desc: "题型键：single / multiple / judge / essay / cloze / translation" },
       { name: "difficulty", desc: "难度键：easy / medium / hard" },
       { name: "courseName", desc: "课程名称" },
       { name: "count", desc: "生成题数" },
@@ -91,7 +91,9 @@ export const PROMPT_TASKS: PromptTaskMeta[] = [
         "single：options 恰好 4 项，answer 为正确选项文本；" +
         "multiple：options 恰好 4-5 项，answer 为多个正确选项文本以逗号分隔；" +
         'judge：options 固定为 ["正确","错误"]，answer 为「正确」或「错误」；' +
-        "essay：options 为空数组 []，answer 为参考答案要点。" +
+        "essay：options 为空数组 []，answer 为参考答案要点；" +
+        "cloze：options 为空数组 []，题干中包含 ____ 表示填空位置，answer 为填空的正确答案文本；" +
+        "translation：options 为空数组 []，题干为待翻译原文，answer 为参考译文。" +
         "只返回 JSON 数组，不要任何其他文字。",
       user:
         "课程：{{courseName}}\n共出 {{count}} 道 {{qTypeLabel}} 题，难度{{diffLabel}}。\n仅围绕以下知识点命题，如知识点数量多于题数可跨题分布：\n\n{{kpLines}}",

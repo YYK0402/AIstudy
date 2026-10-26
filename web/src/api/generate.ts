@@ -249,6 +249,7 @@ export async function generateQuestions(
         qType: item.qType,
         difficulty: item.difficulty,
         source: "ai",
+        paperId: null,
         createTime: now(),
       });
     }

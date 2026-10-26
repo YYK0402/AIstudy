@@ -127,6 +127,16 @@ export interface Question {
   qType: string;
   difficulty: string;
   source: string;
+  /** 所属试卷 id（可空） */
+  paperId: number | null;
+  createTime: string;
+}
+
+export interface ExamPaper {
+  id: number;
+  courseId: number;
+  name: string;
+  year: number;
   createTime: string;
 }
 
@@ -250,6 +260,34 @@ export interface AppSettings {
   aiRateLimitPerMin?: number;
 }
 
+/**
+ * 单课程数据（持久化为独立文件 course-<courseId>）：
+ * 该课程的全部内容实体 + 学习过程实体 + 对话落库文档缓存。
+ * 一次学习动作（答题/生成计划等）只涉及单个课程文件，保存天然原子。
+ */
+export interface CourseData {
+  chapters: Chapter[];
+  knowledgePoints: KnowledgePoint[];
+  materials: Material[];
+  materialChapters: MaterialChapter[];
+  questions: Question[];
+  examPapers: ExamPaper[];
+  answerRecords: AnswerRecord[];
+  wrongQuestions: WrongQuestion[];
+  studyPlans: StudyPlan[];
+  studyTasks: StudyTask[];
+  explainRecords: ExplainRecord[];
+  reviewSchedules: ReviewSchedule[];
+  flashCards: FlashCard[];
+  studyLogs: StudyLog[];
+  /**
+   * 学习对话落库文档（每章/节一个）：key = 章/节节点 id 的字符串，未挂载 KP 的兜底文档为 `course-${courseId}`；
+   * value.docId = 思源文档 id，value.lastMarkdown = 最近一次写入的完整 markdown（内核内存读不到时的兜底）
+   */
+  conversationsDocs?: Record<string, { docId: string; lastMarkdown?: string }>;
+}
+
+/** 内存中的完整数据视图（= 全局配置 + 各课程文件合并），前端始终读写这个结构 */
 export interface AppData {
   providers: AiProvider[];
   models: AiModel[];
@@ -261,6 +299,7 @@ export interface AppData {
   materials: Material[];
   materialChapters: MaterialChapter[];
   questions: Question[];
+  examPapers: ExamPaper[];
   answerRecords: AnswerRecord[];
   wrongQuestions: WrongQuestion[];
   studyPlans: StudyPlan[];
@@ -277,6 +316,7 @@ export interface AppData {
   /**
    * 学习对话落库文档（每章/节一个）：key = 章/节节点 id 的字符串，未挂载 KP 的兜底文档为 `course-${courseId}`；
    * value.docId = 思源文档 id，value.lastMarkdown = 最近一次写入的完整 markdown（内核内存读不到时的兜底）
+   * 磁盘上分散在各 course-<id> 文件中，此处为内存合并视图
    */
   conversationsDocs?: Record<string, { docId: string; lastMarkdown?: string }>;
 }
@@ -293,6 +333,7 @@ export function createEmptyData(): AppData {
     materials: [],
     materialChapters: [],
     questions: [],
+    examPapers: [],
     answerRecords: [],
     wrongQuestions: [],
     studyPlans: [],
@@ -306,5 +347,24 @@ export function createEmptyData(): AppData {
       persistToSiyuan: false,
       notebookName: "AI 研习",
     },
+  };
+}
+
+export function createEmptyCourseData(): CourseData {
+  return {
+    chapters: [],
+    knowledgePoints: [],
+    materials: [],
+    materialChapters: [],
+    questions: [],
+    examPapers: [],
+    answerRecords: [],
+    wrongQuestions: [],
+    studyPlans: [],
+    studyTasks: [],
+    explainRecords: [],
+    reviewSchedules: [],
+    flashCards: [],
+    studyLogs: [],
   };
 }

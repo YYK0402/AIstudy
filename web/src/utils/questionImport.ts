@@ -31,6 +31,10 @@ export interface ImportError {
 export interface ImportParseResult {
   drafts: ImportedQuestionDraft[];
   errors: ImportError[];
+  /** 解析到的试卷名称（来自 markdown 头部） */
+  paperName?: string;
+  /** 解析到的年份（来自 markdown 头部） */
+  paperYear?: number;
 }
 
 const QTYPE_MAP: Record<string, QuestionType> = {
@@ -38,6 +42,8 @@ const QTYPE_MAP: Record<string, QuestionType> = {
   multiple: "multiple", 多选: "multiple",
   judge: "judge", 判断: "judge",
   essay: "essay", 简答: "essay", 问答: "essay",
+  cloze: "cloze", 填空: "cloze",
+  translation: "translation", 翻译: "translation",
 };
 
 const DIFF_MAP: Record<string, QuestionDifficulty> = {
@@ -48,6 +54,15 @@ const DIFF_MAP: Record<string, QuestionDifficulty> = {
 
 const JUDGE_RIGHT = new Set(["正确", "对", "√", "right", "true"]);
 const JUDGE_WRONG = new Set(["错误", "错", "×", "✗", "wrong", "false"]);
+
+const QTYPE_LABELS: Record<string, string> = {
+  essay: "简答",
+  cloze: "填空",
+  translation: "翻译",
+};
+function getQuestionTypeName(qt: string): string {
+  return QTYPE_LABELS[qt] ?? qt;
+}
 
 const isContentLine = (l: string) => {
   const t = l.trim();
@@ -153,7 +168,7 @@ function parseBlock(
   let finalOptions = options;
   if (qType === "judge") {
     finalOptions = options.length === 2 ? options : ["正确", "错误"];
-  } else if (qType === "essay") {
+  } else if (qType === "essay" || qType === "cloze" || qType === "translation") {
     finalOptions = [];
   } else if (options.length < 2) {
     return { error: qType === "single" ? "单选题至少需要 2 个选项" : "多选题至少需要 2 个选项" };
@@ -161,8 +176,8 @@ function parseBlock(
 
   // 答案解析
   let answer = "";
-  if (qType === "essay") {
-    if (!hasAnswer || !answerRaw) return { error: "简答题缺少参考答案" };
+  if (qType === "essay" || qType === "cloze" || qType === "translation") {
+    if (!hasAnswer || !answerRaw) return { error: getQuestionTypeName(qType) + "题缺少参考答案" };
     answer = answerRaw;
   } else if (qType === "judge") {
     const w = (tokens[0] ?? answerRaw).trim();
@@ -220,15 +235,37 @@ export function parseQuestionsMarkdown(
   const kpByName = new Map(knowledgePoints.map((k) => [k.name, k]));
   const drafts: ImportedQuestionDraft[] = [];
   const errors: ImportError[] = [];
-  for (const block of splitBlocks(text.split(/\r?\n/))) {
+
+  // 解析头部元数据（试卷名称/年份）
+  const lines = text.split(/\r?\n/);
+  let paperName: string | undefined;
+  let paperYear: number | undefined;
+  for (const line of lines) {
+    const t = line.trim();
+    // 试卷名称：首行的标题
+    if (!paperName && /^#{1,6}\s+(.+)$/.test(t)) {
+      paperName = t.replace(/^#{1,6}\s+/, "").trim();
+    }
+    // 年份
+    if (!paperYear) {
+      const ym = t.match(/^(?:年份|year)\s*[:：]\s*(\d{4})/i);
+      if (ym) paperYear = Number(ym[1]);
+      // 从试卷名中提取年份，如 "2024考研政治真题"
+      const nm = paperName?.match(/(\d{4})/);
+      if (nm) paperYear = Number(nm[1]);
+    }
+  }
+
+  for (const block of splitBlocks(lines)) {
     const { draft, error } = parseBlock(block.lines, block.start, kpByName);
     if (draft) drafts.push(draft);
     else errors.push({ line: block.start, reason: error ?? "无法解析" });
   }
-  return { drafts, errors };
+  return { drafts, errors, paperName, paperYear };
 }
 
-export const IMPORT_SAMPLE = `1. 下列对货币时间价值理解正确的是？
+export const IMPORT_SAMPLE = `# 2024考研政治真题
+1. 下列对货币时间价值理解正确的是？
 A. 资金的现值
 B. 资金随时间推移产生的增值
 C. 未来资金的折现
@@ -251,4 +288,12 @@ D. 税收政策
 答案: 错误
 解析: 中央银行是政府的银行，不是商业银行。
 题型: 判断
+---
+货币的时间价值是指资金在______过程中产生的增值。
+答案: 投资
+题型: 填空
+---
+翻译：The monetary policy refers to the policies formulated by the central bank.
+答案: 货币政策是指由中央银行制定的政策。
+题型: 翻译
 `;

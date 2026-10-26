@@ -37,6 +37,7 @@ export type {
   Material,
   MaterialChapter,
   Question,
+  ExamPaper,
   AnswerRecord,
   WrongQuestion,
   StudyPlan,

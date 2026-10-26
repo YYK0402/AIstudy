@@ -131,11 +131,17 @@ export async function importQuestions(
     difficulty: QuestionDifficulty;
     kpIds: number[];
   }>,
+  options?: {
+    paperId?: number | null;
+    source?: "import" | "paper";
+  },
 ): Promise<Question[]> {
   const data = await getData();
   if (!data.courses.some((c) => c.id === courseId)) {
     throw new Error("课程不存在");
   }
+  const source = options?.source ?? "import";
+  const paperId = options?.paperId ?? null;
   let nid = nextId(data.questions);
   const created: Question[] = drafts.map((d) => ({
     id: nid++,
@@ -147,7 +153,8 @@ export async function importQuestions(
     analysis: d.analysis,
     qType: d.qType,
     difficulty: d.difficulty,
-    source: "import",
+    source,
+    paperId,
     createTime: now(),
   }));
   data.questions.push(...created);
@@ -176,5 +183,84 @@ export async function batchBindQuestionKps(
   }
   await saveData(data);
   return count;
+}
+
+export interface ExamPaper {
+  id: number;
+  courseId: number;
+  name: string;
+  year: number;
+  createTime: string;
+}
+
+export interface ExamPaperWithQuestions extends ExamPaper {
+  questionCount: number;
+}
+
+export async function createExamPaper(
+  courseId: number,
+  name: string,
+  year: number,
+): Promise<ExamPaper> {
+  const data = await getData();
+  // 检查是否已存在同名同年的试卷
+  const existing = data.examPapers.find(
+    (p) => p.courseId === courseId && p.name === name && p.year === year,
+  );
+  if (existing) return existing;
+
+  const paper: ExamPaper = {
+    id: data.examPapers.reduce((m, p) => Math.max(m, p.id), 0) + 1,
+    courseId,
+    name,
+    year,
+    createTime: now(),
+  };
+  data.examPapers.push(paper);
+  await saveData(data);
+  return paper;
+}
+
+export async function deleteExamPaper(id: number): Promise<void> {
+  const data = await getData();
+  // 级联删除关联的题目
+  const paperQuestionIds = data.questions.filter((q) => q.paperId === id).map((q) => q.id);
+  data.questions = data.questions.filter((q) => q.paperId !== id);
+  data.examPapers = data.examPapers.filter((p) => p.id !== id);
+  // 清理答题记录/错题
+  const qIdSet = new Set(paperQuestionIds);
+  data.answerRecords = data.answerRecords.filter((r) => !qIdSet.has(r.qId));
+  data.wrongQuestions = data.wrongQuestions.filter((w) => !qIdSet.has(w.qId));
+  await saveData(data);
+}
+
+export async function getExamPapers(courseId: number): Promise<ExamPaperWithQuestions[]> {
+  const data = await getData();
+  return data.examPapers
+    .filter((p) => p.courseId === courseId)
+    .map((p) => ({
+      ...p,
+      questionCount: data.questions.filter((q) => q.paperId === p.id).length,
+    }))
+    .sort((a, b) => b.year - a.year || a.name.localeCompare(b.name));
+}
+
+export async function getPaperQuestions(paperId: number): Promise<Question[]> {
+  const data = await getData();
+  return data.questions
+    .filter((q) => q.paperId === paperId)
+    .sort((a, b) => a.id - b.id);
+}
+
+export async function updateQuestionPaperId(
+  questionId: number,
+  paperId: number | null,
+): Promise<void> {
+  const data = await getData();
+  const q = data.questions.find((x) => x.id === questionId);
+  if (q) {
+    q.paperId = paperId;
+    await saveData(data);
+  }
 }
 
