@@ -3,5 +3,8 @@ dist/
 dev/
 package.zip
 *.log
+*.log.gz
 .DS_Store
 .vite/
+backend/
+seeds/
