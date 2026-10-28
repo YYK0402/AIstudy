@@ -89,6 +89,44 @@ interface PdfLine {
   maxGap: number;
 }
 
+export interface PdfRowPart {
+  x: number;
+  y: number;
+  str: string;
+  height: number;
+  width: number;
+}
+
+/**
+ * 按 y 坐标把 PDF 文本片段聚合成行（|Δy| < 3 视为同一行，行 y = 首个片段 y，保持插入序）。
+ * 桶化：|Δy| < 3 ⇒ floor 桶号差 ≤ 1，只检查相邻 ±1 桶，避免 O(items × rows) 全扫。
+ * 注意桶宽必须取 4（若取 3，y=132(桶43) 与 y=134(桶45) 差 2 却跨两个桶，会漏匹配）。
+ */
+export function aggregatePdfRows(parts: PdfRowPart[]): Array<{ y: number; parts: PdfRowPart[] }> {
+  const rows: Array<{ y: number; parts: PdfRowPart[]; idx?: number }> = [];
+  const bucket = new Map<number, Array<{ y: number; parts: PdfRowPart[]; idx?: number }>>();
+  for (const p of parts) {
+    const b = Math.floor(p.y / 4);
+    // 与朴素全扫一致：取「插入序最早」的 |Δy|<3 行（同桶 ≤2 行，邻桶共 ≤6 候选）
+    let row: { y: number; parts: PdfRowPart[]; idx?: number } | undefined;
+    for (let nb = b - 1; nb <= b + 1; nb++) {
+      for (const cand of bucket.get(nb) ?? []) {
+        if (Math.abs(cand.y - p.y) < 3 && (!row || (cand.idx ?? 0) < (row.idx ?? 0))) row = cand;
+      }
+    }
+    if (!row) {
+      row = { y: p.y, parts: [], idx: rows.length };
+      rows.push(row);
+      const list = bucket.get(b);
+      if (list) list.push(row);
+      else bucket.set(b, [row]);
+    }
+    row.parts.push(p);
+  }
+  for (const r of rows) delete r.idx;
+  return rows;
+}
+
 async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   // 聚合所有行：每行 = { 文本, 字号, 页码, 水平中心, 页面宽度 }
@@ -107,23 +145,19 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
     const pageHeight = viewport.height;
     const pageWidth = viewport.width;
 
-    // 按 y 坐标聚合成行
-    const rows: Array<{ y: number; parts: Array<{ x: number; str: string; height: number; width: number }> }> = [];
-    for (const it of items) {
-      if (!it.str || !it.str.trim()) continue;
-      const y = it.transform?.[5] ?? 0;
-      const x = it.transform?.[4] ?? 0;
-      const height = Math.abs(it.transform?.[3] ?? it.height ?? 12);
-      const width = it.width ?? 0;
-      // 过滤页眉页脚（顶部/底部固定区域的重复文本）
-      if (y > pageHeight - 70 || y < 70) continue;
-      let row = rows.find((r) => Math.abs(r.y - y) < 3);
-      if (!row) {
-        row = { y, parts: [] };
-        rows.push(row);
-      }
-      row.parts.push({ x, str: it.str, height, width });
-    }
+    // 按 y 坐标聚合成行（y/3 桶化，O(items×桶内行数)）
+    const rows = aggregatePdfRows(
+      items
+        .filter((it) => it.str && it.str.trim())
+        .map((it) => ({
+          y: it.transform?.[5] ?? 0,
+          x: it.transform?.[4] ?? 0,
+          str: it.str as string,
+          height: Math.abs(it.transform?.[3] ?? it.height ?? 12),
+          width: it.width ?? 0,
+        }))
+        .filter((it) => it.y <= pageHeight - 70 && it.y >= 70),
+    );
     // pdfjs 的 y 坐标从下往上（原点在左下角），降序排序 = 从上往下的视觉顺序
     rows.sort((a, b) => b.y - a.y);
     for (const row of rows) {

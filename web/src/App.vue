@@ -4,7 +4,11 @@
     <main class="main">
       <Topbar />
       <div class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <keep-alive :include="cachedViews">
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
       </div>
     </main>
     <NewCourseModal v-if="modalStore.newCourseOpen" />
@@ -24,4 +28,7 @@ import ChapterTreePreviewModal from "./components/ChapterTreePreviewModal.vue";
 import { useModalStore } from "./stores/modal";
 
 const modalStore = useModalStore();
+
+// 需要 keep-alive 缓存的视图 name（与各自 defineOptions({ name }) 对应，改动需同步）
+const cachedViews = ["CourseContentView", "QuizView", "WrongView", "FlashcardsView", "ReportView"];
 </script>

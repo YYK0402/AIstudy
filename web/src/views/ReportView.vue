@@ -174,6 +174,7 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: "ReportView" });
 import AppIcon from "../components/AppIcon.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";

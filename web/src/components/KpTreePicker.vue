@@ -96,49 +96,98 @@ watch(
 const isSearching = computed(() => search.value.trim() !== "");
 const matchName = (s: string) => !isSearching.value || s.toLowerCase().includes(search.value.trim().toLowerCase());
 
-const chapterSort = (id: number) => props.chapters.find((c) => c.id === id)?.sort ?? 0;
+const chapterById = computed(() => new Map(props.chapters.map((c) => [c.id, c])));
+
+const chapterSort = (id: number) => chapterById.value.get(id)?.sort ?? 0;
 
 const topChapters = computed(() =>
   props.chapters.filter((c) => c.level === "chapter" || c.parentId === null).sort((a, b) => a.sort - b.sort),
 );
 
+// 章节 → 小节列表（按 sort），预计算替代每行 filter+sort
+const unitsByChapter = computed(() => {
+  const map = new Map<number, Chapter[]>();
+  for (const c of props.chapters) {
+    if (c.level === "unit" && c.parentId != null) {
+      let list = map.get(c.parentId);
+      if (!list) {
+        list = [];
+        map.set(c.parentId, list);
+      }
+      list.push(c);
+    }
+  }
+  for (const list of map.values()) list.sort((a, b) => a.sort - b.sort);
+  return map;
+});
+
 function unitsOf(chId: number): Chapter[] {
-  return props.chapters
-    .filter((c) => c.level === "unit" && c.parentId === chId)
-    .sort((a, b) => a.sort - b.sort);
+  return unitsByChapter.value.get(chId) ?? [];
 }
 
-/** 节点直属 KP：挂在该节点（章或节）本身下的知识点，按教材序 */
+// 节点直属 KP（按教材序，搜索词过滤）：预计算替代每行 filter+sort；
+// 依赖 search/props.kps，搜索变化时整体重算一次
+const kpsByNode = computed(() => {
+  const map = new Map<number, KnowledgePoint[]>();
+  for (const k of props.kps) {
+    if (k.chapterId == null || !matchName(k.name)) continue;
+    let list = map.get(k.chapterId);
+    if (!list) {
+      list = [];
+      map.set(k.chapterId, list);
+    }
+    list.push(k);
+  }
+  for (const list of map.values()) list.sort((a, b) => a.sort - b.sort || a.id - b.id);
+  return map;
+});
+
 function kpsOfNode(nodeId: number): KnowledgePoint[] {
-  return props.kps
-    .filter((k) => k.chapterId === nodeId && matchName(k.name))
-    .sort((a, b) => a.sort - b.sort || a.id - b.id);
+  return kpsByNode.value.get(nodeId) ?? [];
 }
 
-/** 节点全部 KP id（章 = 直属 + 其下所有节；节 = 直属） */
-function allKpIdsOfNode(nodeId: number): number[] {
-  const node = props.chapters.find((c) => c.id === nodeId);
-  const ids = kpsOfNode(nodeId).map((k) => k.id);
-  if (node?.level === "chapter") {
-    for (const u of unitsOf(nodeId)) ids.push(...kpsOfNode(u.id).map((k) => k.id));
+// 节点全部 KP id（章 = 直属 + 其下所有节；节 = 直属）：预计算 + 选中数，
+// 替代 isNodeAll/isNodePartial 每行全量遍历
+const nodeKpIds = computed(() => {
+  const ids = new Map<number, number[]>();
+  for (const node of topChapters.value) {
+    const all = [...kpsOfNode(node.id)];
+    for (const u of unitsOf(node.id)) all.push(...kpsOfNode(u.id));
+    ids.set(node.id, all.map((k) => k.id));
+    for (const u of unitsOf(node.id)) ids.set(u.id, kpsOfNode(u.id).map((k) => k.id));
   }
   return ids;
+});
+
+const nodeSelectedCount = computed(() => {
+  const counts = new Map<number, number>();
+  for (const [id, ids] of nodeKpIds.value) {
+    let n = 0;
+    for (const kid of ids) if (selected.value.has(kid)) n++;
+    counts.set(id, n);
+  }
+  return counts;
+});
+
+function allKpIdsOfNode(nodeId: number): number[] {
+  return nodeKpIds.value.get(nodeId) ?? [];
 }
 
 function isNodeAll(nodeId: number): boolean {
-  const ids = allKpIdsOfNode(nodeId);
-  return ids.length > 0 && ids.every((id) => selected.value.has(id));
+  const ids = nodeKpIds.value.get(nodeId);
+  return !!ids && ids.length > 0 && (nodeSelectedCount.value.get(nodeId) ?? 0) === ids.length;
 }
 
 function isNodePartial(nodeId: number): boolean {
-  const ids = allKpIdsOfNode(nodeId);
-  const hit = ids.filter((id) => selected.value.has(id)).length;
+  const ids = nodeKpIds.value.get(nodeId);
+  if (!ids || ids.length === 0) return false;
+  const hit = nodeSelectedCount.value.get(nodeId) ?? 0;
   return hit > 0 && hit < ids.length;
 }
 
 /** 教材序：章序 → 节序（章直属排节之前）→ KP 排序 */
 function orderKey(kp: KnowledgePoint): [number, number, number, number] {
-  const node = kp.chapterId != null ? props.chapters.find((c) => c.id === kp.chapterId) : undefined;
+  const node = kp.chapterId != null ? chapterById.value.get(kp.chapterId) : undefined;
   if (!node) return [9999, 9999, kp.sort, kp.id];
   if (node.level === "unit" && node.parentId != null) {
     return [chapterSort(node.parentId), node.sort, kp.sort, kp.id];

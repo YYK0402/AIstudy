@@ -230,8 +230,8 @@
               @click="filterType = filterType === key ? '' : String(key)"
             >{{ label }}</button>
           </div>
-          <div class="q-list q-list-scroll">
-            <div v-for="q in filteredQuestions" :key="q.id" class="q-fixed">
+          <div class="q-list">
+            <div v-for="q in pagedQuestions" :key="q.id" class="q-fixed">
               <div class="top">
                 <label v-if="!archived" class="q-check">
                   <input type="checkbox" :checked="selectedIds.has(q.id)" @change="toggleSelect(q.id)" />
@@ -248,6 +248,11 @@
                 <button class="btn sm ghost" @click="delQ(q)">删除</button>
               </div>
             </div>
+          </div>
+          <div v-if="questionTotalPages > 1" class="pagination">
+            <button class="btn sm ghost" :disabled="questionPage === 1" @click="questionPage--">‹ 上一页</button>
+            <span class="pg-info">{{ questionPage }} / {{ questionTotalPages }}</span>
+            <button class="btn sm ghost" :disabled="questionPage === questionTotalPages" @click="questionPage++">下一页 ›</button>
           </div>
         </template>
       </div>
@@ -309,10 +314,22 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: "QuizView" });
+
+// keep-alive 停用（切到其他页签）时关闭本地弹层，避免 teleport modal 残留在其他页面上方
+onDeactivated(() => {
+    editing.value = null;
+    batchKpOpen.value = false;
+    setModalOpen.value = false;
+    genKpOpen.value = false;
+    kpChangeOpen.value = false;
+    importOpen.value = false;
+    paperModalOpen.value = false;
+});
 import GenConfigBar from "../components/GenConfigBar.vue";
 import EmptyState from "../components/EmptyState.vue";
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onMounted, ref, watch } from "vue";
+import { onDeactivated, computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {
@@ -435,6 +452,21 @@ async function generateSelfTest() {
 const filteredQuestions = computed(() =>
   filterType.value === "" ? questions.value : questions.value.filter((q) => q.qType === filterType.value),
 );
+
+// 题库列表分页（50/页）：长题库只渲染当前页
+const QUESTION_PAGE_SIZE = 50;
+const questionPage = ref(1);
+const questionTotalPages = computed(() => Math.max(1, Math.ceil(filteredQuestions.value.length / QUESTION_PAGE_SIZE)));
+const pagedQuestions = computed(() =>
+  filteredQuestions.value.slice((questionPage.value - 1) * QUESTION_PAGE_SIZE, questionPage.value * QUESTION_PAGE_SIZE),
+);
+// 筛选变化回第一页；删除导致当前页空时回落
+watch(filterType, () => {
+  questionPage.value = 1;
+});
+watch(questionPage, (p) => {
+  if (p > questionTotalPages.value) questionPage.value = 1;
+});
 
 // ===== 刷题模式 =====
 const practicing = ref(false);

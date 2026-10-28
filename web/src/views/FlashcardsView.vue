@@ -44,7 +44,7 @@
       <div class="card" style="margin-top:14px">
         <h3>卡片
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ cards.length }} 张</span>
-          <button v-if="!archived" class="btn ghost sm" style="margin-left:12px" :disabled="knowledgePoints.length === 0" @click="editModalCard = null; editModalOpen = true">＋ 手动卡</button>
+          <button v-if="!archived" class="btn ghost sm" style="margin-left:12px" :disabled="knowledgePoints.length === 0" @click="openManualCard">＋ 手动卡</button>
           <button class="btn primary sm" style="margin-left:8px" :disabled="dueCardCount === 0" @click="router.push('/review')">
             开始复习{{ dueCardCount > 0 ? `（${dueCardCount} 张到期）` : "" }}
           </button>
@@ -58,7 +58,7 @@
           text="暂无闪卡。&#10;选择知识点后点「开始生成」，或手动添加一张。"
         />
         <div v-else class="fc-list">
-          <div v-for="c in cards" :key="c.id" class="fc-item">
+          <div v-for="c in pagedCards" :key="c.id" class="fc-item">
             <div class="fc-front">{{ c.front }}</div>
             <div class="fc-foot">
               <span class="src-tag">{{ c.source === "ai" ? "AI 生成" : "手动" }}</span>
@@ -70,6 +70,11 @@
               <button class="btn sm ghost" @click="reviewNow(c)">去复习</button>
             </div>
           </div>
+        </div>
+        <div v-if="cardTotalPages > 1" class="pagination">
+          <button class="btn sm ghost" :disabled="cardPage === 1" @click="cardPage--">‹ 上一页</button>
+          <span class="pg-info">{{ cardPage }} / {{ cardTotalPages }}</span>
+          <button class="btn sm ghost" :disabled="cardPage === cardTotalPages" @click="cardPage++">下一页 ›</button>
         </div>
       </div>
 
@@ -94,9 +99,16 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: "FlashcardsView" });
+
+// keep-alive 停用（切到其他页签）时关闭本地弹层，避免 teleport modal 残留在其他页面上方
+onDeactivated(() => {
+    editModalOpen.value = false;
+    editModalCard.value = null;
+});
 import GenConfigBar from "../components/GenConfigBar.vue";
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onMounted, ref, watch } from "vue";
+import { onDeactivated, computed, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
@@ -127,6 +139,17 @@ const chapters = ref<Chapter[]>([]);
 const cards = ref<FlashCard[]>([]);
 const dueCardCount = ref(0);
 
+// 卡片列表分页（50/页）
+const CARD_PAGE_SIZE = 50;
+const cardPage = ref(1);
+const cardTotalPages = computed(() => Math.max(1, Math.ceil(cards.value.length / CARD_PAGE_SIZE)));
+const pagedCards = computed(() =>
+  cards.value.slice((cardPage.value - 1) * CARD_PAGE_SIZE, cardPage.value * CARD_PAGE_SIZE),
+);
+watch(cardPage, (p) => {
+  if (p > cardTotalPages.value) cardPage.value = 1;
+});
+
 const genKpOpen = ref(false);
 const selectedKpIds = ref<number[]>([]);
 const overwrite = ref(false);
@@ -140,7 +163,14 @@ const genResult = ref<GenerateFlashcardsResult | null>(null);
 const editModalOpen = ref(false);
 const editModalCard = ref<FlashCard | null>(null);
 
-const kpName = (id: number): string => knowledgePoints.value.find((k) => k.id === id)?.name ?? "（知识点已删除）";
+function openManualCard(): void {
+  editModalCard.value = null;
+  editModalOpen.value = true;
+}
+
+// id → KP Map：模板行级 O(1) 查找
+const kpById = computed(() => new Map(knowledgePoints.value.map((k) => [k.id, k])));
+const kpName = (id: number): string => kpById.value.get(id)?.name ?? "（知识点已删除）";
 
 function onGenKpConfirm(ids: number[]) {
   selectedKpIds.value = ids;

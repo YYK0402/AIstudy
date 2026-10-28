@@ -58,7 +58,7 @@
         </div>
         <div v-if="filteredWrong.length === 0" class="s" style="padding:18px 0;text-align:center">当前筛选无错题</div>
         <div v-else class="q-list">
-          <div v-for="w in filteredWrong" :key="w.wrong.id" class="q-fixed">
+          <div v-for="w in pagedWrong" :key="w.wrong.id" class="q-fixed">
             <div class="top">
               <span class="tag" :class="w.question.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[w.question.qType as QuestionType] }}</span>
               <span class="src-tag">{{ questionSourceLabel(w.question.source) }}</span>
@@ -81,12 +81,18 @@
             </div>
           </div>
         </div>
+        <div v-if="wrongTotalPages > 1" class="pagination">
+          <button class="btn sm ghost" :disabled="wrongPage === 1" @click="wrongPage--">‹ 上一页</button>
+          <span class="pg-info">{{ wrongPage }} / {{ wrongTotalPages }}</span>
+          <button class="btn sm ghost" :disabled="wrongPage === wrongTotalPages" @click="wrongPage++">下一页 ›</button>
+        </div>
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: "WrongView" });
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
@@ -131,6 +137,21 @@ const filteredWrong = computed(() =>
     return true;
   }),
 );
+
+// 错题列表分页（50/页）
+const WRONG_PAGE_SIZE = 50;
+const wrongPage = ref(1);
+const wrongTotalPages = computed(() => Math.max(1, Math.ceil(filteredWrong.value.length / WRONG_PAGE_SIZE)));
+const pagedWrong = computed(() =>
+  filteredWrong.value.slice((wrongPage.value - 1) * WRONG_PAGE_SIZE, wrongPage.value * WRONG_PAGE_SIZE),
+);
+// 筛选变化回第一页；移出导致当前页空时回落
+watch([filterType, filterErr, filterKp, filterTimes], () => {
+  wrongPage.value = 1;
+});
+watch(wrongPage, (p) => {
+  if (p > wrongTotalPages.value) wrongPage.value = 1;
+});
 
 const { loading, error, load } = useLoad(async (ctx) => {
   if (!ctx.courseId) {

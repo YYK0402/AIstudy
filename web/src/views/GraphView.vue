@@ -219,6 +219,9 @@ const MASTERY_LEGEND: Array<{ key: Mastery; label: string; color: string }> = [
 ];
 const savedPositions = ref<Record<string, { x: number; y: number }>>({});
 
+// id → KP Map：预计算替代行级 find
+const kpById = computed(() => new Map(knowledgePoints.value.map((k) => [k.id, k])));
+
 const relationInfo = computed(() => buildRelationView(knowledgePoints.value, edges.value));
 /** 关系视图只渲染有前置关系的节点；无边/全部视图渲染全部 */
 const visibleKps = computed(() => {
@@ -226,10 +229,8 @@ const visibleKps = computed(() => {
   return knowledgePoints.value.filter((k) => relationInfo.value.visibleIds.has(k.id));
 });
 
-const selectedKp = computed<KnowledgePoint | null>(() =>
-  selectedKpId.value !== null
-    ? knowledgePoints.value.find((k) => k.id === selectedKpId.value) ?? null
-    : null,
+const selectedKp = computed<KnowledgePoint | null>(
+  () => (selectedKpId.value !== null ? kpById.value.get(selectedKpId.value) ?? null : null),
 );
 
 /** 课程内全部有效边（from=前置 → to=当前） */
@@ -250,19 +251,34 @@ const masteryLabel = (m: Mastery): string => {
   return map[m];
 };
 
+// 「后继」反查表：预计算替代 nextOf 的 O(n×m) 扫描
+const nextKpsByKp = computed(() => {
+  const map = new Map<number, KnowledgePoint[]>();
+  for (const k of knowledgePoints.value) {
+    for (const pid of parseKpPrevIds(k)) {
+      let list = map.get(pid);
+      if (!list) {
+        list = [];
+        map.set(pid, list);
+      }
+      list.push(k);
+    }
+  }
+  return map;
+});
+
 function nameOf(id: number): string {
-  return knowledgePoints.value.find((k) => k.id === id)?.name ?? "（已删除）";
+  return kpById.value.get(id)?.name ?? "（已删除）";
 }
 
 function prevOf(kp: KnowledgePoint): KnowledgePoint[] {
-  const map = new Map(knowledgePoints.value.map((k) => [k.id, k]));
   return parseKpPrevIds(kp)
-    .map((id) => map.get(id))
+    .map((id) => kpById.value.get(id))
     .filter((k): k is KnowledgePoint => Boolean(k));
 }
 
 function nextOf(kp: KnowledgePoint): KnowledgePoint[] {
-  return knowledgePoints.value.filter((k) => parseKpPrevIds(k).includes(kp.id));
+  return nextKpsByKp.value.get(kp.id) ?? [];
 }
 
 const loading = ref(true);

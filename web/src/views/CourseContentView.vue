@@ -265,8 +265,18 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: "CourseContentView" });
+
+// keep-alive 停用（切到其他页签）时关闭本地弹层，避免 teleport modal 残留在其他页面上方
+onDeactivated(() => {
+    detailKp.value = null;
+    editingKp.value = null;
+    previewMaterial.value = null;
+    chapterModal.value = null;
+    reviewChapter.value = null;
+});
 import AppIcon from "../components/AppIcon.vue";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onDeactivated, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
@@ -301,7 +311,7 @@ import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
 import { useNotifyStore, materialTaskId } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
-import { expandChapterNodeIds } from "../utils/chapterScope";
+import { expandChapterNodeIds, kpCountByNode } from "../utils/chapterScope";
 import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
 import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
@@ -388,13 +398,16 @@ function chapterKpIds(chapterId: number): Set<number> {
   return expandChapterNodeIds(chapters.value, chapterId);
 }
 
+/** 章节 id → 章节 Map（O(1) 查找，替代模板行级 find） */
+const chapterById = computed(() => new Map(chapters.value.map((c) => [c.id, c])));
+
 /** 知识点所属「章 / 节」路径（搜索结果展示归属用） */
 function kpChapterPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "未分配";
-  const c = chapters.value.find((x) => x.id === kp.chapterId);
+  const c = chapterById.value.get(kp.chapterId);
   if (!c) return "";
   if (c.level === "unit" && c.parentId != null) {
-    const parent = chapters.value.find((x) => x.id === c.parentId);
+    const parent = chapterById.value.get(c.parentId);
     return parent ? `${parent.name} / ${c.name}` : c.name;
   }
   return c.name;
@@ -631,10 +644,11 @@ async function autoRelink() {
   }
 }
 
-// 统计某章/节下关联的知识点数量（章包含其下小节）
+// 每节点知识点数量预计算（O(chapters+kps)），模板行级 O(1) 读取
+const kpCountByNodeId = computed(() => kpCountByNode(chapters.value, knowledgePoints.value));
+
 function kpCountOf(chapterId: number): number {
-  const ids = chapterKpIds(chapterId);
-  return knowledgePoints.value.filter((k) => k.chapterId !== null && ids.has(k.chapterId)).length;
+  return kpCountByNodeId.value.get(chapterId) ?? 0;
 }
 
 async function loadMaterials() {
