@@ -17,7 +17,7 @@
         <input v-model="form.baseUrl" aria-label="接口地址" placeholder="如：https://api.deepseek.com/v1" />
       </div>
       <div class="field">
-        <label>API Key <span v-if="keyRequired" class="req">*</span><span v-else style="color:var(--as-text-faint)">{{ isEdit ? "（留空则不修改）" : "（本地服务可留空）" }}</span></label>
+        <label>API Key <span v-if="keyRequired" class="req t-faint">*</span><span v-else>{{ isEdit ? "（留空则不修改）" : "（本地服务可留空）" }}</span></label>
         <input v-model="form.apiKey" type="password" aria-label="API Key" :placeholder="isEdit ? '留空保留原密钥' : keyRequired ? 'sk-...' : '本地服务可留空'" />
       </div>
       <div class="field">

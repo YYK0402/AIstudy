@@ -72,7 +72,7 @@
             </div>
           </template>
 
-          <div v-if="quizError" class="s" style="color:var(--as-red);margin-bottom:10px">
+          <div v-if="quizError" class="s t-danger" style="margin-bottom:10px">
             ✗ {{ quizError }}
             <button v-if="pendingGrading !== null" class="btn sm" style="margin-left:8px" :disabled="submitting" @click="regrade">
               {{ submitting ? "判分中…" : "重新判分" }}
@@ -128,7 +128,7 @@
           <div class="st-meta">
             {{ selfTestKp.chapterName || "未分章" }} · 题库已有 {{ selfTestPool.length }} 道相关题
           </div>
-          <div v-if="selfTestError" class="s" style="color:var(--as-red)">{{ selfTestError }}</div>
+          <div v-if="selfTestError" class="s t-danger">{{ selfTestError }}</div>
         </div>
         <button v-if="selfTestPool.length > 0" class="btn primary" @click="startSelfTest">
           开始刷题（{{ selfTestPool.length }} 题）
@@ -176,9 +176,9 @@
               </div>
             </template>
           </GenConfigBar>
-          <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
+          <div v-if="genError" class="s t-danger" style="margin-top:10px">✗ {{ genError }}</div>
           <div v-else-if="genCreated.length > 0" class="gen-done">
-            <span style="color:var(--as-green)">✓ 已生成 {{ genCreated.length }} 道题目</span>
+            <span class="t-success">✓ 已生成 {{ genCreated.length }} 道题目</span>
             <button class="btn sm primary" @click="practiceGenerated">立即刷题 →</button>
             <button class="btn sm ghost" @click="genCreated = []">收起</button>
           </div>
@@ -238,7 +238,7 @@
                 </label>
                 <span class="tag" :class="q.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[q.qType as QuestionType] }}</span>
                 <span class="src-tag">{{ questionSourceLabel(q.source) }}</span>
-                <span v-for="name in kpNames(q)" :key="name" class="kp-tag">{{ name }}</span>
+                <span v-for="name in kpNames(q)" :key="name" class="tag-plain">{{ name }}</span>
               </div>
               <div class="title">{{ q.title }}</div>
               <div class="foot">

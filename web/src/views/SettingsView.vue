@@ -41,7 +41,7 @@
             </div>
             <div v-if="expandedId === p.id" class="provider-models">
               <div class="model-list">
-                <div v-if="modelsOf(p.id).length === 0" class="s" style="color:var(--as-text-faint)">暂无模型</div>
+                <div v-if="modelsOf(p.id).length === 0" class="s t-faint">暂无模型</div>
                 <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item">
                   <template v-if="editingModelId === m.id">
                     <input v-model="editModel.modelId" aria-label="模型 ID" placeholder="模型 ID" style="flex:1" />
@@ -62,7 +62,7 @@
                     <span class="m-del" title="删除" @click="removeModel(m)"><AppIcon name="x" :size="12" /></span>
                   </template>
                 </div>
-                <div v-if="fetchingModels" class="s" style="color:var(--as-text-faint)">获取模型列表中…</div>
+                <div v-if="fetchingModels" class="s t-faint">获取模型列表中…</div>
                 <template v-else-if="addingModelId === p.id && !modelUseManual">
                   <div class="model-item">
                     <select v-model="newModel.modelId" aria-label="服务商模型" @change="pickModel(newModel.modelId)" style="flex:1">
@@ -78,7 +78,7 @@
                   <button class="btn sm ghost" @click="useManualInput()">手动输入模型 ID</button>
                 </template>
                 <template v-else-if="addingModelId === p.id">
-                  <div v-if="modelFetchError" class="s" style="color:var(--as-red);margin:2px 6px">自动获取失败：{{ modelFetchError }}</div>
+                  <div v-if="modelFetchError" class="s t-danger" style="margin:2px 6px">自动获取失败：{{ modelFetchError }}</div>
                   <div class="model-item">
                     <input v-model="newModel.modelId" aria-label="模型 ID" placeholder="模型 ID" />
                     <input v-model="newModel.displayName" aria-label="模型显示名" placeholder="显示名" />
@@ -116,7 +116,7 @@
         <button v-if="tasks.length > TASK_ASSIGN_PREVIEW" class="link-btn" style="margin-top:8px" @click="taskAssignExpanded = !taskAssignExpanded">
           {{ taskAssignExpanded ? "收起" : `展开全部 ${tasks.length} 项` }}
         </button>
-        <div class="s" style="color:var(--as-text-faint);margin-top:10px">
+        <div class="s t-faint" style="margin-top:10px">
           优先级：课程指定的模型（课程编辑弹窗设置）＞ 任务级 ＞ 全局默认。
         </div>
       </div>
@@ -134,7 +134,7 @@
           <option value="auto">自动（上传资料后按标题识别目录）</option>
         </select>
       </div>
-      <div class="s" style="color:var(--as-text-faint);margin-top:4px">
+      <div class="s t-faint" style="margin-top:4px">
         自动模式：上传 Word/Markdown/PPT 后按标题层级识别章节结构并弹出预览确认；PDF 采用字号启发式识别，可能不精确，可在预览中修正。
       </div>
       <div class="ta-row" style="margin-top:14px">
@@ -145,7 +145,7 @@
         <span class="t">笔记本名称</span>
         <input v-model="settings.notebookName" aria-label="思源笔记本名称" placeholder="AI 研习" style="flex:1" />
       </div>
-      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+      <div class="s t-faint" style="margin-top:6px">
         开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
       </div>
       <div class="ta-row" style="margin-top:14px">
@@ -156,14 +156,14 @@
           <option :value="2">2 次（超时 / 5xx / 网络错误）</option>
         </select>
       </div>
-      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+      <div class="s t-faint" style="margin-top:6px">
         仅对超时、5xx、网络错误自动重试（间隔 2 秒递增），每次尝试均记入调用日志；鉴权等 4xx 错误不重试。
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">请求速率限制（次/分钟）</span>
         <input v-model.number="settings.aiRateLimitPerMin" aria-label="每分钟请求上限" type="number" min="0" step="1" placeholder="0 = 不限" style="width:90px" />
       </div>
-      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+      <div class="s t-faint" style="margin-top:6px">
         0 = 不限。AI 调用（全部服务商共享窗口）超过上限时排队等待窗口释放（本地 Ollama 建议 30 以上，公网 API 建议 10-20）。
       </div>
       <div class="ta-row" style="margin-top:14px">
@@ -175,7 +175,7 @@
           <option :value="0">永久保留</option>
         </select>
       </div>
-      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+      <div class="s t-faint" style="margin-top:6px">
         超保留期的学习日志与作答记录自动归档为月度汇总：趋势/连续天数等近期统计不受影响，课程累计统计（答题量/正确率/简答均分/最近学习时间）由汇总补全，数字与归档前一致。
       </div>
     </div>
@@ -201,7 +201,7 @@
                 任务 {{ log.taskKey }} · 服务商 {{ log.providerName }} · 模型 {{ log.modelName }}<br />
                 输入 token {{ log.tokenIn }} · 输出 token {{ log.tokenOut }} · {{ formatFullTime(log.createTime) }}
                 <div v-if="log.status !== 'success' && log.errorMsg" class="log-err">✗ {{ log.errorMsg }}</div>
-                <div v-else class="s" style="color:var(--as-text-faint)">调用成功（不保存请求/响应正文）</div>
+                <div v-else class="s t-faint">调用成功（不保存请求/响应正文）</div>
               </td>
             </tr>
           </template>
@@ -215,7 +215,7 @@
     </div>
     </div>
     <div v-show="activeTab === 'prompts'">
-      <div class="s" style="color:var(--as-text-faint);margin-bottom:12px">
+      <div class="s t-faint" style="margin-bottom:12px">
         修改 8 类 AI 任务的提示词。模板中用
         <code class="code-inline">{{ "{varName}" }}</code>
         占位，运行时由系统填充实际值（各任务可用变量见卡片内列表）；删除占位符则该部分信息不再提供。保存与默认完全一致的内容会自动回到「默认」状态。
@@ -237,7 +237,7 @@
               </button>
             </span>
           </h3>
-          <div class="s" style="color:var(--as-text-faint)">{{ t.desc }}</div>
+          <div class="s t-faint">{{ t.desc }}</div>
           <div class="prompt-vars">
             <span v-for="v in t.vars" :key="v.name" class="prompt-var"><code class="code-inline">{{ v.name }}</code>{{ v.desc }}</span>
             <span v-if="t.vars.length === 0" class="prompt-var">（无变量，纯固定提示词）</span>

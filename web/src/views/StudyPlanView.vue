@@ -57,10 +57,10 @@
             <AppIcon name="spark" :size="14" /> {{ generating ? "生成中…" : "生成学习计划" }}
           </button>
         </div>
-        <div v-if="generating" class="s" style="color:var(--as-accent-strong);margin-top:10px">
+        <div v-if="generating" class="s t-accent" style="margin-top:10px">
           ⏳ 生成中… AI 正在根据章节与知识点规划任务，通常需要数十秒，请稍候
         </div>
-        <div v-if="generateError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ generateError }}</div>
+        <div v-if="generateError" class="s t-danger" style="margin-top:10px">✗ {{ generateError }}</div>
         <div v-if="plan && !editing" class="plan-summary">
           <span>{{ plan.dailyHour }} 小时/天</span>
           <span class="sep">·</span>

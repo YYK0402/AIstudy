@@ -71,7 +71,7 @@
                 <button
                   v-for="(label, key) in WRONG_ERROR_TYPE_LABELS"
                   :key="key"
-                  class="chip mini"
+                  class="chip chip--sm"
                   :class="{ on: w.wrong.errorType === key }"
                   @click="toggleErr(w, key)"
                 >{{ label }}</button>

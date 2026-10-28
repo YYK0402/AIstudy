@@ -2,7 +2,7 @@
   <div class="modal-mask" :class="{ open: modalStore.chapterPreviewOpen }" @click.self="close">
     <div class="modal tp-modal">
       <h2>目录预览</h2>
-      <div class="s" style="color:var(--as-text-faint);margin-bottom:14px">识别到以下章节结构，可编辑后确认生成目录</div>
+      <div class="s t-faint" style="margin-bottom:14px">识别到以下章节结构，可编辑后确认生成目录</div>
       <div class="tp-list">
         <div v-if="chapterNodes.length === 0" class="empty-state" style="padding:16px">
           未识别到标题结构，可手动「添加章节」

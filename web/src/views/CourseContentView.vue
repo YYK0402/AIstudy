@@ -91,7 +91,7 @@
         </div>
         <div v-if="batchMode && chapters.length > 0" class="batch-bar">
           <button class="btn sm ghost" @click="selectAll">全选</button>
-          <span class="s" style="color:var(--as-text-faint)">已选 {{ selectedChapterIds.size }} 项</span>
+          <span class="s t-faint">已选 {{ selectedChapterIds.size }} 项</span>
           <button class="btn sm danger" :disabled="selectedChapterIds.size === 0" @click="batchDelete">删除选中</button>
         </div>
       </div>
@@ -146,8 +146,8 @@
             <span class="idx">{{ String((currentPage - 1) * PAGE_SIZE + i + 1).padStart(2, "0") }}</span>
             <span class="nm">{{ kp.name }}<span v-if="searchKeyword.trim()" class="kp-path">{{ kpChapterPath(kp) }}</span></span>
             <span v-if="kp.tags && kp.tags.length" class="kp-tags">
-              <span v-for="t in (kp.tags ?? []).slice(0, 2)" :key="t" class="tag-chip">{{ t }}</span>
-              <span v-if="kp.tags.length > 2" class="tag-chip">+{{ kp.tags.length - 2 }}</span>
+              <span v-for="t in (kp.tags ?? []).slice(0, 2)" :key="t" class="tag-plain">{{ t }}</span>
+              <span v-if="kp.tags.length> 2" class="tag-plain">+{{ kp.tags.length - 2 }}</span>
             </span>
             <span class="meta">{{ kpSources[kp.id]?.length || 0 }} 份资料</span>
             <span class="tag" :class="kp.mastery"><span class="d"></span>{{ masteryLabel(kp.mastery) }}</span>
@@ -170,7 +170,7 @@
         <div v-if="kpBatchMode && filteredKnowledgePoints.length > 0" class="batch-bar">
           <button class="btn sm ghost" @click="selectAllKps">全选</button>
           <button class="btn sm ghost" @click="selectPageKps">选本页</button>
-          <span class="s" style="color:var(--as-text-faint)">已选 {{ selectedKpIds.size }} 项</span>
+          <span class="s t-faint">已选 {{ selectedKpIds.size }} 项</span>
           <button class="btn sm danger" :disabled="selectedKpIds.size === 0 || deletingKps" @click="batchDeleteKps">删除选中</button>
         </div>
       </div>
@@ -186,7 +186,7 @@
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId() || fullExtracting" @click="openUpload">＋ 上传资料</button>
         </div>
       </h3>
-      <div v-if="fullExtracting" class="s" style="color:var(--as-accent-strong);padding:8px 0 4px">{{ fullExtractLabel }}</div>
+      <div v-if="fullExtracting" class="s t-accent" style="padding:8px 0 4px">{{ fullExtractLabel }}</div>
       <EmptyState
         v-if="materials.length === 0"
         compact
@@ -202,20 +202,20 @@
             </div>
             <div class="m-meta">.{{ m.fileType }} · {{ m.contentText.length }} 字 · {{ formatTime(m.createTime) }}</div>
             <div v-if="orgTaskOf(m)" class="s" style="margin-top:4px">
-              <span v-if="orgTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
+              <span class="t-accent" v-if="orgTaskOf(m)!.status === 'running'">
                 <AppIcon name="refresh" :size="12" /> {{ orgTaskOf(m)!.message }}
               </span>
-              <span v-else-if="orgTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ orgTaskOf(m)!.message }}</span>
-              <span v-else-if="orgTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ orgTaskOf(m)!.message }}</span>
-              <span v-else class="muted">{{ orgTaskOf(m)!.message }}</span>
+              <span class="t-success" v-else-if="orgTaskOf(m)!.status === 'done'">✓ {{ orgTaskOf(m)!.message }}</span>
+              <span class="t-danger" v-else-if="orgTaskOf(m)!.status === 'failed'">✗ {{ orgTaskOf(m)!.message }}</span>
+              <span v-else class="s">{{ orgTaskOf(m)!.message }}</span>
             </div>
             <div v-if="extractTaskOf(m)" class="s" style="margin-top:4px">
-              <span v-if="extractTaskOf(m)!.status === 'running'" style="color:var(--as-accent-strong)">
+              <span class="t-accent" v-if="extractTaskOf(m)!.status === 'running'">
                 <AppIcon name="refresh" :size="12" /> {{ extractTaskOf(m)!.message }}
               </span>
-              <span v-else-if="extractTaskOf(m)!.status === 'done'" style="color:var(--as-green)">✓ {{ extractTaskOf(m)!.message }}</span>
-              <span v-else-if="extractTaskOf(m)!.status === 'failed'" style="color:var(--as-red)">✗ {{ extractTaskOf(m)!.message }}</span>
-              <span v-else class="muted">{{ extractTaskOf(m)!.message }}</span>
+              <span class="t-success" v-else-if="extractTaskOf(m)!.status === 'done'">✓ {{ extractTaskOf(m)!.message }}</span>
+              <span class="t-danger" v-else-if="extractTaskOf(m)!.status === 'failed'">✗ {{ extractTaskOf(m)!.message }}</span>
+              <span v-else class="s">{{ extractTaskOf(m)!.message }}</span>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">

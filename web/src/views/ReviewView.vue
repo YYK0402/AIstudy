@@ -14,7 +14,7 @@
       </h3>
       <div class="review-item">
         <div class="ri-head">
-          <span class="kp-chip mini on">{{ targetKp.name }}</span>
+          <span class="chip chip--solid chip--sm on">{{ targetKp.name }}</span>
           <span v-if="targetKp.chapterName" class="ri-meta">{{ targetKp.chapterName }}</span>
         </div>
         <template v-if="!targetRevealed">
@@ -55,7 +55,7 @@
           <!-- 知识点触点 -->
           <template v-if="item.knowledgePoint">
             <div class="ri-head">
-              <span class="kp-chip mini on">{{ item.knowledgePoint.name }}</span>
+              <span class="chip chip--solid chip--sm on">{{ item.knowledgePoint.name }}</span>
               <span class="ri-meta">第 {{ item.schedule.stage }} 阶 · 间隔 {{ item.schedule.intervalDays }} 天 · 累计 {{ item.schedule.reviewTimes }} 次</span>
             </div>
             <template v-if="revealed[item.schedule.id] === undefined">
@@ -110,7 +110,7 @@
           <!-- 闪卡触点（T3.4）：看问题回想 → 揭示答案要点 → 自评 -->
           <template v-else-if="item.flashcard">
             <div class="ri-head">
-              <span class="kp-chip mini on">闪卡</span>
+              <span class="chip chip--solid chip--sm on">闪卡</span>
               <span class="ri-meta">第 {{ item.schedule.stage }} 阶 · 间隔 {{ item.schedule.intervalDays }} 天 · 累计 {{ item.schedule.reviewTimes }} 次</span>
             </div>
             <template v-if="revealed[item.schedule.id] === undefined">

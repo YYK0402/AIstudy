@@ -8,7 +8,7 @@
       <button v-if="allowUnbind" type="button" class="btn sm ghost" @click="$emit('update:modelValue', null)">取消绑定</button>
     </div>
     <template v-else>
-      <div v-if="!showPicker" class="s" style="color:var(--as-text-faint)">
+      <div v-if="!showPicker" class="s t-faint">
         {{ placeholder }}
         <button type="button" class="btn sm ghost" style="margin-left:8px" @click="openPicker">选择文档</button>
       </div>
@@ -17,7 +17,7 @@
           <option value="">选择笔记本…</option>
           <option v-for="nb in notebooks" :key="nb.id" :value="nb.id">{{ nb.name }}</option>
         </select>
-        <div v-if="error" class="s" style="color:var(--as-red);margin-top:6px">{{ error }}</div>
+        <div v-if="error" class="s t-danger" style="margin-top:6px">{{ error }}</div>
         <div v-else-if="notebookId" class="sy-doc-list">
           <div class="sy-crumb">
             <span class="sy-crumb-item" @click="goRoot">{{ notebookName }}</span>
@@ -27,7 +27,7 @@
             </template>
           </div>
           <div v-if="path !== '/'" class="sy-doc-row" @click="goUp">← 返回上级</div>
-          <div v-if="loading" class="sy-doc-row muted">加载中…</div>
+          <div v-if="loading" class="sy-doc-row s">加载中…</div>
           <div
             v-for="f in files"
             :key="f.id"
@@ -42,15 +42,15 @@
       </div>
       <!-- 文档已选中、块模式：选择绑定范围 -->
       <div v-if="pendingDoc && showBlocks" class="sy-blocks">
-        <div class="s" style="color:var(--as-text-faint);margin-bottom:6px">「{{ pendingDoc.name }}」绑定范围</div>
+        <div class="s t-faint" style="margin-bottom:6px">「{{ pendingDoc.name }}」绑定范围</div>
         <div class="sy-block-row" @click="confirmDoc">📄 整篇文档</div>
-        <div v-if="blocksLoading" class="sy-doc-row muted">加载块列表…</div>
+        <div v-if="blocksLoading" class="sy-doc-row s">加载块列表…</div>
         <div v-for="b in blocks" :key="b.id" class="sy-block-row" :title="b.content" @click="confirmBlock(b)">
           <span class="sy-dir-ico">{{ b.type === "h" ? "＃" : "▪" }}</span>
           <span class="sy-doc-name">{{ blockLabel(b) }}</span>
         </div>
-        <div v-if="blocksTruncated" class="sy-doc-row muted">仅显示前 200 个块，更早的块不在列表中</div>
-        <div v-if="!blocksLoading && blocks.length === 0" class="sy-doc-row muted">该文档暂无可绑定块，可选「整篇文档」</div>
+        <div v-if="blocksTruncated" class="sy-doc-row s">仅显示前 200 个块，更早的块不在列表中</div>
+        <div v-if="!blocksLoading && blocks.length === 0" class="sy-doc-row s">该文档暂无可绑定块，可选「整篇文档」</div>
       </div>
     </template>
   </div>

@@ -27,7 +27,7 @@
           <div class="notify-main">
             <div class="notify-name">
               <span class="notify-ico"><AppIcon :name="statusIcon(t.status)" :size="13" /></span>
-              <span class="muted">{{ taskTypeLabel(t.taskType) }}</span> {{ t.label }}
+              <span class="s">{{ taskTypeLabel(t.taskType) }}</span> {{ t.label }}
             </div>
             <div class="notify-msg">{{ t.message }}</div>
             <div v-if="t.status === 'running' && t.total > 0" class="notify-progress"><i :style="{ width: progressPct(t) }"></i></div>

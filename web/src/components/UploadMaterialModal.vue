@@ -22,15 +22,15 @@
           placeholder="选择思源已有文档，其 markdown 将作为资料内容（可跳转原文）"
         />
       </div>
-      <div v-if="parsing" class="empty-state" style="padding:12px"><span class="muted">{{ ocrStatus || "解析中…" }}</span></div>
+      <div v-if="parsing" class="empty-state" style="padding:12px"><span class="s">{{ ocrStatus || "解析中…" }}</span></div>
       <div v-else-if="result" class="card" style="padding:10px 12px;background:var(--as-bg-elev2)">
         <div class="s"><b>{{ result.name }}</b>（{{ result.fileType }}）</div>
-        <div class="s" style="color:var(--as-text-faint);margin-top:4px">
+        <div class="s t-faint" style="margin-top:4px">
           共 {{ result.contentText.length }} 字符 · 预览：{{ result.contentText.slice(0, 120) }}…
         </div>
       </div>
-      <div v-if="ocrStatus && !parsing" class="s" style="color:var(--as-text-faint)">{{ ocrStatus }}</div>
-      <div v-if="error" class="s" style="color:var(--as-red)">{{ error }}</div>
+      <div v-if="ocrStatus && !parsing" class="s t-faint">{{ ocrStatus }}</div>
+      <div v-if="error" class="s t-danger">{{ error }}</div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>
         <button class="btn primary" :disabled="!canSave || saving" @click="save">

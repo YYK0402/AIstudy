@@ -26,7 +26,7 @@
       <div class="stat"><div class="k"><span class="dot" style="background:var(--as-blue)"></span>题目总数</div><div class="v">{{ questionCount }}</div></div>
     </div>
 
-    <div v-if="stats?.lastStudyTime" class="s last-study" style="color:var(--as-text-faint);margin-top:10px">
+    <div v-if="stats?.lastStudyTime" class="s last-study t-faint" style="margin-top:10px">
       最近学习：{{ formatFullTime(stats.lastStudyTime) }}
     </div>
 

@@ -24,14 +24,14 @@
           <button
             v-for="kp in knowledgePoints"
             :key="kp.id"
-            class="kp-chip"
+            class="chip chip--solid"
             :class="{ on: kpIds.includes(kp.id) }"
             :disabled="saving"
             @click="toggleKp(kp.id)"
           >{{ kp.name }}</button>
         </div>
       </div>
-      <div v-if="error" class="s" style="color:var(--as-red);margin-bottom:10px">✗ {{ error }}</div>
+      <div v-if="error" class="s t-danger" style="margin-bottom:10px">✗ {{ error }}</div>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>
         <button class="btn primary" :disabled="saving || kpIds.length === 0" @click="save">

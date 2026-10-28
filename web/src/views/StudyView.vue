@@ -73,7 +73,7 @@
       <div ref="studySectionRef" class="study-section" style="margin-top:14px">
         <h3>
           本轮学习
-          <span v-if="queue.length" class="s" style="color:var(--as-text-faint)">{{ queueIndex + 1 }}/{{ queue.length }}</span>
+          <span v-if="queue.length" class="s t-faint">{{ queueIndex + 1 }}/{{ queue.length }}</span>
           <span style="margin-left:auto;display:flex;gap:6px">
             <button class="btn sm ghost" :disabled="queueIndex === 0" @click="prevKp">← 上一个</button>
             <button class="btn sm ghost" :disabled="queueIndex >= queue.length - 1" @click="nextKp">下一个 →</button>
@@ -84,8 +84,8 @@
           <button
             v-for="(qid, i) in queue"
             :key="qid"
-            class="ss-chip"
-            :class="{ on: i === queueIndex, done: doneKpIds.has(qid) && i !== queueIndex }"
+            class="chip chip--solid chip--ellipsis"
+            :class="{ on: i === queueIndex, 'chip--done': doneKpIds.has(qid) && i !== queueIndex }"
             :title="kpNameOf(qid)"
             @click="goTo(i)"
           >{{ kpNameOf(qid) }}</button>
@@ -100,7 +100,7 @@
                 <span v-if="kpPath(selectedKp)" class="kp-path">{{ kpPath(selectedKp) }}</span>
               </div>
               <div v-if="selectedKp.content" class="kp-body"><p>{{ selectedKp.content }}</p></div>
-              <div v-else class="s" style="color:var(--as-text-faint)">该知识点暂无参考描述</div>
+              <div v-else class="s t-faint">该知识点暂无参考描述</div>
               <div class="src">
                 <AppIcon name="book" :size="13" /> 资料来源：{{ sourceNames(selectedKp) || "（未关联资料）" }}
                 <button
@@ -115,7 +115,7 @@
             <div v-else class="empty-state" style="padding:40px 0">
               <span class="ico"><AppIcon name="book" :size="28" /></span>
               未选择知识点<br />
-              <span class="s" style="color:var(--as-text-faint)">点击「选择知识点」按 章-节-知识点 自选（可多选、可选整节），或点击上方今日计划任务开始</span>
+              <span class="s t-faint">点击「选择知识点」按 章-节-知识点 自选（可多选、可选整节），或点击上方今日计划任务开始</span>
             </div>
           </div>
 
@@ -166,7 +166,7 @@
                   </div>
                 </div>
               </template>
-              <div v-else class="s" style="color:var(--as-text-faint);padding:16px 0">选择知识点后，这里开始输出式练习</div>
+              <div v-else class="s t-faint" style="padding:16px 0">选择知识点后，这里开始输出式练习</div>
             </div>
             <div class="chat-input">
               <textarea
@@ -179,7 +179,7 @@
                 {{ evaluating ? "AI 评估中…" : "提交" }}
               </button>
             </div>
-            <div v-if="explainError" class="s" style="color:var(--as-red);padding:8px 16px 12px">✗ {{ explainError }}</div>
+            <div v-if="explainError" class="s t-danger" style="padding:8px 16px 12px">✗ {{ explainError }}</div>
           </div>
         </div>
       </div>

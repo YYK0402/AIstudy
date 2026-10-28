@@ -40,8 +40,8 @@
 
       <div v-if="report" class="qimp-report">
         <p class="s">
-          解析完成：<b style="color:var(--as-green)">成功 {{ report.drafts.length }} 题</b>
-          <template v-if="report.errors.length"> · <b style="color:var(--as-red)">失败 {{ report.errors.length }} 题</b></template>
+          解析完成：<b class="t-success">成功 {{ report.drafts.length }} 题</b>
+          <template v-if="report.errors.length"> · <b class="t-danger">失败 {{ report.errors.length }} 题</b></template>
           <template v-if="report.paperName"> · 识别试卷：<b>{{ report.paperName }}</b></template>
         </p>
         <div v-if="report.errors.length" class="qimp-errors">

@@ -9,7 +9,7 @@
       <div v-if="material" class="s" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         .{{ material.fileType }} · {{ material.contentText.length }} 字 · {{ materialSourceLabel(material) }}
         <template v-if="material.siyuanDocId">
-          <span style="color:var(--as-text-faint)">（内容快照，原文可能已更新）</span>
+          <span class="t-faint">（内容快照，原文可能已更新）</span>
           <button class="btn sm ghost" style="margin-left:auto" :disabled="opening" @click="openInSiyuan">
             {{ opening ? "打开中…" : "在思源打开" }}
           </button>

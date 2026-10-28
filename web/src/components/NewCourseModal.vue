@@ -24,7 +24,7 @@
           <option :value="null">跟随任务分配（模型配置页）</option>
           <option v-for="m in providerStore.models" :key="m.id" :value="m.id">{{ m.displayName }}</option>
         </select>
-        <div class="s" style="color:var(--as-text-faint);margin-top:4px">
+        <div class="s t-faint" style="margin-top:4px">
           指定后，本课程的全部 AI 任务（抽取/出题/评估/报告等）优先用该模型；留空则按「模型配置」页的任务分配执行。
         </div>
       </div>

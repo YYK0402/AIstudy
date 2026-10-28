@@ -12,18 +12,18 @@
           </div>
         </div>
         <div v-if="weakKps.length" class="cr-weak">
-          <div class="s" style="color:var(--as-text-faint);margin-bottom:6px">未掌握知识点（{{ weakKps.length }}）：优先复述讲解 / 补做习题</div>
+          <div class="s t-faint" style="margin-bottom:6px">未掌握知识点（{{ weakKps.length }}）：优先复述讲解 / 补做习题</div>
           <div class="cr-chips">
-            <span v-for="kp in weakKps" :key="kp.id" class="tag-chip">{{ kp.name }}</span>
+            <span v-for="kp in weakKps" :key="kp.id" class="tag-plain">{{ kp.name }}</span>
           </div>
         </div>
-        <div v-else class="s" style="color:var(--as-green)">本章知识点全部已掌握 ✓</div>
+        <div v-else class="s t-success">本章知识点全部已掌握 ✓</div>
         <div class="cr-wrong" :style="{ marginTop: '14px' }">
-          <template v-if="loading" style="color:var(--as-text-faint)">本章错题加载中…</template>
-          <template v-else-if="loadError" style="color:var(--as-red)">✗ 错题加载失败：{{ loadError }}</template>
+          <span v-if="loading" class="t-faint">本章错题加载中…</span>
+          <span v-else-if="loadError" class="t-danger">✗ 错题加载失败：{{ loadError }}</span>
           <template v-else>
             本章错题 <b>{{ wrongItems.length }}</b> 题
-            <span v-if="wrongItems.length === 0" style="color:var(--as-text-faint)">（无）</span>
+            <span class="t-faint" v-if="wrongItems.length === 0">（无）</span>
           </template>
         </div>
       </template>

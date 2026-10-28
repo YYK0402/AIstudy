@@ -32,10 +32,10 @@
           <div v-if="generating" class="s" style="margin-top:10px">
             <button class="btn sm ghost" @click="onCancelGenerate">取消生成（已完成部分保留）</button>
           </div>
-          <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
-          <div v-else-if="genResult" class="s" style="color:var(--as-green);margin-top:10px">
+          <div v-if="genError" class="s t-danger" style="margin-top:10px">✗ {{ genError }}</div>
+          <div v-else-if="genResult" class="s t-success" style="margin-top:10px">
             {{ genCancelled ? `已取消，保留新增 ${genResult.created} 张` : `✓ 生成完成：新增 ${genResult.created} 张${genResult.updated > 0 ? `、覆盖 ${genResult.updated} 张` : ""}${genResult.skipped > 0 ? `、跳过已有 ${genResult.skipped} 张` : ""}` }}
-            <span v-if="genResult.parseSkipped > 0" style="color:var(--as-text-dim)">（{{ genResult.parseSkipped }} 个知识点输出异常未生成，可重新生成补齐）</span>
+            <span class="t-dim" v-if="genResult.parseSkipped> 0">（{{ genResult.parseSkipped }} 个知识点输出异常未生成，可重新生成补齐）</span>
           </div>
         </template>
       </div>
@@ -62,8 +62,8 @@
             <div class="fc-front">{{ c.front }}</div>
             <div class="fc-foot">
               <span class="src-tag">{{ c.source === "ai" ? "AI 生成" : "手动" }}</span>
-              <span class="kp-tag">{{ kpName(c.kpId) }}</span>
-              <span class="s" style="color:var(--as-text-faint)">{{ c.createTime.slice(0, 10) }}</span>
+              <span class="tag-plain">{{ kpName(c.kpId) }}</span>
+              <span class="s t-faint">{{ c.createTime.slice(0, 10) }}</span>
               <span style="flex:1"></span>
               <button v-if="!archived" class="btn sm ghost" @click="editModalCard = c; editModalOpen = true">编辑</button>
               <button v-if="!archived" class="btn sm ghost danger" @click="delCard(c)">删除</button>

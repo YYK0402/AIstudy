@@ -19,7 +19,7 @@
         <div v-if="kp.tags && kp.tags.length" class="kd-section">
           <div class="kd-label">标签</div>
           <div class="kd-tags">
-            <span v-for="t in kp.tags" :key="t" class="tag-chip">{{ t }}</span>
+            <span v-for="t in kp.tags" :key="t" class="tag-plain">{{ t }}</span>
           </div>
         </div>
         <div class="kd-section">

@@ -56,8 +56,8 @@
         <div v-if="linking" class="s link-hint">
           {{ linkSource === null ? "点击一个节点作为「前置知识点」" : `前置：${nameOf(linkSource)} — 再点一个节点作为「当前知识点」（Esc 取消）` }}
         </div>
-        <div v-if="inferError" class="s" style="color:var(--as-red)">✗ {{ inferError }}</div>
-        <div v-else-if="inferResult" class="s" style="color:var(--as-green)">✓ {{ inferResult }}</div>
+        <div v-if="inferError" class="s t-danger">✗ {{ inferError }}</div>
+        <div v-else-if="inferResult" class="s t-success">✓ {{ inferResult }}</div>
       </div>
 
       <div class="card" style="margin-top:14px">

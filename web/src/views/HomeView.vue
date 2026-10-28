@@ -40,7 +40,7 @@
           <ProgressBar :value="courseStats[c.id]!.mastered" :max="courseStats[c.id]!.kpTotal" tone="green" />
         </div>
         <div class="cc-foot">
-          <span class="cc-todo" style="color:var(--as-text-faint)">
+          <span class="cc-todo t-faint">
             {{ isArchived(c) ? "已归档 · 只读" : courseStats[c.id] && courseStats[c.id]!.kpTotal > 0 ? "● 学习中" : "○ 暂无学习记录" }}
           </span>
           <button class="btn sm ghost card-archive-btn" @click.stop="toggleArchive(c)" :title="isArchived(c) ? '取消归档' : '归档课程（归档后仅可查看）'">

@@ -25,11 +25,11 @@
         <div class="chapter-tree" ref="treeWrap">
           <button type="button" class="chapter-tree-trigger" :title="selectedLabel" @click="treeOpen = !treeOpen">
             <span v-if="selectedLabel">{{ selectedLabel }}</span>
-            <span v-else style="color:var(--as-text-faint)">（未分配）</span>
+            <span class="t-faint" v-else>（未分配）</span>
           </button>
           <div v-if="treeOpen" class="chapter-tree-panel">
             <div class="ct-row" :class="{ active: chapterId === 0 }" @click="pickChapter(0)">
-              <span style="color:var(--as-text-faint)">（未分配）</span>
+              <span class="t-faint">（未分配）</span>
             </div>
             <template v-for="ch in chapterTree" :key="ch.id">
               <div class="ct-row" :class="{ active: chapterId === ch.id }" @click="pickChapter(ch.id)">

@@ -141,7 +141,7 @@
             <div class="weak-main">
               <div class="weak-name">{{ w.name }}</div>
               <div class="weak-reasons">
-                <span v-for="r in w.reasons" :key="r" class="tag-chip">{{ r }}</span>
+                <span v-for="r in w.reasons" :key="r" class="tag-plain">{{ r }}</span>
               </div>
             </div>
             <span class="tag" :class="w.mastery"><span class="d"></span>{{ MASTERY_LABELS[w.mastery] }}</span>
@@ -161,12 +161,12 @@
             </button>
           </span>
         </h3>
-        <div v-if="reportError" class="s" style="color:var(--as-red)">✗ {{ reportError }}</div>
+        <div v-if="reportError" class="s t-danger">✗ {{ reportError }}</div>
         <div v-else-if="report" class="report-body">{{ report }}</div>
         <div v-else class="empty-state" style="padding:20px 0">
           <span class="ico">📊</span> 由 AI 根据上面的学习统计数据生成综合点评与建议，导出为 Markdown
         </div>
-        <div v-if="copyOk" class="s" style="color:var(--as-green);margin-top:8px">✓ 已复制到剪贴板</div>
+        <div v-if="copyOk" class="s t-success" style="margin-top:8px">✓ 已复制到剪贴板</div>
       </div>
       </template>
     </template>
