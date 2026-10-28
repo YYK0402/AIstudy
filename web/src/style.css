@@ -1,12 +1,12 @@
 .ai-study-app {
   user-select: text;
   -webkit-user-select: text;
-  --as-bg: #0d110e;
-  --as-bg-elev: #141a15;
-  --as-bg-elev2: #1b231c;
-  --as-bg-hover: #212b22;
-  --as-border: #27312a;
-  --as-border-soft: #1e2620;
+  --as-bg: #0c100d;
+  --as-bg-elev: #161e17;
+  --as-bg-elev2: #1f2820;
+  --as-bg-hover: #26312a;
+  --as-border: #2e3a30;
+  --as-border-soft: #232c24;
   --as-text: #e9e4d4;
   --as-text-dim: #9aa49a;
   --as-text-faint: #8a948b;
@@ -51,7 +51,8 @@
   --as-blue-line: rgba(127, 176, 201, 0.4);
   --as-green-line: rgba(127, 192, 140, 0.4);
   --as-red-line: rgba(207, 111, 94, 0.4);
-  --as-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --as-badge: #c2503f;
+  --as-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 /* 浅色主题（暖纸） */
@@ -60,11 +61,11 @@
   --as-bg-elev: #fbf9f2;
   --as-bg-elev2: #e7e1d1;
   --as-bg-hover: #ded7c6;
-  --as-border: #cfc7b3;
+  --as-border: #c8bfa9;
   --as-border-soft: #e0dacb;
   --as-text: #2b2b24;
   --as-text-dim: #57534a;
-  --as-text-faint: #6e6960;
+  --as-text-faint: #5d574b;
   --as-accent: #8a6418;
   --as-accent-strong: #6f4f10;
   --as-accent-soft: rgba(138, 100, 24, 0.10);
@@ -86,6 +87,7 @@
   --as-blue-line: rgba(61, 111, 143, 0.42);
   --as-green-line: rgba(63, 125, 82, 0.42);
   --as-red-line: rgba(176, 83, 72, 0.42);
+  --as-badge: #a03d31;
   --as-shadow: 0 1px 2px rgba(60, 45, 20, 0.08), 0 10px 28px rgba(60, 45, 20, 0.10);
   color-scheme: light;
 }
@@ -114,7 +116,7 @@
 .notify-badge {
   position: absolute; top: -5px; right: -5px;
   min-width: 16px; height: 16px; padding: 0 4px;
-  border-radius: 8px; background: var(--as-red);
+  border-radius: 8px; background: var(--as-badge);
   color: #fff; font-size: 10px; line-height: 16px; text-align: center;
   pointer-events: none;
 }
@@ -330,6 +332,7 @@
 
 /* ===== 页面 ===== */
 .page { max-width: 1080px; margin: 0 auto; animation: fadeIn .3s ease; }
+.page > * + * { margin-top: var(--as-gap-xl); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 .page-title { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 22px; }
@@ -342,6 +345,7 @@
   border: 1px solid var(--as-border);
   border-radius: var(--as-radius);
   padding: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .card h3 { font-size: 13px; font-weight: 600; color: var(--as-text-dim); letter-spacing: 0.04em; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 /* 知识点面板头：章名单行省略，操作放不下时整体换行，不挤压标题 */
@@ -366,7 +370,10 @@
 }
 .btn:hover { border-color: var(--as-accent-line); background: var(--as-bg-hover); }
 .btn.primary { background: linear-gradient(135deg, var(--as-accent-strong), var(--as-accent)); border-color: transparent; color: var(--as-on-accent); font-weight: 600; }
+.btn:active { transform: translateY(1px); }
+.btn.primary:active { opacity: .9; }
 .btn:disabled { opacity: .48; cursor: not-allowed; }
+.btn:disabled:active { transform: none; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.ghost { background: transparent; }
 .btn.sm { padding: 5px 11px; font-size: 12px; }
@@ -434,7 +441,7 @@
 .fb-label { font-size: 10.5px; color: var(--as-text-faint); margin-top: 5px; }
 .wrong-stats { display: flex; gap: 10px; }
 .ws { flex: 1; text-align: center; background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); padding: 12px 8px; }
-.ws .num { font-family: var(--as-font-display); font-size: 26px; color: var(--as-accent-strong); line-height: 1; }
+.ws .num { font-family: var(--as-font-display); font-size: 26px; color: var(--as-text); line-height: 1; }
 .ws .lbl { font-size: 11px; color: var(--as-text-faint); margin-top: 5px; letter-spacing: .08em; }
 .metric-note { font-size: 11px; color: var(--as-text-faint); margin-top: 10px; }
 
@@ -828,7 +835,7 @@
 .option.sel .key { background: var(--as-accent); border-color: var(--as-accent); color: var(--as-on-accent); font-weight: 600; }
 .option.correct { border-color: var(--as-green); background: var(--as-green-soft); }
 .option.correct .key { background: var(--as-green); border-color: var(--as-green); color: var(--as-on-accent); font-weight: 600; }
-.option.wrong .key { background: var(--as-red); border-color: var(--as-red); color: var(--as-on-accent); font-weight: 600; }
+.option.wrong .key { background: var(--as-badge); border-color: var(--as-badge); color: #fff; font-weight: 600; }
 
 
 /* ===== 闪卡本列表 ===== */
@@ -920,6 +927,7 @@
   z-index: 400;
 }
 .modal-mask.open { display: flex; }
+.ai-study-app[data-theme="light"] .modal-mask { background: rgba(58, 48, 28, 0.38); }
 .modal {
   width: 500px; max-width: 92vw;
   max-height: 85vh;
@@ -934,7 +942,7 @@
 }
 @keyframes modalIn { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: none; } }
 .modal--lg { width: 640px; }
-.modal h2 { font-family: var(--as-font-display); font-size: 22px; font-weight: 500; margin-bottom: 20px; }
+.modal h2 { font-family: var(--as-font-display); font-size: var(--as-fs-title); font-weight: 500; margin-bottom: 20px; }
 .field { margin-bottom: 15px; }
 .field label { display: block; font-size: 12px; color: var(--as-text-dim); margin-bottom: 6px; }
 .field label .req { color: var(--as-accent-strong); }
@@ -1014,8 +1022,8 @@
 
 /* 首页 - 全局学习立场 */
 .section-head { display: flex; align-items: center; margin: 26px 0 14px; }
-.section-head h2 { font-family: var(--as-font-display); font-size: 19px; font-weight: 500; }
-.section-head .hint { font-size: 12px; color: var(--as-text-faint); margin-left: 12px; }
+.section-head h2 { font-family: var(--as-font-display); font-size: var(--as-fs-title); font-weight: 600; }
+.section-head .hint { font-size: var(--as-fs-sm); color: var(--as-text-faint); margin-left: 12px; }
 .section-head .act { margin-left: auto; }
 .course-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .course-card {
@@ -1585,3 +1593,12 @@
   color: var(--as-text-faint); font-size: 12.5px; pointer-events: none;
 }
 .graph-stage-empty .link-btn { pointer-events: auto; }
+
+/* 减弱动效偏好：唯一允许 !important 的例外（WCAG 标准写法） */
+@media (prefers-reduced-motion: reduce) {
+  .ai-study-app *, .ai-study-app *::before, .ai-study-app *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

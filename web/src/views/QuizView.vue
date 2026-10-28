@@ -185,7 +185,7 @@
         </template>
       </div>
 
-      <div v-show="!practicing" class="card" style="margin-top:14px">
+      <div v-show="!practicing" class="card">
         <h3>题库
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ questions.length }} 题</span>
           <button v-if="!archived" class="btn ghost sm" @click="importOpen = true" style="margin-left:12px">导入真题</button>

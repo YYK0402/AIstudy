@@ -41,7 +41,7 @@
       </div>
 
       <!-- 卡片列表 -->
-      <div class="card" style="margin-top:14px">
+      <div class="card">
         <h3>卡片
           <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ cards.length }} 张</span>
           <button v-if="!archived" class="btn ghost sm" style="margin-left:12px" :disabled="knowledgePoints.length === 0" @click="openManualCard">＋ 手动卡</button>

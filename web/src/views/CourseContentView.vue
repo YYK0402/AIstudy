@@ -177,7 +177,7 @@
     </div>
 
     <!-- 资料库 -->
-    <div class="card" style="margin-top:14px">
+    <div class="card">
       <h3>资料库
         <div style="margin-left:auto;display:flex;gap:6px">
           <button v-if="!archived && materials.length > 0" class="btn sm ghost" :disabled="fullExtracting" @click="fullReExtract">

@@ -60,7 +60,7 @@
         <div v-else-if="inferResult" class="s t-success">✓ {{ inferResult }}</div>
       </div>
 
-      <div class="card" style="margin-top:14px">
+      <div class="card">
         <SkeletonList v-if="loading && knowledgePoints.length === 0" :rows="5" />
         <LoadError
           v-else-if="loadError && knowledgePoints.length === 0"

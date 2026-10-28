@@ -121,7 +121,7 @@
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:14px" @change="markDirty" @input="markDirty">
+    <div class="card" @change="markDirty" @input="markDirty">
       <h3>数据与存储
         <button class="btn primary sm" :disabled="settingsSaving" @click="saveSettings" style="margin-left:auto">
           {{ settingsSaving ? "保存中…" : "保存" }}
@@ -179,7 +179,7 @@
         超保留期的学习日志与作答记录自动归档为月度汇总：趋势/连续天数等近期统计不受影响，课程累计统计（答题量/正确率/简答均分/最近学习时间）由汇总补全，数字与归档前一致。
       </div>
     </div>
-    <div class="card" style="margin-top:14px">
+    <div class="card">
       <h3>最近调用日志</h3>
       <div v-if="providerStore.logs.length === 0" class="empty-state" style="padding:24px 0">
         <span class="ico">📜</span>

@@ -90,7 +90,7 @@
         </div>
       </div>
 
-      <div v-if="plan && coverageGroups.length" class="card" style="margin-top:14px">
+      <div v-if="plan && coverageGroups.length" class="card">
         <h3>
           计划覆盖 · 章节与知识点
           <span class="day-total">{{ coverageStats.total }} 个知识点 · 已排期 {{ coverageStats.scheduled }} · 未排期 {{ coverageStats.unscheduled }}</span>
@@ -114,7 +114,7 @@
         </div>
       </div>
 
-      <div v-if="plan && displayDays.length" class="card" style="margin-top:14px">
+      <div v-if="plan && displayDays.length" class="card">
         <h3>
           任务列表
           <span class="day-total">共 {{ tasks.length }} 条 · 已完成 {{ doneCount }} 条</span>

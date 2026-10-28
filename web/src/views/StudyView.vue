@@ -49,7 +49,7 @@
         </div>
       </div>
 
-      <div v-if="pastSessions.length" class="card" style="margin-top:14px">
+      <div v-if="pastSessions.length" class="card">
         <h3>过往学习会话<span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">全部讲解过的知识点 · 点击查看对话过程</span></h3>
         <div class="ps-list">
           <div
@@ -70,7 +70,7 @@
         已定位到今日任务对应知识点 ·
         <button class="link-btn" @click="fromKpLink = false">查看今日计划</button>
       </div>
-      <div ref="studySectionRef" class="study-section" style="margin-top:14px">
+      <div ref="studySectionRef" class="study-section">
         <h3>
           本轮学习
           <span v-if="queue.length" class="s t-faint">{{ queueIndex + 1 }}/{{ queue.length }}</span>

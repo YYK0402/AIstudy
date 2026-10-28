@@ -64,7 +64,7 @@
         </div>
       </div>
 
-      <div v-if="stats.kp.total > 0 && heatRows.length > 0" class="card" style="margin-top:14px">
+      <div v-if="stats.kp.total > 0 && heatRows.length > 0" class="card">
         <h3>掌握度热力图</h3>
         <div class="hm-list">
           <div
@@ -96,7 +96,7 @@
         </div>
       </div>
 
-      <div v-if="stats.kp.total > 0 && (treeData.chapters.length > 0 || treeData.unassigned)" class="card" style="margin-top:14px">
+      <div v-if="stats.kp.total > 0 && (treeData.chapters.length > 0 || treeData.unassigned)" class="card">
         <h3>章节掌握树</h3>
         <div class="mtree">
           <template v-for="ch in treeData.chapters" :key="ch.id">
@@ -130,7 +130,7 @@
         <div class="mtree-note">等级 = 已掌握（掌握+精通）占比：≥100% 精通 · ≥60% 掌握 · ≥30% 了解 · 其余未学习</div>
       </div>
 
-      <div class="card" style="margin-top:14px">
+      <div class="card">
         <h3>薄弱点清单 TOP {{ weakKps.length }}</h3>
         <div v-if="weakKps.length === 0" class="empty-state" style="padding:20px 0">
           <span class="ico">💪</span> 暂无明显薄弱点（未掌握 + 低分讲解 + 高频错题加权排序）
@@ -151,7 +151,7 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:14px">
+      <div class="card">
         <h3>AI 综合报告
           <span style="margin-left:auto;display:flex;gap:8px">
             <button v-if="report" class="btn sm ghost" :disabled="generating" @click="copyReport">复制全文</button>
