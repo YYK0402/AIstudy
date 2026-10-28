@@ -37,12 +37,14 @@
 import { ref, watch } from "vue";
 import { getExamPapers, createExamPaper, deleteExamPaper, getPaperQuestions } from "../api";
 import type { ExamPaperWithQuestions, Question } from "../api";
+import { useConfirm } from "../composables/useConfirm";
 
 const props = defineProps<{
   open: boolean;
   courseId: number;
   onQuizStart: (questions: Question[]) => void;
 }>();
+const { confirm } = useConfirm();
 const emit = defineEmits<{
   close: [];
 }>();
@@ -87,7 +89,7 @@ async function doCreate() {
 
 async function doDelete(p: ExamPaperWithQuestions) {
   if (deleting.value) return;
-  if (!window.confirm(`确定删除「${p.name}」？关联的 ${p.questionCount} 道题目将一并删除。`)) return;
+  if (!(await confirm({ message: `确定删除「${p.name}」？关联的 ${p.questionCount} 道题目将一并删除。`, danger: true, confirmText: "删除" }))) return;
   deleting.value = true;
   try {
     await deleteExamPaper(p.id);

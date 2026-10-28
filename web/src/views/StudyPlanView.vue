@@ -257,8 +257,10 @@ import ProgressBar from "../components/ProgressBar.vue";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { taskTypeLabel } from "../constants/tasks";
 import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, Mastery, ReviewDueItem } from "../api";
+import { useConfirm } from "../composables/useConfirm";
 
 const courseStore = useCourseStore();
+const { confirm } = useConfirm();
 const currentCourseId = () => courseStore.currentCourseId;
 /** 课程归档后计划只读：隐藏生成 / 重生成 / 暂停 / 延期 / 同步入口 */
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
@@ -674,7 +676,7 @@ async function generate() {
   if (plan.value && tasks.value.length > 0) {
     const done = tasks.value.filter((t) => t.status === "done").length;
     const msg = `重新生成将清除现有 ${tasks.value.length} 条任务（含已完成 ${done} 条），确定继续？`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirm({ message: msg, danger: true, confirmText: "重新生成" }))) return;
   }
   generating.value = true;
   generateError.value = "";

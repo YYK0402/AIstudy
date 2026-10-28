@@ -133,7 +133,7 @@
       <div class="card">
         <h3>薄弱点清单 TOP {{ weakKps.length }}</h3>
         <div v-if="weakKps.length === 0" class="empty-state" style="padding:20px 0">
-          <span class="ico">💪</span> 暂无明显薄弱点（未掌握 + 低分讲解 + 高频错题加权排序）
+          <AppIcon name="spark" :size="28" /> 暂无明显薄弱点（未掌握 + 低分讲解 + 高频错题加权排序）
         </div>
         <div v-else class="weak-list">
           <div v-for="(w, i) in weakKps" :key="w.kpId" class="weak-row">
@@ -164,7 +164,7 @@
         <div v-if="reportError" class="s t-danger">✗ {{ reportError }}</div>
         <div v-else-if="report" class="report-body">{{ report }}</div>
         <div v-else class="empty-state" style="padding:20px 0">
-          <span class="ico">📊</span> 由 AI 根据上面的学习统计数据生成综合点评与建议，导出为 Markdown
+          <AppIcon name="chart" :size="28" /> 由 AI 根据上面的学习统计数据生成综合点评与建议，导出为 Markdown
         </div>
         <div v-if="copyOk" class="s t-success" style="margin-top:8px">✓ 已复制到剪贴板</div>
       </div>

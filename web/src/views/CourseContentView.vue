@@ -29,7 +29,7 @@
           <span class="ico"><AppIcon name="folder" :size="28" /></span> 请先选择课程
         </div>
         <div v-else-if="chapters.length === 0" class="empty-state" style="padding:24px 0">
-          <span class="ico">🗂️</span> 暂无章节，点击「添加章节」搭建目录
+          <AppIcon name="folder" :size="28" /> 暂无章节，点击「添加章节」搭建目录
         </div>
         <div v-else class="tree">
           <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: expandedChapters.has(ch.id) }">
@@ -317,9 +317,11 @@ import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
 import ChapterReviewModal from "../components/ChapterReviewModal.vue";
 import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
+import { useConfirm } from "../composables/useConfirm";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
+const { confirm } = useConfirm();
 const notifyStore = useNotifyStore();
 
 // 资料后台任务状态（AI 梳理 / 知识点抽取，进度见右上铃铛）
@@ -781,7 +783,7 @@ function editChapter(ch: Chapter) {
 }
 
 async function delChapter(ch: Chapter) {
-  if (!window.confirm(`确定删除章节「${ch.name}」？其下小节将一并删除，关联知识点归类改为「未分配」。`)) return;
+  if (!(await confirm({ message: `确定删除章节「${ch.name}」？其下小节将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteChapter(ch.id);
     await Promise.all([loadChapters(), loadKnowledgePoints()]);
@@ -823,7 +825,7 @@ function selectAll() {
 async function batchDelete() {
   const ids = [...selectedChapterIds.value];
   if (ids.length === 0) return;
-  if (!window.confirm(`确定删除选中的 ${ids.length} 个章节？其下小节将一并删除，关联知识点归类改为「未分配」。`)) return;
+  if (!(await confirm({ message: `确定删除选中的 ${ids.length} 个章节？其下小节将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteChapters(ids);
     exitBatchMode();
@@ -877,7 +879,7 @@ function selectPageKps() {
 async function batchDeleteKps() {
   const ids = [...selectedKpIds.value];
   if (ids.length === 0) return;
-  if (!window.confirm(`确定删除选中的 ${ids.length} 个知识点？相关复习触点与讲解记录将一并清除。`)) return;
+  if (!(await confirm({ message: `确定删除选中的 ${ids.length} 个知识点？相关复习触点与讲解记录将一并清除。`, danger: true, confirmText: "删除" }))) return;
   deletingKps.value = true;
   try {
     await deleteKnowledgePoints(ids);
@@ -898,7 +900,7 @@ function openUpload() {
 }
 
 async function del(m: Material) {
-  if (!window.confirm(`确定删除资料「${m.name}」？其关联的知识点不会被删除，源文件在无其他引用时会一并清理。`)) return;
+  if (!(await confirm({ message: `确定删除资料「${m.name}」？其关联的知识点不会被删除，源文件在无其他引用时会一并清理。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteMaterial(m.id);
     await load();
@@ -928,7 +930,7 @@ async function fullReExtract() {
   const cid = currentCourseId();
   if (!cid || fullExtracting.value) return;
   const ids = knowledgePoints.value.map((k) => k.id);
-  if (!window.confirm(`全量重新抽取将先清空本课程全部 ${ids.length} 个知识点（级联清理复习节点与讲解记录），再按资料顺序重新抽取。确定继续？`)) return;
+  if (!(await confirm({ message: `全量重新抽取将先清空本课程全部 ${ids.length} 个知识点（级联清理复习节点与讲解记录），再按资料顺序重新抽取。确定继续？`, danger: true, confirmText: "重新抽取" }))) return;
   if (!beginFullExtract()) return;
   fullExtracting.value = true;
   fullExtractProgress.value = null;
@@ -980,7 +982,7 @@ function editDetailKp() {
 async function removeDetailKp() {
   const kp = detailKp.value;
   if (!kp) return;
-  if (!window.confirm(`确定删除知识点「${kp.name}」？`)) return;
+  if (!(await confirm({ message: `确定删除知识点「${kp.name}」？`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteKnowledgePoint(kp.id);
     detailKp.value = null;

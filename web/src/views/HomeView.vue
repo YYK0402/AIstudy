@@ -29,7 +29,7 @@
         @click="enterCourse(c)"
       >
         <div class="cc-top">
-          <div class="cc-icon" style="background:var(--as-accent-soft)">{{ emojiOf(c.id) }}</div>
+          <div class="cc-icon" style="background:var(--as-accent-soft)" aria-hidden="true">{{ emojiOf(c.id) }}</div>
           <div><div class="cc-name">{{ c.name }}<span v-if="isArchived(c)" class="tag archived-tag" style="margin-left:6px">已归档</span></div><div class="cc-desc">{{ c.description || "尚未添加简介" }}</div></div>
         </div>
         <div class="cc-stats" style="margin-top:14px">
@@ -95,7 +95,7 @@
       <div v-else class="today-groups">
         <div v-for="g in todayGroups" :key="g.courseId" class="today-group">
           <div class="today-course" @click="toggleCourse(g.courseId)">
-            <span class="tc-emoji">{{ emojiOf(g.courseId) }}</span>
+            <span class="tc-emoji" aria-hidden="true">{{ emojiOf(g.courseId) }}</span>
             <span class="tc-name">{{ g.courseName }}</span>
             <span class="tc-sum">{{ g.tasks.length }} 个任务 · {{ groupSummary(g) }}</span>
             <span class="tc-prog">{{ g.doneCount }}/{{ g.tasks.length }} 完成</span>
@@ -153,10 +153,12 @@ import { aggregateStudyTrend } from "../utils/studyTrend";
 import type { StudyTrendDay } from "../utils/studyTrend";
 import { studyStreak, reviewForecast, wrongSnapshot } from "../utils/studyStats";
 import type { ReviewForecastDay, WrongSnapshot } from "../utils/studyStats";
+import { useConfirm } from "../composables/useConfirm";
 
 const router = useRouter();
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
+const { confirm } = useConfirm();
 
 /** 课程看板筛选：全部 / 进行中 / 已归档 */
 const courseFilter = ref<"all" | "active" | "archived">("all");
@@ -179,7 +181,7 @@ const visibleCourses = computed(() => {
 async function toggleArchive(course: Course) {
   const next = isArchived(course) ? "active" : "archived";
   if (next === "archived") {
-    const ok = window.confirm(`归档课程「${course.name}」？归档后生成计划 / 出题 / 上传资料等入口将隐藏，仅可查看。`);
+    const ok = await confirm({ message: `归档课程「${course.name}」？归档后生成计划 / 出题 / 上传资料等入口将隐藏，仅可查看。`, confirmText: "归档" });
     if (!ok) return;
   }
   try {

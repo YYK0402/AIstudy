@@ -182,7 +182,7 @@
     <div class="card">
       <h3>最近调用日志</h3>
       <div v-if="providerStore.logs.length === 0" class="empty-state" style="padding:24px 0">
-        <span class="ico">📜</span>
+        <AppIcon name="book" :size="28" />
         暂无调用记录
       </div>
       <template v-else>
@@ -275,8 +275,10 @@ import {
   resetPromptTemplate as resetPromptTemplateApi,
 } from "../api";
 import type { AiProvider, AiModel, PromptTemplateView } from "../api";
+import { useConfirm } from "../composables/useConfirm";
 
 const modalStore = useModalStore();
+const { confirm } = useConfirm();
 const providerStore = useProviderStore();
 
 const settings = reactive({
@@ -400,7 +402,7 @@ async function savePrompt(t: PromptTemplateView) {
 }
 
 async function resetPrompt(t: PromptTemplateView) {
-  if (!window.confirm(`确定将「${t.name}」恢复为默认模板？`)) return;
+  if (!(await confirm({ message: `确定将「${t.name}」恢复为默认模板？` }))) return;
   promptSavingKey.value = t.key;
   try {
     await resetPromptTemplateApi(t.key);
@@ -454,7 +456,7 @@ function handleEdit(provider: AiProvider) {
 }
 
 async function handleDelete(provider: AiProvider) {
-  if (!window.confirm(`确定删除服务商「${provider.name}」？其下的模型也会一并删除。`)) {
+  if (!(await confirm({ message: `确定删除服务商「${provider.name}」？其下的模型也会一并删除。`, danger: true, confirmText: "删除" }))) {
     return;
   }
   try {
@@ -594,7 +596,7 @@ async function saveEditModel(m: AiModel) {
 }
 
 async function removeModel(model: AiModel) {
-  if (!window.confirm(`确定删除模型「${model.displayName}」？已绑定该模型的任务将回退到全局默认。`)) return;
+  if (!(await confirm({ message: `确定删除模型「${model.displayName}」？已绑定该模型的任务将回退到全局默认。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteModel(model.id);
     await providerStore.load();

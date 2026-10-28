@@ -9,7 +9,7 @@
         </div>
         <div v-if="questions.length === 0">
           <div class="empty-state" style="padding:20px 0">
-            <span class="ico">✏️</span> 题库暂无题目，请先「开始出题」
+            <AppIcon name="pencil" :size="28" /> 题库暂无题目，请先「开始出题」
           </div>
         </div>
         <template v-else>
@@ -104,6 +104,7 @@ import {
 } from "../api";
 import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
 import KpTreePicker from "./KpTreePicker.vue";
+import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{
   open: boolean;

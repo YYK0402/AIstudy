@@ -20,6 +20,12 @@ export const useModalStore = defineStore("modal", {
     chapterPreviewSourceMaterialId: null as number | null,
     // 章节导入后递增，通知课程内容页刷新目录树
     chapterVersion: 0,
+    // 危险操作确认框（单例，见 composables/useConfirm.ts）
+    confirmOpen: false,
+    confirmTitle: "",
+    confirmMessage: "",
+    confirmText: "确认",
+    confirmDanger: false,
   }),
   actions: {
     openNewCourse() {

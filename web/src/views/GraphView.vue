@@ -68,7 +68,7 @@
           @retry="load"
         />
         <div v-else-if="knowledgePoints.length === 0" class="empty-state" style="padding:120px 20px">
-          <span class="ico">🕸️</span>
+          <AppIcon name="graph" :size="28" />
           暂无知识点<br />上传资料并由 AI 解析出知识点后，图谱会展示它们之间的关联
         </div>
         <template v-else>

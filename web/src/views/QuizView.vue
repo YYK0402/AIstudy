@@ -364,8 +364,10 @@ import { useLoad } from "../composables/useLoad";
 import QuestionImportModal from "../components/QuestionImportModal.vue";
 import KpSelectModal from "../components/KpSelectModal.vue";
 import ExamPaperModal from "../components/ExamPaperModal.vue";
+import { useConfirm } from "../composables/useConfirm";
 
 const courseStore = useCourseStore();
+const { confirm } = useConfirm();
 const currentCourseId = () => courseStore.currentCourseId;
 /** 课程归档后隐藏出题入口（已有题目仍可练习） */
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
@@ -848,7 +850,7 @@ function toggleSelectAll() {
 async function batchDelete() {
   const ids = [...selectedIds.value];
   if (ids.length === 0) return;
-  if (!window.confirm(`确定删除选中的 ${ids.length} 道题？相关答题记录与错题将一并清理。`)) return;
+  if (!(await confirm({ message: `确定删除选中的 ${ids.length} 道题？相关答题记录与错题将一并清理。`, danger: true, confirmText: "删除" }))) return;
   try {
     const removed = await deleteQuestions(ids);
     questions.value = questions.value.filter((q) => !new Set(ids).has(q.id));
@@ -904,7 +906,7 @@ async function onBatchKpSaved(count: number) {
 }
 
 async function delQ(q: Question) {
-  if (!window.confirm(`确定删除题目「${q.title.slice(0, 20)}…」？`)) return;
+  if (!(await confirm({ message: `确定删除题目「${q.title.slice(0, 20)}…」？`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteQuestion(q.id);
     questions.value = questions.value.filter((x) => x.id !== q.id);

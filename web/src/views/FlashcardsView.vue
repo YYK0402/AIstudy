@@ -128,8 +128,10 @@ import type { Chapter, FlashCard, KnowledgePoint, GenerateFlashcardsResult } fro
 import KpSelectModal from "../components/KpSelectModal.vue";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import FlashcardEditModal from "../components/FlashcardEditModal.vue";
+import { useConfirm } from "../composables/useConfirm";
 
 const courseStore = useCourseStore();
+const { confirm } = useConfirm();
 const currentCourseId = () => courseStore.currentCourseId;
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
 const router = useRouter();
@@ -238,7 +240,7 @@ async function generate() {
 }
 
 async function delCard(c: FlashCard) {
-  if (!window.confirm(`删除闪卡「${c.front.slice(0, 20)}…」？其复习排期将一并删除`)) return;
+  if (!(await confirm({ message: `删除闪卡「${c.front.slice(0, 20)}…」？其复习排期将一并删除`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteFlashCards([c.id]);
     await load();

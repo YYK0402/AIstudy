@@ -28,7 +28,7 @@
           :class="{ active: c.id === courseStore.currentCourseId }"
           @click="selectCourse(c)"
         >
-          <span class="cd-emoji">{{ emojiOf(c.id) }}</span>{{ c.name }}
+          <span class="cd-emoji" aria-hidden="true">{{ emojiOf(c.id) }}</span>{{ c.name }}
           <span class="cd-check">✓</span>
         </div>
         <div class="cd-add" @click="openNewCourse">＋ 新建课程</div>

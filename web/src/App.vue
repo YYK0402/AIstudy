@@ -15,6 +15,7 @@
     <NewProviderModal v-if="modalStore.newProviderOpen" />
     <UploadMaterialModal v-if="modalStore.uploadMaterialOpen" />
     <ChapterTreePreviewModal v-if="modalStore.chapterPreviewOpen" />
+    <ConfirmModal v-if="modalStore.confirmOpen" />
   </div>
 </template>
 
@@ -25,6 +26,7 @@ import NewCourseModal from "./components/NewCourseModal.vue";
 import NewProviderModal from "./components/NewProviderModal.vue";
 import UploadMaterialModal from "./components/UploadMaterialModal.vue";
 import ChapterTreePreviewModal from "./components/ChapterTreePreviewModal.vue";
+import ConfirmModal from "./components/ConfirmModal.vue";
 import { useModalStore } from "./stores/modal";
 
 const modalStore = useModalStore();
