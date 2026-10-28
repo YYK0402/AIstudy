@@ -82,7 +82,8 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useModalStore } from "../stores/modal";
-import { queryCourses, queryWrongQuestions, queryDueFlashcardCount, DATA_SAVED_EVENT } from "../api";
+import { queryCourses, queryWrongQuestions, queryDueFlashcardCount } from "../api";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { emojiOf } from "../utils";
 import type { Course } from "../api";
 
@@ -151,12 +152,15 @@ async function loadCardDueCount() {
   }
 }
 
-function onDataSaved() {
+// 计数按当前课程刷新；课程列表仅全局变化（建课/删课/归档）时刷新
+useDataSavedRefresh(() => {
   loadWrongCount();
   loadCardDueCount();
-  // 课程状态（归档）/列表变化后同步 store，保证各页面读到的 status 最新
-  courseStore.refresh().catch((e) => console.error("刷新课程列表失败:", e));
-}
+});
+useDataSavedRefresh(
+  () => courseStore.refresh().catch((e) => console.error("刷新课程列表失败:", e)),
+  { scope: "global" },
+);
 
 const icons: Record<string, string> = {
   home: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -225,12 +229,10 @@ onMounted(async () => {
   }
   loadWrongCount();
   loadCardDueCount();
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
   document.addEventListener("pointerdown", onDocPointerDown);
   document.addEventListener("keydown", onKeydown);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
   document.removeEventListener("pointerdown", onDocPointerDown);
   document.removeEventListener("keydown", onKeydown);
 });

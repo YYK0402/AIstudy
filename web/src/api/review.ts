@@ -20,10 +20,15 @@ export function reviewNextDue(days: number): string {
 export function ensureReviewTouchpointInData(data: AppData, kpId: number): void {
   const existing = data.reviewSchedules.find((s) => s.kpId === kpId);
   if (existing) {
-    if (existing.dueTime < reviewNextDue(0)) return; // 未到期触点保持既有节奏
-    existing.dueTime = reviewNextDue(1);
-    existing.stage = 1;
-    existing.intervalDays = 1;
+    const today = formatLocalDate();
+    // 未到期：保持原排期不动（不重置 stage、不缩短间隔）
+    if (existing.dueTime > today) return;
+    // 已到期：按标准 SM-2 正常推进（等同复习答「牢固」），间隔不会变短
+    const next = nextSm2(existing, 5);
+    existing.stage = next.stage;
+    existing.intervalDays = next.intervalDays;
+    existing.easeFactor = next.easeFactor;
+    existing.dueTime = reviewNextDue(next.intervalDays);
     return;
   }
   data.reviewSchedules.push({
@@ -99,6 +104,10 @@ export async function submitReview(schedule: ReviewSchedule, grade: ReviewGrade,
     { stage: target.stage, intervalDays: target.intervalDays, easeFactor: target.easeFactor },
     REVIEW_GRADE_TO_N[grade],
   );
+  // 防御：评分结果非有限值时不落库，避免 NaN 污染排期
+  if (!Number.isFinite(next.stage) || !Number.isFinite(next.intervalDays) || !Number.isFinite(next.easeFactor)) {
+    throw new Error("复习评分结果异常，本触点未修改");
+  }
   target.stage = next.stage;
   target.intervalDays = next.intervalDays;
   target.easeFactor = next.easeFactor;

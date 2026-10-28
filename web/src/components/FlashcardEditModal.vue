@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open: open }" @click.self="close">
     <div class="modal">
       <h2>{{ card ? "编辑闪卡" : "手动添加闪卡" }}</h2>
@@ -24,6 +25,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

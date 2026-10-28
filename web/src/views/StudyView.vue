@@ -6,6 +6,16 @@
       <div class="empty-state"><span class="ico"><AppIcon name="folder" :size="28" /></span> 请先在「课程主页」选择或创建一个课程</div>
     </div>
 
+    <div v-else-if="loading && knowledgePoints.length === 0" class="card">
+      <SkeletonList :rows="4" />
+    </div>
+
+    <LoadError
+      v-else-if="error && knowledgePoints.length === 0"
+      :message="error"
+      @retry="load"
+    />
+
     <div v-else-if="knowledgePoints.length === 0" class="card">
       <div class="empty-state">
         <span class="ico"><AppIcon name="spark" :size="28" /></span>
@@ -206,8 +216,12 @@ import {
 } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
 import { taskAction } from "../constants/tasks";
+import { capStudySec } from "../constants/study";
 import type { KnowledgePoint, ExplainRecord, ExplainSummary, Mastery, ExplainResult, StudyTask, Chapter, Material } from "../api";
 import KpSelectModal from "../components/KpSelectModal.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -435,9 +449,8 @@ watch(selectedKpId, async (id) => {
   if (kp && !isAskPromptFresh(kp)) void refreshAskPrompt(id);
 });
 
-async function load() {
-  const cid = currentCourseId();
-  if (!cid) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     knowledgePoints.value = [];
     chapters.value = [];
     materials.value = [];
@@ -447,15 +460,21 @@ async function load() {
     queueIndex.value = 0;
     return;
   }
-  [knowledgePoints.value, chapters.value, materials.value, todayTasks.value, pastSessions.value] = await Promise.all([
-    queryKnowledgePoints(cid),
-    queryChapters(cid),
-    queryMaterials(cid),
-    queryTodayPlanTasks(cid),
-    queryExplainSummaries(cid),
+  const [kps, chs, ms, tasks, past] = await Promise.all([
+    queryKnowledgePoints(ctx.courseId),
+    queryChapters(ctx.courseId),
+    queryMaterials(ctx.courseId),
+    queryTodayPlanTasks(ctx.courseId),
+    queryExplainSummaries(ctx.courseId),
   ]);
+  if (ctx.isStale()) return;
+  knowledgePoints.value = kps;
+  chapters.value = chs;
+  materials.value = ms;
+  todayTasks.value = tasks;
+  pastSessions.value = past;
   // 队列失效（KP 被删）或首次进入 → 回到今日计划队列
-  const valid = queue.value.filter((id) => knowledgePoints.value.some((k) => k.id === id));
+  const valid = queue.value.filter((id) => kps.some((k) => k.id === id));
   if (valid.length === 0) {
     queue.value = buildTodayQueue();
     queueIndex.value = 0;
@@ -463,7 +482,7 @@ async function load() {
     queue.value = valid;
     if (queueIndex.value >= queue.value.length) queueIndex.value = 0;
   }
-}
+});
 
 /** 讲解输入框键盘：Enter 发送（中文输入法组合态除外），Shift+Enter 换行 */
 function onExplainKeydown(e: KeyboardEvent) {
@@ -479,7 +498,7 @@ async function submit() {
   if (!kp || !content || evaluating.value) return;
   evaluating.value = true;
   explainError.value = "";
-  const durationSec = kpStartAt.value ? Math.max(0, Math.round((Date.now() - kpStartAt.value) / 1000)) : 0;
+  const durationSec = kpStartAt.value ? capStudySec((Date.now() - kpStartAt.value) / 1000) : 0;
   try {
     lastResult.value = await submitExplain(kp, content, durationSec);
     // 锁定本轮实际提问/讲解快照 + 清空输入框（失败时保留输入，由 catch 处理）
@@ -509,20 +528,22 @@ watch(
     currentRoundAsk.value = "";
     history.value = [];
     kpStartAt.value = 0;
-    load();
+    void load();
   },
 );
 
 watch(
   () => route.query.kp,
   async (v) => {
-    if (v != null && v !== "") await load();
-    enterKpStudy();
+    if (v == null || v === "") return;
+    await load();
+    // 深链处理必须在数据加载成功后执行，否则 KP 列表为空会误清 query
+    if (error.value === "") enterKpStudy();
   },
 );
 
 onMounted(async () => {
   await load();
-  enterKpStudy();
+  if (error.value === "") enterKpStudy();
 });
 </script>

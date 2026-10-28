@@ -1,7 +1,7 @@
 import type { AppData, Chapter, KnowledgePoint, StudyPlan, StudyTask } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now } from "./format";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { courseTaskId } from "../stores/notify";
@@ -255,16 +255,6 @@ export async function syncPlanKps(planId: number): Promise<{ added: number }> {
   return { added: newKps.length };
 }
 
-/**
- * 薄弱知识点 → 在课程最新计划中追加一条 practice/review 任务（排到今天）。
- * 防任务爆炸：同一计划内同知识点同类型 7 天内已追加过则跳过（与完成状态无关）。
- * 课程尚无计划时静默跳过。
- */
-/**
- * 严格打勾：勾选该知识点「今天排期 + 未完成 + 类型匹配」的计划任务，返回勾掉的任务标题。
- * 达标动作（讲解≥60/答对/复习牢固）在对应写入点调用；手动勾选保留兜底。
- */
-/** 写入学习时长日志（duration 单位秒；手动打卡等无计时动作传 0，只计动作） */
 /** 测评来源：章节组卷（?set=<章节id>）→ 章末测评任务；结业模考（?exam=1）→ 结业模考任务 */
 export type TestTaskContext =
   | { kind: "chapter-test"; chapterId: number }
@@ -356,10 +346,11 @@ export async function generateStudyPlan(
         skeletonLines,
       };
       const planTpl = resolvePromptTemplate(data, "gen_plan");
-      const res = await window.siyuanAiStudy.callAi({
+      const res = await callAi({
         providerId: binding.providerId,
         modelId: binding.modelId,
         taskKey: "gen_plan",
+        scope: "course-" + course.id,
         messages: [
           { role: "system", content: renderPrompt(planTpl.system, planVars) },
           { role: "user", content: renderPrompt(planTpl.user, planVars) },

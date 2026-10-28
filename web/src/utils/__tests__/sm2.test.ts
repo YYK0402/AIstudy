@@ -37,4 +37,23 @@ describe("nextSm2", () => {
     expect(next.stage).toBe(8);
     expect(next.intervalDays).toBe(260);
   });
+
+  it("较差（n=1/2）一律重置到一阶并降低难度因子（U6，对齐标准 SM-2）", () => {
+    expect(nextSm2({ stage: 5, intervalDays: 20, easeFactor: 2.5 }, 1)).toEqual({
+      stage: 1,
+      intervalDays: 1,
+      easeFactor: 2.3,
+    });
+    expect(nextSm2({ stage: 3, intervalDays: 7, easeFactor: 2.5 }, 2)).toEqual({
+      stage: 1,
+      intervalDays: 1,
+      easeFactor: 2.3,
+    });
+  });
+
+  it("非法评分（非整数 / 越界）抛错（U6）", () => {
+    expect(() => nextSm2(base, -1)).toThrow();
+    expect(() => nextSm2(base, 6)).toThrow();
+    expect(() => nextSm2(base, 2.5)).toThrow();
+  });
 });

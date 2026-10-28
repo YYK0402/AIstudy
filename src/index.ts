@@ -1,4 +1,5 @@
 import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
+import type { TPluginDataChangeReason } from "siyuan";
 import { createEmptyData } from "./data";
 import type { AppData, CallLog, CourseData } from "./data";
 import { decryptApiKey, migrateProviderKeys } from "./crypto";
@@ -9,9 +10,14 @@ import {
   normalizeCourseData,
   splitAppData,
 } from "./courseSplit";
+import { runWithRetry } from "./aiRetry";
+import type { AiRetryFailInfo } from "./aiRetry";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
+// 检测到外部数据变更（其他窗口/同步合并）并刷新内存后派发；
+// 前端 web/src/api/storage.ts 监听该事件并复用 DATA_SAVED 机制刷新视图
+const DATA_EXTERNAL_EVENT = "siyuan-ai-study:data-external";
 // 每次插件加载（含构建触发的热重载）模块重新求值生成新 id，前端用它检测进行中的调用是否已被旧实例杀死
 const PLUGIN_INSTANCE_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -40,59 +46,6 @@ export function buildChatPayload(
 }
 
 /**
- * 判断 AI 调用错误是否值得自动重试：超时 / 5xx / 网络层错误。
- * 4xx（鉴权、模型不存在等）重试无意义，返回 false。
- */
-export function isRetryableAiError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/Client\.Timeout exceeded|context deadline exceeded|awaiting headers/i.test(message)) {
-    return true;
-  }
-  const m = message.match(/HTTP (\d{3})/);
-  if (m) {
-    return Number(m[1]) >= 500;
-  }
-  if (/forwardProxy 失败/.test(message) && /(connection|refused|reset|EOF|unreachable|no such host|timed out|network)/i.test(message)) {
-    return true;
-  }
-  return false;
-}
-
-export interface AiRetryFailInfo {
-  /** 第几次尝试（从 1 开始） */
-  attempt: number;
-  error: unknown;
-  /** 是否还会重试（可重试且未达次数上限） */
-  willRetry: boolean;
-}
-
-const defaultDelay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * 重试执行：失败且可重试时等待 2s×尝试次数后重试，每次失败都回调 onFail（供记日志）。
- * maxAttempts = 1 + 重试次数；不可重试的错误立即抛出。
- */
-export async function runWithRetry<T>(
-  call: () => Promise<T>,
-  maxAttempts: number,
-  onFail: (info: AiRetryFailInfo) => void,
-  delay?: (ms: number) => Promise<void>,
-): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await call();
-    } catch (error) {
-      const willRetry = attempt < maxAttempts && isRetryableAiError(error);
-      onFail({ attempt, error, willRetry });
-      if (!willRetry) {
-        throw error;
-      }
-      await (delay ?? defaultDelay)(2000 * attempt);
-    }
-  }
-}
-
-/**
  * 滑动窗口速率限制：返回需等待的毫秒数（0 = 立即可发）。
  * timestamps = 窗口内各次调用发起时间；limitPerMin 0/缺失 = 不限。
  */
@@ -113,6 +66,8 @@ interface CallAiInput {
   modelId: string;
   messages: CallAiMessage[];
   taskKey: string;
+  /** 取消作用域（如 course-1 / material-2）：与 taskKey 组成在途表键，cancelAiCall 精确命中 */
+  scope?: string;
 }
 
 interface CallAiResult {
@@ -135,8 +90,9 @@ interface StudyApi {
   /** 本次插件加载实例 id：热重载/重启插件后变化，前端据此检测僵尸任务 */
   pluginInstanceId: string;
   getData(): AppData;
-  saveData(data: AppData): Promise<{ code: number; msg?: string }>;
+  saveData(data: AppData): Promise<{ code: number; msg?: string; dirty?: { global: boolean; courseIds: number[] } }>;
   callAi(input: CallAiInput): Promise<CallAiResult>;
+  cancelAiCall(taskKey: string, scope?: string): void;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
@@ -145,6 +101,8 @@ interface StudyApi {
   removeSiyuanDoc(id: string): Promise<void>;
   updateSiyuanDoc(id: string, markdown: string): Promise<void>;
   getSiyuanDocMarkdown(id: string): Promise<string | null>;
+  siyuanDocExists(id: string): Promise<boolean>;
+  moveSiyuanDoc(id: string, targetId: string): Promise<void>;
   renameSiyuanDoc(id: string, name: string): Promise<void>;
   removeAsset(assetPath: string): Promise<void>;
   ocrAsset(assetPath: string): Promise<string>;
@@ -159,6 +117,10 @@ declare global {
     };
   }
 }
+
+// 内核 loadData/saveData 在网络异常/内核负数错误码时可能永久挂起（siyuan.d.ts 明确警告），
+// 统一以超时兜底；超时按失败处理（写盘失败走回滚，读盘失败进入只读）
+export class DataIoTimeoutError extends Error {}
 
 interface ForwardProxyResponse {
   code: number;
@@ -362,12 +324,67 @@ export default class AiStudyPlugin extends Plugin {
   }
 
   // 覆盖内核默认行为：petal 数据文件变更不再触发插件整体重载
-  // （变更本就来自我们自己的写入；重载会重写数据文件，3.8.8 下形成无限循环）
-  onDataChanged() {
-    // 有意留空
+  // （默认重载会重写数据文件，3.8.8 下形成无限循环）。按来源分支处理：
+  // - sync（跨设备同步合并）必然是外部变更 → 直接刷新内存
+  // - overwrite（文件接口写入）可能是我们自己的写盘回显，也可能是其他窗口写入：
+  //   逐文件比对磁盘内容与已写盘基线，任一不符才刷新
+  // - 无 reason：视为自己写入的回显，忽略（变更已在内存中）
+  async onDataChanged(reason?: TPluginDataChangeReason): Promise<void> {
+    if (!this.dataReady) return;
+    if (reason === "sync") {
+      await this.refreshFromExternalChange("sync");
+      return;
+    }
+    if (reason === "overwrite" && (await this.hasExternalChange())) {
+      await this.refreshFromExternalChange("overwrite");
+    }
+  }
+
+  /** 逐文件比对磁盘内容与已写盘基线；任一不符（或读取失败无法判定）视为存在外部变更 */
+  private async hasExternalChange(): Promise<boolean> {
+    for (const [name, baseline] of Array.from(this.writtenBaselines.entries())) {
+      let disk: unknown;
+      try {
+        // 强制真实读盘：loadData 默认直接返回内存缓存，比对将失去意义
+        delete this.data[name];
+        disk = await this.withTimeout(this.loadData(name));
+      } catch {
+        return true;
+      }
+      if (JSON.stringify(disk ?? null) !== baseline) return true;
+    }
+    return false;
+  }
+
+  /** 强制读盘重建内存视图与基线，并通知前端刷新（在 commit 队列内执行，避免与写盘交错） */
+  private async refreshFromExternalChange(source: string) {
+    await this.enqueueCommit(async () => {
+      const merged = await this.rebuildMergedFromDisk();
+      if (!merged) return;
+      if (JSON.stringify(merged) === JSON.stringify(this.getData())) return;
+      console.info(`[siyuan-ai-study] 检测到外部数据变更（${source}），内存视图已刷新`);
+      this.data[DATA_STORAGE] = merged;
+      this.initBaselines();
+      window.dispatchEvent(new Event(DATA_EXTERNAL_EVENT));
+    });
+  }
+
+  /** 强制读盘：全局文件 + 各课程文件合并为内存视图；失败返回 null（保留现有内存） */
+  private async rebuildMergedFromDisk(): Promise<AppData | null> {
+    try {
+      delete this.data[DATA_STORAGE];
+      const disk = (await this.withTimeout(this.loadData(DATA_STORAGE))) as AppData | null;
+      if (!disk || typeof disk !== "object") return null;
+      return await this.loadMergedData({ ...createEmptyData(), ...disk });
+    } catch {
+      return null;
+    }
   }
 
   onunload() {
+    // 清除自愈轮询定时器，避免卸载发生在窗口期内时回调仍向内核已移除的面板 mount
+    for (const timer of this.selfHealTimers) window.clearTimeout(timer);
+    this.selfHealTimers = [];
     // 卸载时清理已挂载的前端应用，避免 Vue 实例泄漏
     window.AiStudyApp?.unmount();
   }
@@ -380,14 +397,17 @@ export default class AiStudyPlugin extends Plugin {
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         try {
-          await this.commitData(data);
-          return { code: 0, msg: "" };
+          const dirty = await this.commitData(data);
+          return { code: 0, msg: "", dirty };
         } catch (e) {
           return { code: -1, msg: e instanceof Error ? e.message : String(e) };
         }
       },
       callAi: async (input: CallAiInput) => {
         return await this.handleCallAi(input);
+      },
+      cancelAiCall: (taskKey: string, scope?: string) => {
+        this.handleCancelAiCall(taskKey, scope);
       },
       testProvider: async (providerId: number) => {
         return await this.handleTestProvider(providerId);
@@ -412,6 +432,12 @@ export default class AiStudyPlugin extends Plugin {
       },
       getSiyuanDocMarkdown: async (id: string) => {
         return await this.handleGetSiyuanDocMarkdown(id);
+      },
+      siyuanDocExists: async (id: string) => {
+        return await this.handleSiyuanDocExists(id);
+      },
+      moveSiyuanDoc: async (id: string, targetId: string) => {
+        await this.handleMoveSiyuanDoc(id, targetId);
       },
       renameSiyuanDoc: async (id: string, name: string) => {
         await this.handleRenameSiyuanDoc(id, name);
@@ -509,6 +535,29 @@ export default class AiStudyPlugin extends Plugin {
     return syTreeToMarkdown(tree);
   }
 
+  /** 文档是否仍存在（用于区分「已删除」与「瞬时读失败」） */
+  private async handleSiyuanDocExists(id: string): Promise<boolean> {
+    const doc = (await fetchSyncPost("/api/filetree/getDoc", { id })) as {
+      code: number;
+      data?: { path?: string } | null;
+    };
+    return doc.code === 0 && Boolean(doc.data?.path);
+  }
+
+  // 移动文档到目标文档下（章节拖拽换父级时同步思源树）
+  // 3.8.x 契约为 { fromIDs, toID }（真机实证：移动后 getDoc path 随之变化）；
+  // siyuan d.ts 的 API 映射表缺该条目，参数类型收窄为 unknown
+  private async handleMoveSiyuanDoc(id: string, targetId: string): Promise<void> {
+    const rawPost = fetchSyncPost as (path: string, body: Record<string, unknown>) => Promise<unknown>;
+    const res = (await rawPost("/api/filetree/moveDocsByID", {
+      fromIDs: [id],
+      toID: targetId,
+    })) as { code: number; msg?: string };
+    if (res.code !== 0) {
+      throw new Error(`移动思源文档失败: ${res.msg ?? "未知错误"}`);
+    }
+  }
+
   // 重命名思源文档（用于课程/章节改名后同步落库文档名）
   private async handleRenameSiyuanDoc(id: string, name: string): Promise<void> {
     const res = (await fetchSyncPost("/api/filetree/renameDocByID", { id, title: name })) as {
@@ -548,49 +597,99 @@ export default class AiStudyPlugin extends Plugin {
     return this.data[DATA_STORAGE] ?? createEmptyData();
   }
 
+  /** 内核数据读写统一超时包装；超时抛 DataIoTimeoutError */
+  private withTimeout<T>(promise: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = window.setTimeout(
+        () => reject(new DataIoTimeoutError("数据读写超时（15s），请检查思源内核状态")),
+        15000,
+      );
+      promise.then(
+        (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          window.clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  // 插件侧提交串行队列：前端 saveData 请求与 AI 路径的 persist 共用，
+  // 并发提交不再交错"先快照后写盘"，后写者无法用旧快照覆盖较新快照
+  private commitQueue: Promise<unknown> = Promise.resolve();
+
+  private enqueueCommit<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.commitQueue.then(() => fn());
+    // 队列链吞掉失败：单次提交失败不阻断后续提交
+    this.commitQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   private async persist(data: AppData) {
     await this.commitData(data);
   }
 
-  /** 统一写入口：先迁移明文 API Key 为密文，再拆成 全局文件 + 各课程文件 分别落盘
+  /** 统一写入口：所有写入经 commitQueue 串行化（避免并发提交互相覆盖旧快照）；返回脏集供前端选择性刷新 */
+  private commitData(data: AppData): Promise<{ global: boolean; courseIds: number[] }> {
+    return this.enqueueCommit(() => this.doCommitData(data));
+  }
+
+  /** 提交执行体：先迁移明文 API Key 为密文，再拆成 全局文件 + 各课程文件 分别落盘
    *  （仅写内容有变化的文件）。删课后遗留的 course-<id> 文件保留在磁盘（加载时忽略，
    *  petal 无删除文件的 API；id 单调递增不会冲突）。
    *  失败时从磁盘回滚内存缓存，避免「保存失败但内存已脏」，前端的失败回滚才有意义。 */
-  private async commitData(data: AppData) {
+  private async doCommitData(data: AppData): Promise<{ global: boolean; courseIds: number[] }> {
+    if (!this.dataReady) {
+      throw new Error("数据未就绪（加载失败），保存已暂停，请重启插件");
+    }
     await migrateProviderKeys(data);
     const { global, courses } = splitAppData(data);
+    const dirty: { global: boolean; courseIds: number[] } = { global: false, courseIds: [] };
     try {
-      await this.writeStorageIfChanged(DATA_STORAGE, global);
+      if (await this.writeStorageIfChanged(DATA_STORAGE, global)) dirty.global = true;
       for (const [id, cd] of courses) {
-        await this.writeStorageIfChanged(courseStorageName(id), cd);
+        if (await this.writeStorageIfChanged(courseStorageName(id), cd)) dirty.courseIds.push(id);
       }
       this.data[DATA_STORAGE] = data;
+      return dirty;
     } catch (e) {
       await this.restoreFromDisk();
       throw e;
     }
   }
 
-  /** 序列化结果与已写盘状态一致则跳过写盘；写成功后更新状态记录 */
-  private async writeStorageIfChanged(name: string, value: unknown) {
+  /** 序列化结果与已写盘状态一致则跳过写盘；返回是否真实写盘（即有变化） */
+  private async writeStorageIfChanged(name: string, value: unknown): Promise<boolean> {
     const serialized = JSON.stringify(value);
-    if (this.writtenBaselines.get(name) === serialized) return;
-    const res = await this.saveData(name, value);
+    if (this.writtenBaselines.get(name) === serialized) return false;
+    const res = await this.withTimeout(this.saveData(name, value));
     const r = (res ?? {}) as { code?: number };
     if (typeof r.code === "number" && r.code !== 0) {
       throw new Error("数据保存失败");
     }
     this.writtenBaselines.set(name, serialized);
+    return true;
   }
 
   /** 保存失败后把内存缓存恢复到磁盘版本（best-effort） */
   private async restoreFromDisk() {
     try {
-      const disk = (await this.loadData(DATA_STORAGE)) as AppData | null;
-      const base =
-        disk && typeof disk === "object"
-          ? { ...createEmptyData(), ...disk }
-          : createEmptyData();
+      // 强制真实读盘：commitData 已把完整合并视图缓存进 this.data，loadData 默认
+      // 直接返回缓存（读盘失败也回退缓存），不 delete 的话"合并视图 + 课程文件"
+      // 二次 merge 会使课程实体翻倍并写回磁盘
+      delete this.data[DATA_STORAGE];
+      const disk = (await this.withTimeout(this.loadData(DATA_STORAGE))) as AppData | null;
+      if (!disk || typeof disk !== "object") {
+        // 直读磁盘也失败（返回 ""/null）：保留现有内存，交由下一次成功保存覆盖
+        return;
+      }
+      const base = { ...createEmptyData(), ...disk };
       this.data[DATA_STORAGE] = await this.loadMergedData(base);
       this.initBaselines();
     } catch {
@@ -650,7 +749,8 @@ export default class AiStudyPlugin extends Plugin {
       throw new Error(`forwardProxy 失败: ${res.msg}`);
     }
     if (res.data.status < 200 || res.data.status >= 300) {
-      throw new Error(`LLM 请求失败: HTTP ${res.data.status} ${res.data.body}`);
+      // 错误体可能很大（HTML 错误页），截断避免撑爆日志/提示
+      throw new Error(`LLM 请求失败: HTTP ${res.data.status} ${res.data.body.slice(0, 500)}`);
     }
     const body = JSON.parse(res.data.body) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -687,6 +787,19 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
+  // 在途 AI 调用登记表：cancelAiCall 标记 canceled 后，
+  // 重试循环立即中止、forwardProxy 返回的响应直接丢弃（forwardProxy 无网络层 abort，已消耗 token 无法退回）
+  private readonly inflightAi = new Map<string, { canceled: boolean }>();
+
+  private aiCallKey(taskKey: string, scope?: string): string {
+    return `${taskKey}:${scope ?? "-"}`;
+  }
+
+  private handleCancelAiCall(taskKey: string, scope?: string): void {
+    const entry = this.inflightAi.get(this.aiCallKey(taskKey, scope));
+    if (entry) entry.canceled = true;
+  }
+
   private async handleCallAi(input: CallAiInput): Promise<CallAiResult> {
     const data = this.getData();
     const provider = data.providers.find((p) => p.id === input.providerId);
@@ -697,21 +810,37 @@ export default class AiStudyPlugin extends Plugin {
     await this.acquireRateSlot(limitPerMin);
     const retryCount = Math.min(2, Math.max(0, Math.trunc(data.settings?.aiRetryCount ?? 0)));
     const maxAttempts = 1 + retryCount;
+    const key = this.aiCallKey(input.taskKey, input.scope);
+    const entry: { canceled: boolean } = { canceled: false };
+    this.inflightAi.set(key, entry);
     let result: CallAiResult;
     try {
       result = await runWithRetry(
-        () => this.attemptCallAi(data, provider, input),
+        async () => {
+          const r = await this.attemptCallAi(data, provider, input);
+          // 响应丢弃：调用返回前已标记取消（如前端点了取消）
+          if (entry.canceled) throw new Error("AI 调用已取消");
+          return r;
+        },
         maxAttempts,
         ({ attempt, error, willRetry }) => {
           const friendly = this.toFriendlyAiError(error, provider);
           const suffix = willRetry ? `（第 ${attempt}/${maxAttempts} 次尝试失败，稍后自动重试）` : "";
           this.appendLog(data, input.taskKey, provider.name, input.modelId, 0, 0, "error", `${friendly.message}${suffix}`);
         },
+        undefined,
+        () => entry.canceled,
       );
     } catch (error) {
-      // 最后一次失败的日志已在 onFail 中记录
-      await this.persist(data);
-      throw this.toFriendlyAiError(error, provider);
+      const canceled = entry.canceled;
+      // 取消不记 AI 日志（非模型失败，不污染统计）
+      if (!canceled) {
+        // 最后一次失败的日志已在 onFail 中记录
+        await this.persist(data);
+      }
+      throw canceled ? new Error("AI 调用已取消") : this.toFriendlyAiError(error, provider);
+    } finally {
+      this.inflightAi.delete(key);
     }
     this.appendLog(data, input.taskKey, provider.name, input.modelId, result.tokenIn, result.tokenOut, "success", "");
     await this.persist(data);
@@ -829,6 +958,11 @@ export default class AiStudyPlugin extends Plugin {
         };
         document.head.appendChild(script);
       },
+      // 内核关闭页签时移除 DOM 但不会销毁前端应用；不接 destroy 钩子会导致
+      // Vue 实例 + pinia store 定时器（notify 5s interval）每次开关页签累积泄漏
+      destroy() {
+        window.AiStudyApp?.unmount();
+      },
     });
   }
 
@@ -846,13 +980,18 @@ export default class AiStudyPlugin extends Plugin {
    * 自愈：内核整体重载插件（onunload 已 unmount）后页签仍在但不会重跑 init，面板会永久为空；
    * 新开页面内核延迟恢复页签时也可能早于 onload。onload 后短时间窗内轮询，面板存在且无内容则补 mount。
    */
+  // 页签自愈轮询定时器；插件卸载时统一清除，防止窗口期内回调仍在死实例上执行
+  private selfHealTimers: number[] = [];
+
   private selfHealTab() {
     for (const delay of [500, 1500, 3000, 6000]) {
-      setTimeout(() => {
-        const panel = this.findTabPanel();
-        if (!panel || panel.querySelector(".ai-study-app")) return;
-        if (window.AiStudyApp) window.AiStudyApp.mount(panel);
-      }, delay);
+      this.selfHealTimers.push(
+        window.setTimeout(() => {
+          const panel = this.findTabPanel();
+          if (!panel || panel.querySelector(".ai-study-app")) return;
+          if (window.AiStudyApp) window.AiStudyApp.mount(panel);
+        }, delay),
+      );
     }
   }
 
@@ -879,12 +1018,34 @@ export default class AiStudyPlugin extends Plugin {
   // 首次使用（文件不存在）初始化为空结构；
   // 旧布局（实体混在全局文件里）做一次迁移：拆出 course-<id> 文件、全局文件只留全局配置。
   private async initData() {
+    let loaded: unknown;
     try {
-      const loaded = await this.loadData(DATA_STORAGE);
-      if (!loaded || typeof loaded !== "object" || Object.keys(loaded).length === 0) {
+      loaded = await this.withTimeout(this.loadData(DATA_STORAGE));
+    } catch (error) {
+      // 磁盘读取失败：不进入"空数据可写"状态（见 dataReady），保持只读等待重启
+      console.error("[siyuan-ai-study] 加载数据失败，保存已暂停（防止空数据覆盖磁盘）:", error);
+      showMessage("AI 学习：数据文件读取失败，保存已暂停，请重启插件或思源", 6000, "error");
+      return;
+    }
+    try {
+      // 全局文件状态判定：
+      // - 缺失（""/null）→ 首次使用，写入空结构
+      // - 存在但非对象（无效 JSON 被内核按文本返回）或空对象 → 损坏，fail-closed 保持只读，
+      //   防止把"损坏但可人工恢复"的原文件用空结构覆盖
+      if (!loaded || loaded === "") {
         this.data[DATA_STORAGE] = createEmptyData();
-        await this.saveData(DATA_STORAGE, this.data[DATA_STORAGE]);
-        this.initBaselines();
+        // 经 writeStorageIfChanged 写盘：校验内核返回 code 并登记基线，
+        // 失败则抛错保持只读（dataReady 不置位），避免基线谎报"已写盘"
+        await this.writeStorageIfChanged(DATA_STORAGE, this.data[DATA_STORAGE]);
+        this.dataReady = true;
+        return;
+      }
+      if (typeof loaded !== "object" || loaded === null || Array.isArray(loaded) || Object.keys(loaded).length === 0) {
+        console.error(
+          "[siyuan-ai-study] 数据文件损坏（内容不是有效非空对象），保存已暂停，请从备份恢复。文件开头:",
+          String(loaded).slice(0, 200),
+        );
+        showMessage("AI 学习：数据文件损坏，保存已暂停，请从备份恢复或重启思源", 8000, "error");
         return;
       }
       // 与空结构合并：补齐旧版本数据文件中缺失的字段，避免后续读写崩溃
@@ -898,22 +1059,28 @@ export default class AiStudyPlugin extends Plugin {
       const legacy = hasCourseEntities(global);
       if (legacy) {
         const { global: trimmed, courses } = splitAppData(global);
+        // 迁移写盘经 writeStorageIfChanged：校验 code + 成功后才登记基线；
+        // 失败抛错保持只读，重启后从全局文件重跑迁移（课程文件写入幂等）
         for (const [id, cd] of courses) {
-          await this.saveData(courseStorageName(id), cd);
+          await this.writeStorageIfChanged(courseStorageName(id), cd);
         }
-        await this.saveData(DATA_STORAGE, trimmed);
+        await this.writeStorageIfChanged(DATA_STORAGE, trimmed);
         global = trimmed;
       } else if (JSON.stringify(splitAppData(global).global) !== JSON.stringify(loaded)) {
         // 字段补齐 / 明文字段清理 / 密钥迁移：全局文件确有变化才写回
         // （避免无条件写回触发内核重载循环）
-        await this.saveData(DATA_STORAGE, global);
+        await this.writeStorageIfChanged(DATA_STORAGE, global);
       }
 
       this.data[DATA_STORAGE] = await this.loadMergedData(global);
       this.initBaselines();
+      this.dataReady = true;
     } catch (error) {
-      console.error("[siyuan-ai-study] 加载数据失败:", error);
-      this.data[DATA_STORAGE] = createEmptyData();
+      // 迁移/合并中途失败（如课程文件损坏）：内存保留已读到的部分，但不开放写入（dataReady 保持 false），
+      // 避免部分状态或前端空视图被写盘；修复/恢复后重启插件重新初始化
+      console.error("[siyuan-ai-study] 数据初始化中途失败，保存已暂停:", error);
+      const detail = error instanceof Error ? `：${error.message.slice(0, 80)}` : "";
+      showMessage(`AI 学习：数据初始化失败，保存已暂停${detail}`, 8000, "error");
     }
   }
 
@@ -929,17 +1096,34 @@ export default class AiStudyPlugin extends Plugin {
     return merged;
   }
 
-  /** 读取单个课程文件；文件不存在 / 损坏返回 null（按空课程处理，不阻塞其他课程） */
+  /** 读取单个课程文件；文件不存在 / 损坏返回 null（按空课程处理，不阻塞其他课程）。
+   *  读超时向外抛（fail-closed）：防止瞬时超时被当作"空课程"、下次保存以空内容覆盖 */
   private async loadCourseFile(courseId: number): Promise<CourseData | null> {
+    let raw: unknown;
     try {
-      const raw = await this.loadData(courseStorageName(courseId));
-      if (!raw || typeof raw !== "object") return null;
-      return normalizeCourseData(raw);
+      raw = await this.withTimeout(this.loadData(courseStorageName(courseId)));
     } catch (e) {
+      if (e instanceof DataIoTimeoutError) throw e;
       console.error(`[siyuan-ai-study] 读取课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
       return null;
     }
+    if (raw == null || raw === "") return null;
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      // 非空非对象 = 文件损坏：若按"空课程"处理，下次保存会以空内容覆盖损坏文件造成丢失，
+      // 故向外抛错 fail-closed（initData 捕获后进入只读）
+      throw new Error(`课程数据文件 ${courseStorageName(courseId)} 损坏（内容不是有效对象），请从备份恢复`);
+    }
+    try {
+      return normalizeCourseData(raw);
+    } catch (e) {
+      console.error(`[siyuan-ai-study] 解析课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
+      return null;
+    }
   }
+
+  // 启动读盘成功并完成合并前为 false。读失败时若允许写入，前端拿到的空视图
+  // 会在下次保存时把空结构写盘，摧毁既有数据；故所有保存入口检查此标志直接拒绝
+  private dataReady = false;
 
   /** 用内存状态重建各文件的已写盘基线（加载完成后调用） */
   private initBaselines() {

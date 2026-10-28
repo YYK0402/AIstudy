@@ -241,11 +241,15 @@ function extractPptxShapes(xml: string): PptxShape[] {
   return shapes;
 }
 
+/** pptx 幻灯片文件名按页码数值排序（slide2 在 slide10 之前，字典序会颠倒） */
+export function sortSlideNames(names: string[]): string[] {
+  const num = (s: string) => Number(s.match(/^ppt\/slides\/slide(\d+)\.xml$/)![1]);
+  return names.filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a, b) => num(a) - num(b));
+}
+
 async function parsePptx(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const zip = await JSZip.loadAsync(arrayBuffer);
-  const slideNames = Object.keys(zip.files)
-    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
-    .sort();
+  const slideNames = sortSlideNames(Object.keys(zip.files));
   let markdown = "";
   const headings: ParsedHeading[] = [];
   for (const name of slideNames) {

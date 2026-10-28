@@ -16,6 +16,9 @@
       <button class="btn sm" @click="unarchive">取消归档</button>
     </div>
 
+    <SkeletonList v-if="loading && !stats" :rows="4" />
+    <LoadError v-else-if="error && !stats" :message="error" @retry="load" />
+    <template v-else>
     <div class="stat-grid">
       <div class="stat"><div class="k"><span class="dot" style="background:var(--as-green)"></span>已掌握知识点</div><div class="v">{{ masteredCount }}<span> / {{ stats?.kp.total ?? 0 }}</span></div></div>
       <div class="stat"><div class="k"><span class="dot" style="background:var(--as-accent)"></span>待复习</div><div class="v">{{ dueReviewCount }}</div></div>
@@ -64,14 +67,16 @@
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import {
   queryCourseStats,
@@ -80,11 +85,13 @@ import {
   queryTodayPlanTasks,
   setCourseStatus,
   updateStudyTask,
-  DATA_SAVED_EVENT,
 } from "../api";
 import type { CourseStats, StudyTask, Mastery } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
 import { taskAction } from "../constants/tasks";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
@@ -176,27 +183,40 @@ async function unarchive() {
   }
 }
 
-async function load() {
-  const courseId = courseStore.currentCourseId;
-  if (!courseId) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     stats.value = null;
     return;
   }
-  stats.value = await queryCourseStats(courseId);
-  dueReviewCount.value = (await queryDueReviews(courseId)).length;
-  questionCount.value = (await queryQuestions(courseId)).length;
-  todayTasks.value = await queryTodayPlanTasks(courseId);
-}
+  const [s, due, questions, tasks] = await Promise.all([
+    queryCourseStats(ctx.courseId),
+    queryDueReviews(ctx.courseId),
+    queryQuestions(ctx.courseId),
+    queryTodayPlanTasks(ctx.courseId),
+  ]);
+  if (ctx.isStale()) return;
+  stats.value = s;
+  dueReviewCount.value = due.length;
+  questionCount.value = questions.length;
+  todayTasks.value = tasks;
+});
 
-function onDataSaved() {
-  load().catch((e) => console.error("刷新课程主页失败:", e));
-}
+useDataSavedRefresh(() => void load());
+
+// 切换课程时立即重置并重新加载，避免展示旧课程的统计/任务
+watch(
+  () => courseStore.currentCourseId,
+  () => {
+    stats.value = null;
+    dueReviewCount.value = 0;
+    questionCount.value = 0;
+    todayTasks.value = [];
+    pendingTaskIds.value = new Set();
+    void load();
+  },
+);
 
 onMounted(() => {
-  load().catch((e) => console.error("加载课程主页失败:", e));
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
+  void load();
 });
 </script>

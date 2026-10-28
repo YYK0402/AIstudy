@@ -7,12 +7,28 @@ export async function queryProviders(): Promise<AiProvider[]> {
   return data.providers;
 }
 
+function assertProviderInput(name: string, baseUrl: string): void {
+  if (!name.trim()) {
+    throw new Error("服务商名称不能为空");
+  }
+  let u: URL;
+  try {
+    u = new URL(baseUrl.trim());
+  } catch {
+    throw new Error("接口地址格式不正确，应为完整 URL（如 https://api.openai.com/v1）");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error("接口地址仅支持 http/https 协议");
+  }
+}
+
 export async function createProvider(input: {
   name: string;
   baseUrl: string;
   apiKey: string;
   timeout?: number;
 }): Promise<AiProvider> {
+  assertProviderInput(input.name, input.baseUrl);
   const data = await getData();
   const provider: AiProvider = {
     id: nextId(data.providers),
@@ -29,12 +45,14 @@ export async function createProvider(input: {
 }
 
 export async function updateProvider(provider: AiProvider): Promise<void> {
+  assertProviderInput(provider.name, provider.baseUrl);
   const data = await getData();
   const idx = data.providers.findIndex((p) => p.id === provider.id);
-  if (idx >= 0) {
-    data.providers[idx] = provider;
-    await saveData(data);
+  if (idx < 0) {
+    throw new Error("服务商不存在");
   }
+  data.providers[idx] = provider;
+  await saveData(data);
 }
 
 export async function deleteProvider(id: number): Promise<void> {
@@ -50,15 +68,6 @@ export async function deleteProvider(id: number): Promise<void> {
     if (c.modelId != null && removedModelIds.has(c.modelId)) c.modelId = null;
   }
   await saveData(data);
-}
-
-export async function callAi(input: {
-  providerId: number;
-  modelId: string;
-  messages: Array<{ role: string; content: string }>;
-  taskKey: string;
-}): Promise<{ content: string; tokenIn: number; tokenOut: number }> {
-  return window.siyuanAiStudy.callAi(input);
 }
 
 export async function testProvider(providerId: number): Promise<{ ok: boolean; message: string }> {

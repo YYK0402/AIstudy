@@ -1,5 +1,5 @@
 import { createApp, type App as VueApp } from "vue";
-import { createPinia } from "pinia";
+import { createPinia, disposePinia, type Pinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 import { useThemeStore } from "./stores/theme";
@@ -7,6 +7,7 @@ import { installModalGlobals, uninstallModalGlobals } from "./utils/modals";
 import cssText from "./style.css?inline";
 
 let app: VueApp | null = null;
+let pinia: Pinia | null = null;
 
 // 前端入口：由插件主入口动态加载后，调用 mount 挂载到页签元素
 export function mount(el: Element): void {
@@ -20,7 +21,7 @@ export function mount(el: Element): void {
   }
 
   app = createApp(App);
-  const pinia = createPinia();
+  pinia = createPinia();
   app.use(pinia);
   app.use(router);
   app.mount(el);
@@ -34,6 +35,12 @@ export function unmount(): void {
   if (app) {
     app.unmount();
     app = null;
+  }
+  // pinia 的 effectScope 不随 app.unmount 销毁，必须显式 dispose，
+  // 否则 store 里的 onScopeDispose 清理（如 notify 的僵尸任务 interval）不会执行
+  if (pinia) {
+    disposePinia(pinia);
+    pinia = null;
   }
   const style = document.getElementById("ai-study-style");
   if (style) {

@@ -2,7 +2,8 @@ import type { AppData, ExplainRecord, KnowledgePoint } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now } from "./format";
 import { EXPLAIN_MASTER_SCORE, EXPLAIN_PASS_SCORE } from "./constants";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
+import { extractJsonCandidates, parseJsonCandidates, stripThinkBlocks } from "../utils/aiJson";
 import { ensureReviewTouchpointInData } from "./review";
 import { appendWeakPointTaskInData, completeKpTasksInData, logStudyInData } from "./studyData";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
@@ -17,23 +18,15 @@ export interface ExplainResult {
   planNotes: string[];
 }
 
-/** 讲解达标（≥60 分）→ 知识点进入复习池。 */
 function parseAiExplainResponse(content: string): { score: number; feedback: string } | null {
-  const trimmed = content.trim();
-  const jsonMatch =
-    trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-    trimmed.match(/(\{[\s\S]*\})/);
-  const candidate = (jsonMatch ? jsonMatch[1] : trimmed).trim();
-  try {
-    const parsed = JSON.parse(candidate);
-    if (parsed && typeof parsed.score === "number" && Number.isFinite(parsed.score)) {
-      return {
-        score: Math.max(0, Math.min(100, Math.round(parsed.score))),
-        feedback: typeof parsed.feedback === "string" ? parsed.feedback : "",
-      };
-    }
-  } catch {
-    // ignore
+  const parsed = parseJsonCandidates(extractJsonCandidates(content, "object"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const it = parsed as Record<string, unknown>;
+  if (typeof it.score === "number" && Number.isFinite(it.score)) {
+    return {
+      score: Math.max(0, Math.min(100, Math.round(it.score))),
+      feedback: typeof it.feedback === "string" ? it.feedback : "",
+    };
   }
   return null;
 }
@@ -54,10 +47,11 @@ export async function submitExplain(kp: KnowledgePoint, userContent: string, dur
     userContent,
   };
   const explainTpl = resolvePromptTemplate(data, "eval_explain");
-  const res = await window.siyuanAiStudy.callAi({
+  const res = await callAi({
     providerId: binding.providerId,
     modelId: binding.modelId,
     taskKey: "eval_explain",
+    scope: "course-" + kp.courseId,
     messages: [
       { role: "system", content: renderPrompt(explainTpl.system, explainVars) },
       { role: "user", content: renderPrompt(explainTpl.user, explainVars) },
@@ -128,8 +122,7 @@ function extractAskPrompt(raw: string): string {
   let text = (raw || "").trim();
   if (!text) return "";
   // 思考型模型（如 MiniMax）会在正式输出前附带思考块，取最后一个结束标记之后的内容
-  const thinkParts = text.split("</think>\n");
-  if (thinkParts.length > 1) text = thinkParts[thinkParts.length - 1].trim();
+  text = stripThinkBlocks(text);
   const fence = text.match(/```[\w-]*\s*\n?([\s\S]*?)```/);
   if (fence) text = fence[1].trim();
   text = text.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
@@ -162,10 +155,11 @@ export async function generateKpAskPrompt(kp: KnowledgePoint, force = false): Pr
     kpContent: stored.content || "（无描述，请按知识点名称判断）",
   };
   const askTpl = resolvePromptTemplate(data, "gen_ask");
-  const res = await window.siyuanAiStudy.callAi({
+  const res = await callAi({
     providerId: binding.providerId,
     modelId: binding.modelId,
     taskKey: "gen_ask",
+    scope: "course-" + kp.courseId,
     messages: [
       { role: "system", content: renderPrompt(askTpl.system, askVars) },
       { role: "user", content: renderPrompt(askTpl.user, askVars) },

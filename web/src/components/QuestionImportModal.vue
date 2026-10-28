@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open }" @click.self="$emit('close')">
     <div class="modal modal--lg">
       <h2>导入真题</h2>
@@ -29,7 +30,7 @@
       <div v-if="showCreatePaper" class="qimp-paper-create">
         <input v-model="newPaperName" class="input" placeholder="试卷名称，如：2024考研政治真题" />
         <input v-model.number="newPaperYear" class="input" type="number" placeholder="年份" style="width:100px" />
-        <button class="btn ghost sm" @click="createPaper">创建</button>
+        <button class="btn ghost sm" :disabled="creatingPaper" @click="createPaper">{{ creatingPaper ? "创建中…" : "创建" }}</button>
         <button class="btn ghost sm" @click="showCreatePaper = false">取消</button>
       </div>
       <div class="modal-actions" style="margin-top:12px">
@@ -45,6 +46,9 @@
         </p>
         <div v-if="report.errors.length" class="qimp-errors">
           <p v-for="e in report.errors" :key="e.line + e.reason" class="qimp-err">第 {{ e.line }} 行：{{ e.reason }}</p>
+        </div>
+        <div v-if="report.warnings.length" class="qimp-warnings">
+          <p v-for="w in report.warnings" :key="w.line + w.reason" class="qimp-warn-line">第 {{ w.line }} 行：{{ w.reason }}</p>
         </div>
         <div v-if="report.drafts.length" class="qimp-list">
           <div v-for="(d, i) in report.drafts" :key="i" class="qimp-item">
@@ -66,6 +70,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -102,19 +107,24 @@ const showCreatePaper = ref(false);
 const newPaperName = ref("");
 const newPaperYear = ref<number | undefined>(undefined);
 const existingPapers = ref<ExamPaperWithQuestions[]>([]);
+const creatingPaper = ref(false);
 
 watch(
   () => props.open,
   async (v) => {
-    if (v) {
+    if (!v) return;
+    try {
       existingPapers.value = await getExamPapers(props.courseId);
-      report.value = null;
-      paperId.value = null;
-      text.value = "";
-      showCreatePaper.value = false;
-      newPaperName.value = "";
-      newPaperYear.value = undefined;
+    } catch (e) {
+      window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "加载试卷列表失败", 4000, "error");
+      existingPapers.value = [];
     }
+    report.value = null;
+    paperId.value = null;
+    text.value = "";
+    showCreatePaper.value = false;
+    newPaperName.value = "";
+    newPaperYear.value = undefined;
   },
 );
 
@@ -134,15 +144,22 @@ function preview() {
 }
 
 async function createPaper() {
-  if (!newPaperName.value.trim()) return;
-  const paper = await createExamPaper(
-    props.courseId,
-    newPaperName.value.trim(),
-    newPaperYear.value ?? 2024,
-  );
-  existingPapers.value = await getExamPapers(props.courseId);
-  paperId.value = paper.id;
-  showCreatePaper.value = false;
+  if (!newPaperName.value.trim() || creatingPaper.value) return;
+  creatingPaper.value = true;
+  try {
+    const paper = await createExamPaper(
+      props.courseId,
+      newPaperName.value.trim(),
+      newPaperYear.value ?? 2024,
+    );
+    existingPapers.value = await getExamPapers(props.courseId);
+    paperId.value = paper.id;
+    showCreatePaper.value = false;
+  } catch (e) {
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "创建试卷失败", 4000, "error");
+  } finally {
+    creatingPaper.value = false;
+  }
 }
 
 async function doImport() {

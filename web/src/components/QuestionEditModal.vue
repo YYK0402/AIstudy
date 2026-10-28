@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open }" @click.self="close">
     <div class="modal">
       <h2>编辑题目</h2>
@@ -93,6 +94,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open }" @click.self="close">
     <div class="modal qset-modal">
       <div class="qset-scroll">
@@ -91,6 +92,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

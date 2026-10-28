@@ -1,10 +1,12 @@
 import type { AppData, Chapter, KnowledgePoint, Material } from "../types/appData";
 import type { ParsedHeading } from "../utils/documentParser";
 import { getData, saveData } from "./storage";
+import { getSettings } from "./settings";
 import { nextId, now } from "./format";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
+import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
-import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc } from "./siyuanDoc";
+import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc, removeSiyuanDocIfExists } from "./siyuanDoc";
 import { findChapterByTitle, normalizeChapterRef, normalizeKpName } from "./kpMatch";
 import { removeCsvIds } from "../utils/csvIds";
 
@@ -70,16 +72,19 @@ export async function createChapter(input: {
   const data = await getData();
   const course = data.courses.find((c) => c.id === input.courseId);
   const name = input.name.trim();
-  const dup = data.chapters.find((c) => c.courseId === input.courseId && c.name === name);
+  // 判重口径与知识点章节匹配一致（normalizeChapterRef）：「第X章/节」前缀、空格差异都视为同名
+  const dup = data.chapters.find(
+    (c) => c.courseId === input.courseId && normalizeChapterRef(c.name) === normalizeChapterRef(name),
+  );
   if (dup) {
-    throw new Error(`已存在同名章节「${name}」，请换一个名称（知识点按章节名匹配，重名会导致归属混乱）`);
+    throw new Error(`已存在同名章节「${dup.name}」，请换一个名称（知识点按章节名匹配，重名会导致归属混乱）`);
   }
   const parentChapter = input.parentId ? data.chapters.find((c) => c.id === input.parentId) : null;
   // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名）
   const path = parentChapter
     ? `/${course?.name ?? "课程"}/${parentChapter.name}/${name}`
     : `/${course?.name ?? "课程"}/${name}`;
-  const docId = await persistDocIfEnabled(`# ${name}`, path);
+  const docId = await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`);
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
   const chapter: Chapter = {
@@ -114,7 +119,9 @@ export async function importChapterTree(
   const existing = data.chapters.filter((c) => c.courseId === courseId);
   // 去空白归一化比较：AI 目录矫正可能只改空格/标点（如「第一章X」→「第一章 X」），避免误判为新章节重复建章
   const norm = (s: string) => s.replace(/\s+/g, "");
+  const persistOn = (await getSettings()).persistToSiyuan;
   let created = 0;
+  let docFailed = 0;
   for (const node of nodes) {
     const name = node.name.trim();
     if (!name) continue;
@@ -130,6 +137,7 @@ export async function importChapterTree(
     // 落库思源：章作为课程子文档，节作为父章子文档（path 含文档名）
     const path = parent ? `${coursePath}/${parent.name}/${name}` : `${coursePath}/${name}`;
     const docId = await persistDocIfEnabled(`# ${name}`, path);
+    if (persistOn && !docId) docFailed++;
     const chapter: Chapter = {
       id: nextId(data.chapters),
       courseId,
@@ -167,6 +175,10 @@ export async function importChapterTree(
       .map((n) => existing.find((c) => c.parentId === ch.id && norm(c.name) === norm(n.name.trim()))?.id)
       .filter((id): id is number => id != null);
     renumber(existing.filter((c) => c.parentId === ch.id), unitIds);
+  }
+  // 批量导入不逐条弹窗，聚合提示一次（章节数据本身已落库，仅思源文档缺失）
+  if (docFailed > 0) {
+    window.siyuanAiStudy.showMessage(`章节树导入：${docFailed} 个章节文档未落库到思源（章节数据不受影响）`, 5000, "error");
   }
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
@@ -235,29 +247,26 @@ export async function correctTocWithAi(
   if (!binding) return { headings, corrected: false, failed: false };
   try {
     const lines = headings.map((h, i) => `${i + 1}. [L${h.level}] ${h.text}`).join("\n");
+    // prompt 上限：目录过长的文档不做 AI 矫正，直接回退原列表（非报错，矫正只是增强）
+    if (headings.length > 200 || lines.length > 60000) {
+      return { headings, corrected: false, failed: false };
+    }
     const tocVars = { lines };
     const tocTpl = resolvePromptTemplate(data, "recognize_toc");
-    const res = await window.siyuanAiStudy.callAi({
+    const res = await callAi({
       providerId: binding.providerId,
       modelId: binding.modelId,
       taskKey: "recognize_toc",
+      scope: courseId != null ? "course-" + courseId : undefined,
       messages: [
         { role: "system", content: renderPrompt(tocTpl.system, tocVars) },
         { role: "user", content: renderPrompt(tocTpl.user, tocVars) },
       ],
     });
-    const trimmed = res.content.trim();
-    const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) || trimmed.match(/(\[[\s\S]*\])/);
-    const candidate = (jsonMatch ? jsonMatch[1] : trimmed).trim();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {
-      return { headings, corrected: false, failed: true };
-    }
-    if (!Array.isArray(parsed)) return { headings, corrected: false, failed: true };
+    const arr = unwrapArray(parseJsonCandidates(extractJsonCandidates(res.content, "array")));
+    if (!arr) return { headings, corrected: false, failed: true };
     const corrected: ParsedHeading[] = [];
-    for (const it of parsed) {
+    for (const it of arr) {
       const rec = (it ?? {}) as { text?: unknown; level?: unknown };
       const text = typeof rec.text === "string" ? rec.text.trim() : "";
       const level = Number(rec.level);
@@ -289,16 +298,41 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
   }
 }
 
-/** 批量应用章节 sort/parentId 变更（拖拽排序），单次保存 */
+/** 批量应用章节 sort/parentId 变更（拖拽排序），单次保存；换父级时同步移动思源树对应文档 */
 export async function applyChapterMoves(moves: Array<{ id: number; parentId: number | null; sort: number }>): Promise<void> {
   const data = await getData();
+  const moveErrors: string[] = [];
   for (const mv of moves) {
     const idx = data.chapters.findIndex((c) => c.id === mv.id);
-    if (idx >= 0) {
-      data.chapters[idx] = { ...data.chapters[idx], parentId: mv.parentId, sort: mv.sort };
+    if (idx < 0) continue;
+    const cur = data.chapters[idx];
+    if (cur.parentId !== mv.parentId) {
+      // 仅换父级需要移动文档（同父换序不同步，减少内核调用）
+      const docId = cur.siyuanBlockId;
+      if (docId) {
+        const targetDocId = mv.parentId
+          ? data.chapters.find((c) => c.id === mv.parentId)?.siyuanBlockId
+          : data.courses.find((c) => c.id === cur.courseId)?.siyuanDocId;
+        if (targetDocId) {
+          try {
+            await window.siyuanAiStudy.moveSiyuanDoc(docId, targetDocId);
+          } catch (e) {
+            console.error("同步章节移动失败:", e);
+            moveErrors.push(`章节「${cur.name}」文档移动失败`);
+          }
+        }
+      }
     }
+    data.chapters[idx] = { ...cur, parentId: mv.parentId, sort: mv.sort };
   }
   await saveData(data);
+  if (moveErrors.length) {
+    window.siyuanAiStudy.showMessage(
+      `章节数据已调整，但思源文档树未完全同步：${moveErrors.join("；")}`,
+      5000,
+      "error",
+    );
+  }
 }
 
 /** 批量应用知识点 sort（拖拽换序），单次保存 */
@@ -333,10 +367,28 @@ export async function deleteChapters(ids: number[]): Promise<void> {
       }
     }
   }
-  // 级联删除思源文档
+  // 级联删除思源文档（await 以便聚合失败提示）
+  const siyuanErrors: string[] = [];
   for (const c of data.chapters) {
-    if (removed.has(c.id) && c.siyuanBlockId) {
-      removeSiyuanDoc(c.siyuanBlockId).catch((e) => console.error("删除思源章节文档失败:", e));
+    if (!removed.has(c.id)) continue;
+    if (c.siyuanBlockId) {
+      try {
+        await removeSiyuanDocIfExists(c.siyuanBlockId);
+      } catch (e) {
+        console.error("删除思源章节文档失败:", e);
+        siyuanErrors.push(`章节「${c.name}」文档删除失败`);
+      }
+    }
+    // 学习对话文档：被删章/节的 conversationsDocs 条目一并清理
+    const convEntry = data.conversationsDocs?.[String(c.id)];
+    if (convEntry) {
+      delete data.conversationsDocs![String(c.id)];
+      try {
+        await removeSiyuanDocIfExists(convEntry.docId);
+      } catch (e) {
+        console.error("删除学习对话文档失败:", e);
+        siyuanErrors.push(`「${c.name}」学习对话文档删除失败`);
+      }
     }
   }
   data.chapters = data.chapters.filter((c) => !removed.has(c.id));
@@ -357,5 +409,12 @@ export async function deleteChapters(ids: number[]): Promise<void> {
     }
   }
   await saveData(data);
+  if (siyuanErrors.length) {
+    window.siyuanAiStudy.showMessage(
+      `章节数据已删除，但思源文档清理不完整：${siyuanErrors.join("；")}`,
+      5000,
+      "error",
+    );
+  }
 }
 

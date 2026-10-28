@@ -9,7 +9,11 @@ export interface Sm2State {
  * 规则与原实现一致：忘了重置为一阶并降低难度因子；其余按 SM2 公式更新难度因子与间隔。
  */
 export function nextSm2(state: Sm2State, n: number): Sm2State {
-  if (n === 0) {
+  if (!Number.isInteger(n) || n < 0 || n > 5) {
+    throw new Error(`非法质量分 n=${n}（应为 0-5 整数）`);
+  }
+  // 对齐标准 SM-2：n<3（忘了/较差）一律重置到一阶并降低难度因子
+  if (n < 3) {
     return {
       stage: 1,
       intervalDays: 1,

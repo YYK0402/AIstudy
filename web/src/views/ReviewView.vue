@@ -40,8 +40,10 @@
           {{ dueList.length }} 项
         </span>
       </h3>
+        <SkeletonList v-if="loading && dueList.length === 0" :rows="4" />
+        <LoadError v-else-if="error && dueList.length === 0" :message="error" @retry="load" />
         <EmptyState
-          v-if="dueList.length === 0"
+          v-else-if="dueList.length === 0"
           compact
           icon="clock"
           text="今日无到期复习项。&#10;答错的题目、讲解达标的知识点和闪卡会自动进入复习计划。"
@@ -135,11 +137,15 @@
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
 import { onMounted, reactive, ref, watch } from "vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import EmptyState from "../components/EmptyState.vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { queryDueReviews, queryKnowledgePoints, submitReview, submitKpReview, submitAnswer, QUESTION_TYPE_LABELS } from "../api";
 import type { ReviewDueItem, QuestionType, KnowledgePoint } from "../api";
+import { capStudySec } from "../constants/study";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -173,7 +179,7 @@ async function gradeTarget(g: "forgotten" | "vague" | "solid") {
   if (!targetKp.value || targetBusy.value) return;
   targetBusy.value = true;
   try {
-    const durationSec = targetStartAt.value ? Math.max(0, Math.round((Date.now() - targetStartAt.value) / 1000)) : 0;
+    const durationSec = targetStartAt.value ? capStudySec((Date.now() - targetStartAt.value) / 1000) : 0;
     await submitKpReview(targetKp.value.id, g, durationSec);
     window.siyuanAiStudy.showMessage(g === "solid" ? "复习完成，间隔已推后（当天复习任务若有则已勾掉）" : "复习完成，已按记忆强度重排间隔");
     router.replace({ path: "/review" });
@@ -198,13 +204,15 @@ function reveal(id: number) {
   revealed[id] = false;
 }
 
-async function load() {
-  if (!currentCourseId()) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     dueList.value = [];
     return;
   }
-  dueList.value = await queryDueReviews(currentCourseId());
-}
+  const due = await queryDueReviews(ctx.courseId);
+  if (ctx.isStale()) return;
+  dueList.value = due;
+});
 
 async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
   const id = item.schedule.id;
@@ -222,7 +230,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
       }
     }
     const startAt = itemStartAt[id];
-    const durationSec = startAt ? Math.max(0, Math.round((Date.now() - startAt) / 1000)) : 0;
+    const durationSec = startAt ? capStudySec((Date.now() - startAt) / 1000) : 0;
     await submitReview(item.schedule, g, durationSec);
     dueList.value = dueList.value.filter((x) => x.schedule.id !== id);
     delete revealed[id];
@@ -244,7 +252,7 @@ watch(
     for (const k of Object.keys(busy)) delete busy[Number(k)];
     for (const k of Object.keys(essayAnswers)) delete essayAnswers[Number(k)];
     for (const k of Object.keys(itemStartAt)) delete itemStartAt[Number(k)];
-    load();
+    void load();
     loadTarget();
   },
 );
@@ -252,7 +260,7 @@ watch(
 watch(() => route.query.kp, () => loadTarget());
 
 onMounted(() => {
-  load();
+  void load();
   loadTarget();
 });
 </script>

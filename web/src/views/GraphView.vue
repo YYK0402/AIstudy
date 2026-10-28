@@ -112,6 +112,7 @@
     </template>
 
     <!-- 节点列表（键盘可达的图谱替代入口） -->
+    <Teleport to=".ai-study-app">
     <div class="modal-mask" :class="{ open: listOpen }" @click.self="listOpen = false">
       <div class="modal">
         <h2>知识点列表</h2>
@@ -128,8 +129,10 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
     <!-- 节点详情 -->
+    <Teleport to=".ai-study-app">
     <div v-if="selectedKp" class="modal-mask open" @click.self="selectedKpId = null">
       <div class="modal">
         <h2>{{ selectedKp.name }}</h2>
@@ -167,6 +170,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -180,6 +184,7 @@ import { clearGraphPositions, loadGraphPositions, saveGraphPositions } from "../
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useCourseStore } from "../stores/course";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import {
   queryKnowledgePoints,
   inferGraphRelations,
@@ -187,7 +192,6 @@ import {
   removeKpEdge,
   writeGraphToSiyuan,
   parseKpPrevIds,
-  DATA_SAVED_EVENT,
 } from "../api";
 import type { KnowledgePoint, Mastery } from "../api";
 
@@ -439,9 +443,7 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-function onDataSaved() {
-  load().catch((e) => console.error("刷新图谱失败:", e));
-}
+useDataSavedRefresh(() => load().catch((e) => console.error("刷新图谱失败:", e)));
 
 watch(
   () => courseStore.currentCourseId,
@@ -457,11 +459,9 @@ watch(
 
 onMounted(() => {
   load().catch((e) => console.error("加载图谱失败:", e));
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
   window.addEventListener("keydown", onKeydown);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
   window.removeEventListener("keydown", onKeydown);
 });
 </script>

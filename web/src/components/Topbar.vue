@@ -72,8 +72,8 @@ import {
   cancelOrganizeTask,
   startExtractTask,
   cancelExtractTask,
-  DATA_SAVED_EVENT,
 } from "../api";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 
 const route = useRoute();
 const router = useRouter();
@@ -223,22 +223,20 @@ async function loadStats() {
 function onCourseChange() {
   loadStats();
 }
-function onDataSaved() {
-  loadStats();
-}
 /** 打开任何弹窗时收起通知面板，避免面板压住弹窗 */
 function onModalOpen() {
   notifyStore.panelOpen = false;
 }
 
+// 顶栏统计按当前课程刷新（global 脏集兜底全量）
+useDataSavedRefresh(loadStats);
+
 onMounted(() => {
   loadStats();
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
   window.addEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.addEventListener("click", onDocClick);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
   window.removeEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.removeEventListener("click", onDocClick);
 });

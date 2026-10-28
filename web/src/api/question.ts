@@ -1,4 +1,4 @@
-import type { KnowledgePoint, Question } from "../types/appData";
+import type { ExamPaper, KnowledgePoint, Question } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now, parseQuestionKpIds, parseQuestionOptions, shuffleList } from "./format";
 import { QUESTION_DIFFICULTY_LABELS, QUESTION_SOURCE_LABELS, QUESTION_TYPE_LABELS, questionSourceLabel } from "./constants";
@@ -83,10 +83,10 @@ export async function deleteQuestions(ids: number[]): Promise<number> {
   const before = data.questions.length;
   data.questions = data.questions.filter((q) => !idSet.has(q.id));
   const removed = before - data.questions.length;
-  // 同步清理答题记录/错题/复习排期，避免悬挂引用
+  // 同步清理答题记录/错题/题目复习排期，避免悬挂引用（qId 为空的知识点/闪卡触点保留）
   data.answerRecords = data.answerRecords.filter((r) => !idSet.has(r.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !idSet.has(w.qId));
-  data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId !== null && !idSet.has(s.qId));
+  data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId === null || !idSet.has(s.qId));
   await saveData(data);
   return removed;
 }
@@ -185,14 +185,6 @@ export async function batchBindQuestionKps(
   return count;
 }
 
-export interface ExamPaper {
-  id: number;
-  courseId: number;
-  name: string;
-  year: number;
-  createTime: string;
-}
-
 export interface ExamPaperWithQuestions extends ExamPaper {
   questionCount: number;
 }
@@ -227,10 +219,11 @@ export async function deleteExamPaper(id: number): Promise<void> {
   const paperQuestionIds = data.questions.filter((q) => q.paperId === id).map((q) => q.id);
   data.questions = data.questions.filter((q) => q.paperId !== id);
   data.examPapers = data.examPapers.filter((p) => p.id !== id);
-  // 清理答题记录/错题
+  // 清理答题记录/错题/题目复习排期（对照 deleteQuestions，避免悬挂 qId 触点；qId 为空的知识点/闪卡触点保留）
   const qIdSet = new Set(paperQuestionIds);
   data.answerRecords = data.answerRecords.filter((r) => !qIdSet.has(r.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !qIdSet.has(w.qId));
+  data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId === null || !qIdSet.has(s.qId));
   await saveData(data);
 }
 

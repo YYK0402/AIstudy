@@ -1,6 +1,6 @@
 import type { AppData } from "../types/appData";
 import { getData, saveData } from "./storage";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
 import { formatLocalDate, parseKpPrevIds, truncateText } from "./format";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { getSettings } from "./settings";
@@ -34,10 +34,11 @@ export async function inferGraphRelations(courseId: number, reset = true): Promi
     const kpLines = batch.map((k) => `- ${k.id}. ${k.name}：${truncateText(k.content, 120) || "暂无描述"}`).join("\n");
     const graphVars = { kpLines };
     const graphTpl = resolvePromptTemplate(data, "infer_graph");
-    const res = await window.siyuanAiStudy.callAi({
+    const res = await callAi({
       providerId: binding.providerId,
       modelId: binding.modelId,
       taskKey: "infer_graph",
+      scope: "course-" + courseId,
       messages: [
         { role: "system", content: renderPrompt(graphTpl.system, graphVars) },
         { role: "user", content: renderPrompt(graphTpl.user, graphVars) },

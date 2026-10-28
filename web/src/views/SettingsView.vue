@@ -415,6 +415,9 @@ async function toggleProvider(provider: AiProvider) {
   try {
     await updateProvider(provider);
   } catch (error) {
+    // updateProvider 在写盘前已把 store 中的服务商替换为当前对象（同引用），
+    // 失败时不还原会出现"UI 显示已切换但磁盘未变"，必须回滚
+    provider.enabled = !provider.enabled;
     console.error("更新服务商状态失败:", error);
     window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新服务商状态失败", 4000, "error");
   }

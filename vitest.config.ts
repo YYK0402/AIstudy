@@ -4,7 +4,8 @@ import vue from "@vitejs/plugin-vue";
 export default defineConfig({
   plugins: [vue()],
   test: {
-    include: ["web/src/**/__tests__/**/*.test.ts"],
+    include: ["web/src/**/__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

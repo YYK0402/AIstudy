@@ -1,11 +1,12 @@
 import type { AppData, FlashCard, KnowledgePoint } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, truncateText } from "./format";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi, AiCanceledError } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { courseTaskId } from "../stores/notify";
 import { parseFlashcardsJson } from "../utils/flashcardGen";
+import { nextSm2 } from "../utils/sm2";
 import { reviewNextDue } from "./review";
 import { isReviewScheduleDue } from "../utils/reviewDue";
 
@@ -23,14 +24,17 @@ export async function queryDueFlashcardCount(courseId: number): Promise<number> 
   return data.reviewSchedules.filter((s) => isReviewScheduleDue(s, today, new Set(), new Set(), cardIds)).length;
 }
 
-/** 闪卡触点：首建/重置排明天；已到期触点保持既有节奏 */
-function ensureCardReviewInData(data: AppData, cardId: number): void {
+/** 闪卡触点：首建排明天；已到期触点按 SM-2 正常推进，未到期保持原排期不动 */
+export function ensureCardReviewInData(data: AppData, cardId: number): void {
   const existing = data.reviewSchedules.find((s) => s.cardId !== undefined && s.cardId === cardId);
   if (existing) {
-    if (existing.dueTime < reviewNextDue(0)) return;
-    existing.dueTime = reviewNextDue(1);
-    existing.stage = 1;
-    existing.intervalDays = 1;
+    const today = formatLocalDate();
+    if (existing.dueTime > today) return; // 未到期：保持原排期不动（不重置 stage、不缩短间隔）
+    const next = nextSm2(existing, 5);
+    existing.stage = next.stage;
+    existing.intervalDays = next.intervalDays;
+    existing.easeFactor = next.easeFactor;
+    existing.dueTime = reviewNextDue(next.intervalDays);
     return;
   }
   data.reviewSchedules.push({
@@ -133,7 +137,7 @@ const FLASHCARD_GEN_BATCH = 10;
 export async function generateFlashcards(
   courseId: number,
   kpIds: number[],
-  options: { overwrite?: boolean; onProgress?: (done: number, total: number) => void } = {},
+  options: { overwrite?: boolean; isAborted?: () => boolean; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<GenerateFlashcardsResult> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === courseId);
@@ -163,6 +167,11 @@ export async function generateFlashcards(
   try {
     const total = kps.length;
     for (let i = 0; i < kps.length; i += FLASHCARD_GEN_BATCH) {
+      // 批次间隙检查取消：已完成批次已逐批落库，保留；任务标记 canceled
+      if (options.isAborted?.()) {
+        fcTask.canceled("AI 闪卡生成已取消");
+        return result;
+      }
       const batch = kps.slice(i, i + FLASHCARD_GEN_BATCH);
       const kpLines = batch.map((k, idx) => `${idx}. ${k.name}：${truncateText(k.content, 300) || "（暂无描述）"}`).join("\n");
       const baseMessages = [
@@ -170,20 +179,22 @@ export async function generateFlashcards(
         { role: "user", content: renderPrompt(tpl.user, { courseName: course.name, kpLines }) },
       ];
       let parsed = parseFlashcardsJson(
-        (await window.siyuanAiStudy.callAi({
+        (await callAi({
           providerId: binding.providerId,
           modelId: binding.modelId,
           taskKey: "gen_flashcard",
+          scope: "course-" + courseId,
           messages: baseMessages,
         })).content,
         batch.length,
       );
       if (parsed.items.length === 0) {
         // 重试一次：追加自纠正指令再调一次
-        const retryRaw = (await window.siyuanAiStudy.callAi({
+        const retryRaw = (await callAi({
           providerId: binding.providerId,
           modelId: binding.modelId,
           taskKey: "gen_flashcard",
+          scope: "course-" + courseId,
           messages: [
             ...baseMessages,
             {
@@ -241,6 +252,11 @@ export async function generateFlashcards(
     fcTask.done(msg);
     return result;
   } catch (e) {
+    if (e instanceof AiCanceledError) {
+      // 用户取消：已完成批次已落库，任务标为取消（非失败），返回部分结果供 UI 显示取消文案
+      fcTask.canceled("AI 闪卡生成已取消");
+      return result;
+    }
     fcTask.fail(e, "AI 闪卡生成失败");
     throw e;
   }

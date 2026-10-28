@@ -16,6 +16,8 @@ export * from "./explain";
 export * from "./generate";
 export * from "./flashcard";
 export * from "./plan";
+export * from "./planSchedule";
+export * from "./bgTask";
 export * from "./extractState";
 export * from "./material";
 export * from "./kp";

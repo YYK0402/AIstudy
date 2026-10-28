@@ -36,7 +36,17 @@ export function courseTaskId(courseId: number, taskType: "gen_question" | "gen_f
 
 const STORAGE_KEY = "ai-study:org-tasks";
 
+// 已完成/失败任务的保留时长：超过后加载时丢弃，防 localStorage 无限累积
+const FINISHED_TASK_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
 type LegacyTask = Partial<BgTaskState> & { materialName?: string };
+
+function isOldFinishedTask(t: BgTaskState): boolean {
+  if (t.status !== "done" && t.status !== "failed") return false;
+  const ts = Date.parse(t.finishedAt ?? t.startedAt);
+  // 时间戳缺失/非法时保守保留
+  return Number.isFinite(ts) && Date.now() - ts > FINISHED_TASK_KEEP_MS;
+}
 
 function loadPersisted(): BgTaskState[] {
   try {
@@ -78,10 +88,13 @@ function loadPersisted(): BgTaskState[] {
           finishedAt: t.finishedAt ?? null,
         };
         // 页面刷新/页签重开后，进行中的任务已无法继续：标记失败供重试
-        return base.status === "running"
-          ? { ...base, status: "failed" as const, message: "任务中断（页面刷新或关闭），请重试" }
-          : base;
-      });
+        const fixed =
+          base.status === "running"
+            ? { ...base, status: "failed" as const, message: "任务中断（页面刷新或关闭），请重试" }
+            : base;
+        return isOldFinishedTask(fixed) ? null : fixed;
+      })
+      .filter((t): t is BgTaskState => t != null);
   } catch {
     return [];
   }

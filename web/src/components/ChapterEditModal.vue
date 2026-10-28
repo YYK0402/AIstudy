@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open: open }" @click.self="close">
     <div class="modal">
       <h2>{{ isCreate ? "添加章节（顶层）" : "添加小节" }}</h2>
@@ -14,6 +15,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

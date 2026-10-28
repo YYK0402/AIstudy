@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open }" @click.self="$emit('close')">
     <div class="modal modal--lg mp-modal">
       <div class="mp-header">
@@ -29,6 +30,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

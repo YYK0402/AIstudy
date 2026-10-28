@@ -28,9 +28,17 @@ export interface ImportError {
   reason: string;
 }
 
+export interface ImportWarning {
+  /** 该题块首行行号（1 起） */
+  line: number;
+  reason: string;
+}
+
 export interface ImportParseResult {
   drafts: ImportedQuestionDraft[];
   errors: ImportError[];
+  /** 非阻断告警（如块内重复「答案:」行） */
+  warnings: ImportWarning[];
   /** 解析到的试卷名称（来自 markdown 头部） */
   paperName?: string;
   /** 解析到的年份（来自 markdown 头部） */
@@ -91,11 +99,12 @@ function parseBlock(
   blockLines: string[],
   startLine: number,
   kpByName: Map<string, KnowledgePoint>,
-): { draft?: ImportedQuestionDraft; error?: string } {
+): { draft?: ImportedQuestionDraft; error?: string; warning?: string } {
   let title = "";
   const options: string[] = [];
   let answerRaw = "";
   let hasAnswer = false;
+  let warning = "";
   let analysis = "";
   let qType: QuestionType | null = null;
   let difficulty: QuestionDifficulty = "medium";
@@ -107,7 +116,12 @@ function parseBlock(
     // 标题行与引用行视为元信息（导出文件头部）
     if (/^#{1,6}\s/.test(line) || line.startsWith(">")) continue;
     let m = line.match(/^(?:[-*]\s*)?(?:正确答案|答案)\s*[:：]\s*(.*)$/);
-    if (m) { answerRaw = m[1].trim(); hasAnswer = true; continue; }
+    if (m) {
+      if (hasAnswer) warning = '重复的「答案:」行，已采用最后一行';
+      answerRaw = m[1].trim();
+      hasAnswer = true;
+      continue;
+    }
     m = line.match(/^(?:[-*]\s*)?解析\s*[:：]\s*(.*)$/);
     if (m) { analysis = m[1].trim(); continue; }
     m = line.match(/^(?:[-*]\s*)?难度\s*[:：]\s*(.*)$/);
@@ -149,7 +163,10 @@ function parseBlock(
   const isJudgeWord = (s: string) => JUDGE_RIGHT.has(s) || JUDGE_WRONG.has(s);
   // 题型推断：无选项=简答；固定两项判断词=判断；否则按答案字母数
   let tokens = answerRaw.split(/[,，、;；\s]+/).filter(Boolean);
-  const letterTokens = tokens.filter((t) => /^[A-Ha-h]$/.test(t));
+  // 多选连续字母答案（"AB" / "ABC"）按字母展开
+  if (tokens.length === 1 && /^[A-Ha-h]{2,8}$/.test(tokens[0]) && options.length >= 2) {
+    tokens = tokens[0].toUpperCase().split("");
+  }
   if (!qType) {
     if (options.length === 0) {
       qType = "essay";
@@ -225,6 +242,7 @@ function parseBlock(
       kpIds,
       unmatchedKpNames,
     },
+    warning: warning || undefined,
   };
 }
 
@@ -256,12 +274,14 @@ export function parseQuestionsMarkdown(
     }
   }
 
+  const warnings: ImportWarning[] = [];
   for (const block of splitBlocks(lines)) {
-    const { draft, error } = parseBlock(block.lines, block.start, kpByName);
+    const { draft, error, warning } = parseBlock(block.lines, block.start, kpByName);
     if (draft) drafts.push(draft);
     else errors.push({ line: block.start, reason: error ?? "无法解析" });
+    if (warning) warnings.push({ line: block.start, reason: warning });
   }
-  return { drafts, errors, paperName, paperYear };
+  return { drafts, errors, warnings, paperName, paperYear };
 }
 
 export const IMPORT_SAMPLE = `# 2024考研政治真题

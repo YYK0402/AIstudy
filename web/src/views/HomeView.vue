@@ -2,7 +2,14 @@
   <div class="page">
     <div class="hero">
       <div class="greet">{{ greeting }}，专心者<small>{{ courseStore.courses.length }} 门课程 · 点击课程卡片开始学习</small></div>
-      <div class="streak"><div class="num">{{ courseStore.courses.length }}</div><div class="lbl">我的课程</div></div>
+      <div class="hero-stats">
+        <div class="streak"><div class="num">{{ streakDays }}</div><div class="lbl">连续学习天数</div></div>
+        <div class="streak"><div class="num">{{ todayMin }}</div><div class="lbl">今日（分钟）</div></div>
+        <div class="streak"><div class="num">{{ weekMin }}</div><div class="lbl">近 7 天（分钟）</div></div>
+        <div class="mini-bars" title="近 7 天学习时长">
+          <div v-for="d in trendDaily" :key="d.date" class="mb" :class="{ zero: d.seconds === 0 }" :style="{ height: trendBarH(d.seconds) }"></div>
+        </div>
+      </div>
     </div>
 
     <div class="section-head">
@@ -12,7 +19,6 @@
           {{ t.label }}{{ t.count > 0 ? ` ${t.count}` : "" }}
         </button>
       </div>
-      <button class="btn sm" @click="modalStore.openNewCourse()">＋ 新建课程</button>
     </div>
     <div class="course-grid">
       <div
@@ -46,6 +52,29 @@
       <div class="course-card add" @click="modalStore.openNewCourse()">
         <span class="plus">＋</span>
         <span class="txt">新建一门课程</span>
+      </div>
+    </div>
+
+    <div class="home-metrics">
+      <div class="card metric-card" @click="router.push('/review')">
+        <h3>复习预测<span class="metric-hint">未来 7 天到期复习量 · 点击进入复习计划</span></h3>
+        <div v-if="forecastTotal === 0" class="metric-empty">近期无复习安排</div>
+        <div v-else class="forecast-bars">
+          <div v-for="d in forecast" :key="d.date" class="fb">
+            <span class="fb-count">{{ d.count > 0 ? d.count : "" }}</span>
+            <div class="fb-bar" :class="{ zero: d.count === 0 }" :style="{ height: forecastBarH(d.count) }"></div>
+            <span class="fb-label">{{ d.label }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card metric-card" @click="router.push('/wrong')">
+        <h3>错题快照<span class="metric-hint">点击进入错题本</span></h3>
+        <div class="wrong-stats">
+          <div class="ws"><div class="num">{{ wrongSnap.active }}</div><div class="lbl">在管</div></div>
+          <div class="ws"><div class="num">{{ wrongSnap.weekNew }}</div><div class="lbl">本周新增</div></div>
+          <div class="ws"><div class="num">{{ wrongSnap.nearGraduate }}</div><div class="lbl">快毕业</div></div>
+        </div>
+        <div class="metric-note">快毕业 = 再答对 1 次即毕业</div>
       </div>
     </div>
 
@@ -98,9 +127,10 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import { emojiOf } from "../utils";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
@@ -117,9 +147,12 @@ import {
   setCourseStatus,
   formatLocalDate,
   truncateText,
-  DATA_SAVED_EVENT,
 } from "../api";
 import type { Course } from "../api";
+import { aggregateStudyTrend } from "../utils/studyTrend";
+import type { StudyTrendDay } from "../utils/studyTrend";
+import { studyStreak, reviewForecast, wrongSnapshot } from "../utils/studyStats";
+import type { ReviewForecastDay, WrongSnapshot } from "../utils/studyStats";
 
 const router = useRouter();
 const courseStore = useCourseStore();
@@ -171,6 +204,30 @@ const greeting = computed(() => {
 
 /** 每门课程的学习概览：知识点总数 / 已掌握（掌握+精通） */
 const courseStats = reactive<Record<number, { kpTotal: number; mastered: number }>>({});
+
+// ===== 学习仪表盘：连续天数 / 时长趋势 / 复习预测 / 错题快照 =====
+const streakDays = ref(0);
+const trendDaily = ref<StudyTrendDay[]>([]);
+const todaySec = ref(0);
+const weekSec = ref(0);
+const forecast = ref<ReviewForecastDay[]>([]);
+const wrongSnap = reactive<WrongSnapshot>({ active: 0, weekNew: 0, nearGraduate: 0 });
+
+const todayMin = computed(() => Math.round(todaySec.value / 60));
+const weekMin = computed(() => Math.round(weekSec.value / 60));
+const forecastTotal = computed(() => forecast.value.reduce((s, d) => s + d.count, 0));
+
+function trendBarH(sec: number): string {
+  const max = trendDaily.value.reduce((m, d) => Math.max(m, d.seconds), 0);
+  if (max <= 0) return "2px";
+  return `${Math.max(2, Math.round((sec / max) * 28))}px`;
+}
+
+function forecastBarH(count: number): string {
+  const max = forecast.value.reduce((m, d) => Math.max(m, d.count), 0);
+  if (max <= 0) return "2px";
+  return `${Math.max(2, Math.round((count / max) * 56))}px`;
+}
 
 interface TodayTaskItem {
   id: number;
@@ -283,9 +340,31 @@ async function load() {
     if (!data.courses.some((c) => c.id === Number(id))) delete courseStats[Number(id)];
   }
     // 跨课程今日任务 = 计划任务（今天排期）+ 到期 SM2 复习项（合轨决策 A）
-  // 已归档课程仅查看：其计划任务与到期复习不再浮现到今日任务
-  const activeCourses = data.courses.filter((c) => c.status !== "archived");
-  const today = formatLocalDate();
+    // 已归档课程仅查看：其计划任务与到期复习不再浮现到今日任务
+    const activeCourses = data.courses.filter((c) => c.status !== "archived");
+    const activeIds = new Set(activeCourses.map((c) => c.id));
+    const kpCourse = new Map(data.knowledgePoints.map((k) => [k.id, k.courseId]));
+    const qCourse = new Map(data.questions.map((q) => [q.id, q.courseId]));
+    const cardCourse = new Map(data.flashCards.map((c) => [c.id, c.courseId]));
+    /** 复习项/错题归属课程是否仍在学习（归档课程不计入仪表盘） */
+    const inActiveCourse = (courseId: number | undefined): boolean => courseId != null && activeIds.has(courseId);
+    // 学习仪表盘：时长趋势 / 连续天数（全量日志）+ 复习预测 / 错题快照（仅学习中的课程）
+    const trend = aggregateStudyTrend(data.studyLogs, 7);
+    trendDaily.value = trend.daily;
+    todaySec.value = trend.daily[trend.daily.length - 1]?.seconds ?? 0;
+    weekSec.value = trend.daily.reduce((s, d) => s + d.seconds, 0);
+    streakDays.value = studyStreak(data.studyLogs);
+    const activeSchedules = data.reviewSchedules.filter((s): boolean => {
+      const cid =
+        s.kpId != null ? kpCourse.get(s.kpId)
+        : s.qId != null ? qCourse.get(s.qId)
+        : s.cardId != null ? cardCourse.get(s.cardId)
+        : undefined;
+      return inActiveCourse(cid);
+    });
+    forecast.value = reviewForecast(activeSchedules, 7);
+    Object.assign(wrongSnap, wrongSnapshot(data.wrongQuestions.filter((w) => inActiveCourse(qCourse.get(w.qId)))));
+    const today = formatLocalDate();
   const items: TodayTaskItem[] = [];
   for (const c of activeCourses) {
     const plans = data.studyPlans.filter((p) => p.courseId === c.id && p.status !== "paused");
@@ -378,16 +457,10 @@ async function toggleTask(task: TodayTaskItem) {
   }
 }
 
-function onDataSaved() {
-  load().catch((e) => console.error("刷新首页失败:", e));
-}
+useDataSavedRefresh(() => load().catch((e) => console.error("刷新首页失败:", e)));
 
 onMounted(() => {
   load().catch((e) => console.error("加载首页失败:", e));
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
 });
 watch(
   () => courseStore.courses.length,

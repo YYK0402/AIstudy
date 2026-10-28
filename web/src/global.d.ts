@@ -24,13 +24,15 @@ export interface SiYuanAiStudyApi {
   /** 本次插件加载实例 id：热重载/重启插件后变化 */
   pluginInstanceId: string;
   getData(): AppData;
-  saveData(data: AppData): Promise<{ code: number; msg?: string }>;
+  saveData(data: AppData): Promise<{ code: number; msg?: string; dirty?: { global: boolean; courseIds: number[] } }>;
   callAi(input: {
     providerId: number;
     modelId: string;
     messages: CallAiMessage[];
     taskKey: string;
+    scope?: string;
   }): Promise<CallAiResult>;
+  cancelAiCall(taskKey: string, scope?: string): void;
   testProvider(providerId: number): Promise<TestProviderResult>;
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
@@ -39,6 +41,8 @@ export interface SiYuanAiStudyApi {
   removeSiyuanDoc(id: string): Promise<void>;
   updateSiyuanDoc(id: string, markdown: string): Promise<void>;
   getSiyuanDocMarkdown(id: string): Promise<string | null>;
+  siyuanDocExists(id: string): Promise<boolean>;
+  moveSiyuanDoc(id: string, targetId: string): Promise<void>;
   renameSiyuanDoc(id: string, name: string): Promise<void>;
   removeAsset(path: string): Promise<void>;
   ocrAsset(path: string): Promise<string>;

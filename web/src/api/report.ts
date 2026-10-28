@@ -2,7 +2,8 @@ import type { Course, Mastery } from "../types/appData";
 import type { StudyTrend } from "../utils/studyTrend";
 import { aggregateStudyTrend } from "../utils/studyTrend";
 import { getData } from "./storage";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
+import { stripThinkBlocks } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 
 export interface CourseStats {
@@ -102,21 +103,30 @@ export async function generateCourseReport(course: Course, stats: CourseStats): 
     );
   }
 
+  const allKpLines =
+    data.knowledgePoints
+      .filter((k) => k.courseId === course.id)
+      .map((k) => `- ${k.name}[${k.mastery}]`)
+      .join("\n") || "（无）";
+  // prompt 上限：课程级报告不可分批，知识点清单超长时截断并在报告注明
+  let kpLines = allKpLines;
+  let kpTruncated = false;
+  if (kpLines.length > 60000) {
+    kpLines = kpLines.slice(0, 60000) + "\n- …（知识点过多，清单已截断）";
+    kpTruncated = true;
+  }
   const reportVars = {
     courseName: course.name,
     target: course.target || "（未设定）",
     statsJson: JSON.stringify(stats, null, 2),
-    kpLines:
-      data.knowledgePoints
-        .filter((k) => k.courseId === course.id)
-        .map((k) => `- ${k.name}[${k.mastery}]`)
-        .join("\n") || "（无）",
+    kpLines,
   };
   const reportTpl = resolvePromptTemplate(data, "gen_report");
-  const res = await window.siyuanAiStudy.callAi({
+  const res = await callAi({
     providerId: binding.providerId,
     modelId: binding.modelId,
     taskKey: "gen_report",
+    scope: "course-" + course.id,
     messages: [
       { role: "system", content: renderPrompt(reportTpl.system, reportVars) },
       { role: "user", content: renderPrompt(reportTpl.user, reportVars) },
@@ -125,11 +135,11 @@ export async function generateCourseReport(course: Course, stats: CourseStats): 
 
   let text = (res.content || "").trim();
   // 思考型模型（如 MiniMax）会在正文前附带思考块，取最后一个结束标记之后的内容
-  const thinkParts = text.split("</think>\n");
-  if (thinkParts.length > 1) text = thinkParts[thinkParts.length - 1].trim();
+  text = stripThinkBlocks(text);
   if (!text) {
     throw new Error("AI 返回的报告内容为空，请重试");
   }
+  if (kpTruncated) text += "\n\n> 注：本课程知识点较多，报告所依据的知识点清单已截断，覆盖度以统计摘要为准。";
   return text;
 }
 

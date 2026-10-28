@@ -15,6 +15,8 @@ export function isReviewScheduleDue(
   qIds: Set<number>,
   cardIds: Set<number>,
 ): boolean {
+  // 空/非法 dueTime（""、"NaN" 等）视为未到期：空串字典序小于今天会被误判到期
+  if (!s.dueTime || !/^\d{4}-\d{2}-\d{2}/.test(s.dueTime)) return false;
   if (s.dueTime > today) return false;
   if (s.kpId !== null) return kpIds.has(s.kpId);
   if (s.qId !== null) return qIds.has(s.qId);

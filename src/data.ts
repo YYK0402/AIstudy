@@ -147,6 +147,8 @@ export interface AnswerRecord {
   isCorrect: boolean;
   score: string;
   createTime: string;
+  /** 简答/翻译题：AI 判分完成标记（判分失败时保留作答、等待重新判分）。缺失视为 true（旧数据） */
+  graded?: boolean;
 }
 
 export interface WrongQuestion {

@@ -1,4 +1,5 @@
 <template>
+  <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open }" @click.self="close">
     <div class="modal">
       <h2>章节复盘 · {{ chapter?.name }}</h2>
@@ -18,19 +19,24 @@
         </div>
         <div v-else class="s" style="color:var(--as-green)">本章知识点全部已掌握 ✓</div>
         <div class="cr-wrong" :style="{ marginTop: '14px' }">
-          本章错题 <b>{{ wrongItems.length }}</b> 题
-          <span v-if="wrongItems.length === 0" style="color:var(--as-text-faint)">（无）</span>
+          <template v-if="loading" style="color:var(--as-text-faint)">本章错题加载中…</template>
+          <template v-else-if="loadError" style="color:var(--as-red)">✗ 错题加载失败：{{ loadError }}</template>
+          <template v-else>
+            本章错题 <b>{{ wrongItems.length }}</b> 题
+            <span v-if="wrongItems.length === 0" style="color:var(--as-text-faint)">（无）</span>
+          </template>
         </div>
       </template>
       <div class="modal-actions">
         <button class="btn ghost" @click="close">关闭</button>
-        <button class="btn ghost" :disabled="wrongItems.length === 0 || exporting" @click="exportMd">
+        <button class="btn ghost" :disabled="loading || loadError !== '' || wrongItems.length === 0 || exporting" @click="exportMd">
           {{ exporting ? "导出中…" : "📥 导出错题" }}
         </button>
         <button class="btn primary" :disabled="kps.length === 0" @click="goSet">📝 章节组卷</button>
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -55,6 +61,7 @@ const MASTERY_LABELS: Record<Mastery, string> = { unlearn: "未学习", known: "
 
 const wrongItems = ref<Array<{ wrong: WrongQuestion; question: Question }>>([]);
 const loading = ref(false);
+const loadError = ref("");
 const exporting = ref(false);
 
 const distribution = computed(() => {
@@ -72,6 +79,7 @@ watch(
   async (v) => {
     if (!v || !props.chapter) return;
     loading.value = true;
+    loadError.value = "";
     try {
       const all = await queryWrongQuestions(props.chapter.courseId);
       const kpIdSet = new Set(props.kps.map((k) => k.id));
@@ -79,6 +87,7 @@ watch(
     } catch (e) {
       console.error("加载章节错题失败:", e);
       wrongItems.value = [];
+      loadError.value = e instanceof Error ? e.message : "未知错误";
     } finally {
       loading.value = false;
     }

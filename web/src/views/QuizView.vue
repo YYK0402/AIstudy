@@ -72,7 +72,12 @@
             </div>
           </template>
 
-          <div v-if="quizError" class="s" style="color:var(--as-red);margin-bottom:10px">✗ {{ quizError }}</div>
+          <div v-if="quizError" class="s" style="color:var(--as-red);margin-bottom:10px">
+            ✗ {{ quizError }}
+            <button v-if="pendingGrading !== null" class="btn sm" style="margin-left:8px" :disabled="submitting" @click="regrade">
+              {{ submitting ? "判分中…" : "重新判分" }}
+            </button>
+          </div>
           <div v-if="quizResult && currentQuestion!.qType !== 'essay'" class="judge-line" :class="quizResult.isCorrect ? 'ok' : 'bad'">
             {{ quizResult.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
           </div>
@@ -196,7 +201,13 @@
             开始刷题
           </button>
         </h3>
-        <EmptyState v-if="questions.length === 0" compact icon="pencil" text="题库为空。&#10;先在上方「AI 出题」选择知识点生成，或导入已有真题。">
+        <SkeletonList v-if="loading && questions.length === 0 && knowledgePoints.length === 0" :rows="4" />
+        <LoadError
+          v-else-if="error && questions.length === 0 && knowledgePoints.length === 0"
+          :message="error"
+          @retry="load"
+        />
+        <EmptyState v-else-if="questions.length === 0" compact icon="pencil" text="题库为空。&#10;先在上方「AI 出题」选择知识点生成，或导入已有真题。">
           <button class="btn sm primary" :disabled="!currentCourseId()" @click="scrollToGen">去出题</button>
         </EmptyState>
         <template v-else>
@@ -219,7 +230,7 @@
               @click="filterType = filterType === key ? '' : String(key)"
             >{{ label }}</button>
           </div>
-          <div class="q-list">
+          <div class="q-list q-list-scroll">
             <div v-for="q in filteredQuestions" :key="q.id" class="q-fixed">
               <div class="top">
                 <label v-if="!archived" class="q-check">
@@ -311,6 +322,8 @@ import {
   deleteQuestions,
   generateQuestions,
   submitAnswer,
+  regradeAnswer,
+  GradingFailedError,
   parseQuestionKpIds,
   parseQuestionOptions,
   shuffleList,
@@ -322,11 +335,15 @@ import {
   completeTestTasks,
 } from "../api";
 import { kpsOfChapter } from "../utils/chapterScope";
+import { capStudySec } from "../constants/study";
 import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
 import type { AnswerResult } from "../api";
 import QuestionEditModal from "../components/QuestionEditModal.vue";
 import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
 import QuestionSetModal from "../components/QuestionSetModal.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import QuestionImportModal from "../components/QuestionImportModal.vue";
 import KpSelectModal from "../components/KpSelectModal.vue";
 import ExamPaperModal from "../components/ExamPaperModal.vue";
@@ -442,6 +459,8 @@ const currentTestContext = ref<TestTaskContext | null>(null);
 const testDoneTitles = ref<string[]>([]);
 
 const quizError = ref("");
+/** 简答判分失败后待重新判分的作答记录 id（非 null 时错误提示处显示「重新判分」按钮） */
+const pendingGrading = ref<number | null>(null);
 const currentQuestion = computed<Question | null>(() => quizList.value[quizIdx.value] ?? null);
 const currentOptions = computed(() => (currentQuestion.value ? parseQuestionOptions(currentQuestion.value) : []));
 
@@ -451,7 +470,7 @@ function startQuestionTimer() {
   questionStartAt.value = Date.now();
 }
 function elapsedQuestionSec(): number {
-  return questionStartAt.value ? Math.max(0, Math.round((Date.now() - questionStartAt.value) / 1000)) : 0;
+  return questionStartAt.value ? capStudySec((Date.now() - questionStartAt.value) / 1000) : 0;
 }
 
 function resetQuestionState() {
@@ -460,6 +479,7 @@ function resetQuestionState() {
   pickedSingle.value = null;
   quizResult.value = null;
   quizError.value = "";
+  pendingGrading.value = null;
 }
 
 function beginQuiz(list: Question[], context: TestTaskContext | null = null) {
@@ -646,8 +666,33 @@ async function submitCurrent() {
     quizResult.value = result;
     answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType });
   } catch (e) {
-    console.error("提交作答失败:", e);
-    // 在刷题卡片内提示（genError 属于出题卡片，刷题时不可见）
+    if (e instanceof GradingFailedError) {
+      // 简答题：作答已先落盘（graded=false），保留「重新判分」入口
+      pendingGrading.value = e.recordId;
+      quizError.value = "判分失败，作答已保存";
+    } else {
+      console.error("提交作答失败:", e);
+      // 在刷题卡片内提示（genError 属于出题卡片，刷题时不可见）
+      quizError.value = e instanceof Error ? e.message : String(e);
+    }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+/** 简答判分失败后重试：只对已保存的作答重新判分并回填 */
+async function regrade() {
+  const q = currentQuestion.value;
+  if (!q || pendingGrading.value === null) return;
+  submitting.value = true;
+  try {
+    const result = await regradeAnswer(q, pendingGrading.value);
+    quizResult.value = result;
+    pendingGrading.value = null;
+    quizError.value = "";
+    answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType });
+  } catch (e) {
+    console.error("重新判分失败:", e);
     quizError.value = e instanceof Error ? e.message : String(e);
   } finally {
     submitting.value = false;
@@ -692,19 +737,23 @@ function kpNames(q: Question): string[] {
     .filter((n): n is string => Boolean(n));
 }
 
-async function load() {
-  if (!currentCourseId()) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     knowledgePoints.value = [];
     questions.value = [];
     chapters.value = [];
     return;
   }
-  [knowledgePoints.value, questions.value, chapters.value] = await Promise.all([
-    queryKnowledgePoints(currentCourseId()),
-    queryQuestions(currentCourseId()),
-    queryChapters(currentCourseId()),
+  const [kps, qs, chs] = await Promise.all([
+    queryKnowledgePoints(ctx.courseId),
+    queryQuestions(ctx.courseId),
+    queryChapters(ctx.courseId),
   ]);
-}
+  if (ctx.isStale()) return;
+  knowledgePoints.value = kps;
+  questions.value = qs;
+  chapters.value = chs;
+});
 
 async function generate() {
   if (!currentCourseId() || selectedKpIds.value.length === 0) return;
@@ -847,29 +896,34 @@ watch(
     filterType.value = "";
     selectedIds.value = new Set();
     selfTestKpId.value = null;
-    load();
+    void load();
   },
 );
 
 onMounted(async () => {
   await load();
-  enterKpPractice();
-  void enterPresetSet();
+  // 深链处理必须在数据加载成功后执行，否则题库为空会误清 query / 误起空练习
+  if (error.value === "") {
+    enterKpPractice();
+    void enterPresetSet();
+  }
 });
 
 watch(
   () => route.query.kp,
   async (v) => {
-    if (v != null && v !== "") await load();
-    enterKpPractice();
+    if (v == null || v === "") return;
+    await load();
+    if (error.value === "") enterKpPractice();
   },
 );
 
 watch(
   () => [route.query.set, route.query.exam] as const,
   async (v) => {
-    if ((v[0] != null && v[0] !== "") || (v[1] != null && v[1] !== "")) await load();
-    void enterPresetSet();
+    if ((v[0] == null || v[0] === "") && (v[1] == null || v[1] === "")) return;
+    await load();
+    if (error.value === "") void enterPresetSet();
   },
 );
 </script>

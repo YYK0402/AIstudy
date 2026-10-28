@@ -11,8 +11,10 @@
         <span style="margin-left:auto;font-size:11px;color:var(--as-text-faint)">共 {{ wrongList.length }} 题（已掌握 {{ graduatedCount }} 题）</span>
         <button class="btn ghost sm" :disabled="filteredWrong.length === 0" @click="exportMarkdown" style="margin-left:12px">导出</button>
       </h3>
+      <SkeletonList v-if="loading && wrongList.length === 0" :rows="5" />
+      <LoadError v-else-if="error && wrongList.length === 0" :message="error" @retry="load" />
       <EmptyState
-        v-if="wrongList.length === 0"
+        v-else-if="wrongList.length === 0"
         compact
         icon="alert"
         text="暂无错题。&#10;刷题时答错的题目会自动归集到这里。"
@@ -88,6 +90,9 @@
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import { useCourseStore } from "../stores/course";
 import {
   queryWrongQuestions,
@@ -127,20 +132,23 @@ const filteredWrong = computed(() =>
   }),
 );
 
-async function load() {
-  if (!currentCourseId()) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     wrongList.value = [];
     knowledgePoints.value = [];
     graduatedCount.value = 0;
     return;
   }
-  const id = currentCourseId();
-  [wrongList.value, knowledgePoints.value, graduatedCount.value] = await Promise.all([
-    queryWrongQuestions(id),
-    queryKnowledgePoints(id),
-    countGraduatedWrongQuestions(id),
+  const [list, kps, graduated] = await Promise.all([
+    queryWrongQuestions(ctx.courseId),
+    queryKnowledgePoints(ctx.courseId),
+    countGraduatedWrongQuestions(ctx.courseId),
   ]);
-}
+  if (ctx.isStale()) return;
+  wrongList.value = list;
+  knowledgePoints.value = kps;
+  graduatedCount.value = graduated;
+});
 
 async function del(w: { wrong: WrongQuestion }) {
   try {
@@ -199,9 +207,9 @@ watch(
     filterErr.value = "";
     filterKp.value = "";
     filterTimes.value = "";
-    load();
+    void load();
   },
 );
 
-onMounted(load);
+onMounted(() => void load());
 </script>

@@ -29,9 +29,12 @@
               </label>
             </template>
           </GenConfigBar>
+          <div v-if="generating" class="s" style="margin-top:10px">
+            <button class="btn sm ghost" @click="onCancelGenerate">取消生成（已完成部分保留）</button>
+          </div>
           <div v-if="genError" class="s" style="color:var(--as-red);margin-top:10px">✗ {{ genError }}</div>
           <div v-else-if="genResult" class="s" style="color:var(--as-green);margin-top:10px">
-            ✓ 生成完成：新增 {{ genResult.created }} 张{{ genResult.updated > 0 ? `、覆盖 ${genResult.updated} 张` : "" }}{{ genResult.skipped > 0 ? `、跳过已有 ${genResult.skipped} 张` : "" }}
+            {{ genCancelled ? `已取消，保留新增 ${genResult.created} 张` : `✓ 生成完成：新增 ${genResult.created} 张${genResult.updated > 0 ? `、覆盖 ${genResult.updated} 张` : ""}${genResult.skipped > 0 ? `、跳过已有 ${genResult.skipped} 张` : ""}` }}
             <span v-if="genResult.parseSkipped > 0" style="color:var(--as-text-dim)">（{{ genResult.parseSkipped }} 个知识点输出异常未生成，可重新生成补齐）</span>
           </div>
         </template>
@@ -46,8 +49,10 @@
             开始复习{{ dueCardCount > 0 ? `（${dueCardCount} 张到期）` : "" }}
           </button>
         </h3>
+        <SkeletonList v-if="loading && cards.length === 0" :rows="4" />
+        <LoadError v-else-if="error && cards.length === 0" :message="error" @retry="load" />
         <EmptyState
-          v-if="cards.length === 0"
+          v-else-if="cards.length === 0"
           compact
           icon="cards"
           text="暂无闪卡。&#10;选择知识点后点「开始生成」，或手动添加一张。"
@@ -91,8 +96,11 @@
 <script setup lang="ts">
 import GenConfigBar from "../components/GenConfigBar.vue";
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import EmptyState from "../components/EmptyState.vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {
@@ -102,10 +110,11 @@ import {
   queryDueReviews,
   deleteFlashCards,
   generateFlashcards,
-  DATA_SAVED_EVENT,
+  cancelAiCall,
 } from "../api";
 import type { Chapter, FlashCard, KnowledgePoint, GenerateFlashcardsResult } from "../api";
 import KpSelectModal from "../components/KpSelectModal.vue";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import FlashcardEditModal from "../components/FlashcardEditModal.vue";
 
 const courseStore = useCourseStore();
@@ -122,6 +131,8 @@ const genKpOpen = ref(false);
 const selectedKpIds = ref<number[]>([]);
 const overwrite = ref(false);
 const generating = ref(false);
+const genCancelled = ref(false);
+const cancelFlag: { aborted: boolean } = { aborted: false };
 const genProgress = ref("");
 const genError = ref("");
 const genResult = ref<GenerateFlashcardsResult | null>(null);
@@ -136,22 +147,31 @@ function onGenKpConfirm(ids: number[]) {
   genKpOpen.value = false;
 }
 
-async function load() {
+function onCancelGenerate() {
   const id = currentCourseId();
-  if (!id) {
+  cancelFlag.aborted = true;
+  // 打断在途 AI 调用（forwardProxy 无网络层 abort：响应返回后丢弃）
+  if (id != null) cancelAiCall("gen_flashcard", "course-" + id);
+}
+
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     cards.value = [];
     dueCardCount.value = 0;
     return;
   }
-  try {
-    cards.value = await queryFlashCards(id);
-    knowledgePoints.value = await queryKnowledgePoints(id);
-    chapters.value = await queryChapters(id);
-    dueCardCount.value = (await queryDueReviews(id)).filter((i) => i.flashcard !== null).length;
-  } catch (e) {
-    console.error("加载闪卡失败:", e);
-  }
-}
+  const [cardList, kps, chs, due] = await Promise.all([
+    queryFlashCards(ctx.courseId),
+    queryKnowledgePoints(ctx.courseId),
+    queryChapters(ctx.courseId),
+    queryDueReviews(ctx.courseId),
+  ]);
+  if (ctx.isStale()) return;
+  cards.value = cardList;
+  knowledgePoints.value = kps;
+  chapters.value = chs;
+  dueCardCount.value = due.filter((i) => i.flashcard !== null).length;
+});
 
 async function generate() {
   const id = currentCourseId();
@@ -159,14 +179,18 @@ async function generate() {
   generating.value = true;
   genError.value = "";
   genResult.value = null;
+  genCancelled.value = false;
+  cancelFlag.aborted = false;
   genProgress.value = `0 / ${selectedKpIds.value.length}`;
   try {
     const result = await generateFlashcards(id, selectedKpIds.value, {
       overwrite: overwrite.value,
+      isAborted: () => cancelFlag.aborted,
       onProgress: (done, total) => {
         genProgress.value = `${done} / ${total}`;
       },
     });
+    genCancelled.value = cancelFlag.aborted;
     genResult.value = result;
     if (result.errors.length > 0) {
       genError.value = result.errors.join("；");
@@ -209,15 +233,13 @@ watch(
     selectedKpIds.value = [];
     genResult.value = null;
     genError.value = "";
-    load();
+    void load();
   },
 );
 
+useDataSavedRefresh(() => void load());
+
 onMounted(() => {
-  load();
-  window.addEventListener(DATA_SAVED_EVENT, load);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, load);
+  void load();
 });
 </script>

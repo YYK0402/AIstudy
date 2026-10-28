@@ -1,7 +1,8 @@
 import type { AppData, KnowledgePoint, Material } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, truncateText } from "./format";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi, cancelAiCall, AiCanceledError } from "./ai";
+import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
@@ -9,12 +10,11 @@ import { ensureReviewTouchpointInData } from "./review";
 import { updateKnowledgePoint } from "./kp";
 import { findChapterByTitle, normalizeKpName } from "./kpMatch";
 import { useNotifyStore } from "../stores/notify";
-import { isExtractingMaterial, markMaterialExtracting, unmarkMaterialExtracting } from "./extractState";
+import { isExtractingMaterial, isFullExtracting, markMaterialExtracting, unmarkMaterialExtracting } from "./extractState";
 import { isSiyuanDocId } from "./siyuanDoc";
 
 export interface ExtractKpResult {
   newCount: number;
-  updateCount: number;
   duplicateCount: number;
   totalChunks: number;
   errors: string[];
@@ -27,25 +27,22 @@ interface AiKpItem {
   section: string;
 }
 
-function parseAiKpResponse(content: string): AiKpItem[] {
-  // 尝试从 LLM 返回中提取 JSON 数组（可能包裹在代码块或含前后文字）
-  const trimmed = content.trim();
-  const jsonMatch =
-    trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-    trimmed.match(/(\[[\s\S]*\])/);
-  const candidate = (jsonMatch ? jsonMatch[1] : trimmed).trim();
-  try {
-    const parsed = JSON.parse(candidate);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .filter((it): it is { name: string; description: string; section?: string } =>
-          it && typeof it.name === "string" && typeof it.description === "string")
-        .map((it) => ({ name: it.name, description: it.description, section: it.section ?? "" }));
-    }
-  } catch {
-    // ignore
-  }
-  return [];
+interface ParsedKpResponse {
+  kps: AiKpItem[];
+  /** 返回内容无法解析为 JSON 数组（区别于解析成功但该块无知识点） */
+  parseFailed: boolean;
+}
+
+function parseAiKpResponse(content: string): ParsedKpResponse {
+  const arr = unwrapArray(parseJsonCandidates(extractJsonCandidates(content, "array"))) as Record<string, unknown>[] | null;
+  if (!arr) return { kps: [], parseFailed: true };
+  return {
+    kps: arr
+      .filter((it): it is { name: string; description: string; section?: string } =>
+        typeof it.name === "string" && typeof it.description === "string")
+      .map((it) => ({ name: it.name, description: it.description, section: typeof it.section === "string" ? it.section : "" })),
+    parseFailed: false,
+  };
 }
 
 // 归一化知识点名：小写、去掉空白与标点，用于本地去重
@@ -174,16 +171,18 @@ async function extractKnowledgePointsInner(
         existingKpNames: buildKpNames(),
       };
       const extractTpl = resolvePromptTemplate(data, taskKey);
-      const res = await window.siyuanAiStudy.callAi({
+      const res = await callAi({
         providerId: binding.providerId,
         modelId: binding.modelId,
         taskKey,
+        scope: "material-" + material.id,
         messages: [
           { role: "system", content: renderPrompt(extractTpl.system, extractVars) },
           { role: "user", content: renderPrompt(extractTpl.user, extractVars) },
         ],
       });
-      const items = parseAiKpResponse(res.content);
+      const { kps: items, parseFailed } = parseAiKpResponse(res.content);
+      if (parseFailed) errors.push(`第 ${i + 1} 块 AI 输出无法解析`);
       for (const item of items) {
         const trimmedName = item.name.trim();
         if (!trimmedName) continue;
@@ -225,19 +224,27 @@ async function extractKnowledgePointsInner(
         }
       }
     } catch (e) {
+      if (e instanceof AiCanceledError) {
+        // 用户取消：停止后续块，不计为失败
+        break;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`第 ${i + 1} 块失败：${msg}`);
     }
   }
 
   await saveData(data);
-  return { newCount, updateCount: 0, duplicateCount, totalChunks: blocks.length, errors };
+  return { newCount, duplicateCount, totalChunks: blocks.length, errors };
 }
 
 const extractAbortFlags = new Map<number, { aborted: boolean }>();
 
 export function startExtractTask(materialId: number, courseId: number): void {
   if (isExtractingMaterial(materialId)) return;
+  if (isFullExtracting()) {
+    window.siyuanAiStudy.showMessage("全量重抽中，请稍候", 3000, "error");
+    return;
+  }
   const flag = { aborted: false };
   extractAbortFlags.set(materialId, flag);
   void runExtractTask(materialId, courseId, flag);
@@ -246,6 +253,8 @@ export function startExtractTask(materialId: number, courseId: number): void {
 export function cancelExtractTask(materialId: number): void {
   const flag = extractAbortFlags.get(materialId);
   if (flag) flag.aborted = true;
+  // 打断在途 AI 调用（forwardProxy 无网络层 abort：响应返回后丢弃）
+  cancelAiCall("extract_kp", "material-" + materialId);
 }
 
 async function runExtractTask(

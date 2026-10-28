@@ -4,7 +4,8 @@ import { getData, saveData } from "./storage";
 import { removeCsvIds } from "../utils/csvIds";
 import { nextId, now, truncateText } from "./format";
 import { MATERIAL_SOURCE_LABELS } from "./constants";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi, cancelAiCall, AiCanceledError } from "./ai";
+import { stripThinkBlocks } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
@@ -42,6 +43,7 @@ export async function createMaterial(input: {
     (await persistDocIfEnabled(
       `# ${input.name}\n\n${input.contentText}`,
       `/${course?.name ?? "课程"}/资料库/${input.name}`,
+      `资料「${input.name}」文档`,
     ));
   const material: Material = {
     id: nextId(data.materials),
@@ -103,6 +105,7 @@ export interface OrganizeResult {
  */
 export async function organizeDocWithAi(
   text: string,
+  materialId: number,
   courseId?: number,
   onProgress?: (done: number, total: number) => void,
   isAborted?: () => boolean,
@@ -125,10 +128,11 @@ export async function organizeDocWithAi(
     const chunk = chunks[i];
     let cleaned = chunk;
     try {
-      const res = await window.siyuanAiStudy.callAi({
+      const res = await callAi({
         providerId: binding.providerId,
         modelId: binding.modelId,
         taskKey: "organize_doc",
+        scope: "material-" + materialId,
         messages: [
           { role: "system", content: renderPrompt(tpl.system, {}) },
           { role: "user", content: renderPrompt(tpl.user, { chunk }) },
@@ -138,25 +142,18 @@ export async function organizeDocWithAi(
       const fence = candidate.match(/^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/);
       if (fence) candidate = fence[1].trim();
       // 推理模型思考泄漏：content 混入思考文本时，取思考结束标记之后的正文
-      const thinkEndTag = "</" + "think>";
-      const thinkStartTag = "<" + "think" + ">";
-      const thinkEnd = candidate.lastIndexOf(thinkEndTag);
-      if (thinkEnd >= 0) {
-        candidate = candidate.slice(thinkEnd + thinkEndTag.length).trim();
-      } else if (candidate.includes(thinkStartTag)) {
-        // 无闭合标记：取最后一个 "Let's xxx." 过渡句之后的正文
-        let cut = -1;
-        const re = /\bLet's [a-zA-Z]+\.\s*/g;
-        let m2;
-        while ((m2 = re.exec(candidate)) !== null) cut = m2.index + m2[0].length;
-        if (cut > 0) candidate = candidate.slice(cut).trim();
-      }
+      candidate = stripThinkBlocks(candidate);
       if (candidate && candidate.length >= chunk.length * 0.4) {
         cleaned = candidate;
       } else {
         failedChunks++;
       }
     } catch (e) {
+      if (e instanceof AiCanceledError) {
+        // 用户取消：剩余段落保留原文，任务状态由调用方按 aborted 标为取消
+        out.push(...chunks.slice(i));
+        break;
+      }
       console.error(`AI 梳理第 ${i + 1}/${chunks.length} 段失败:`, e);
       failedChunks++;
     }
@@ -182,6 +179,8 @@ export function startOrganizeTask(materialId: number, courseId: number, text?: s
 export function cancelOrganizeTask(materialId: number): void {
   const flag = organizeAbortFlags.get(materialId);
   if (flag) flag.aborted = true;
+  // 打断在途 AI 调用（forwardProxy 无网络层 abort：响应返回后丢弃）
+  cancelAiCall("organize_doc", "material-" + materialId);
 }
 
 async function runOrganizeTask(
@@ -223,6 +222,7 @@ async function runOrganizeTask(
     });
     const res = await organizeDocWithAi(
       source,
+      materialId,
       courseId,
       (done, total) => {
         if (total > 0) {
@@ -313,11 +313,12 @@ export interface SiyuanBlockEntry {
   subtype: string;
 }
 
-/** 文档直属块列表（blocks 表 parent_id = docId，3.8.8 实证） */
-export async function listSiyuanBlocks(docId: string): Promise<SiyuanBlockEntry[]> {
-  const stmt = `SELECT id, content, type, subtype FROM blocks WHERE parent_id = "${docId}" ORDER BY sort LIMIT 200`;
-  const data = await siyuanApi<SiyuanBlockEntry[]>("query/sql", { stmt });
-  return data ?? [];
+/** 文档直属块列表（blocks 表 parent_id = docId，3.8.8 实证）；占位符绑定防注入，LIMIT 200 截断时返回标记 */
+export async function listSiyuanBlocks(docId: string): Promise<{ entries: SiyuanBlockEntry[]; truncated: boolean }> {
+  const stmt = "SELECT id, content, type, subtype FROM blocks WHERE parent_id = ? ORDER BY sort LIMIT 200";
+  const data = await siyuanApi<SiyuanBlockEntry[]>("query/sql", { stmt, binds: [docId] });
+  const entries = data ?? [];
+  return { entries, truncated: entries.length >= 200 };
 }
 
 /** 文档选择结果（资料导入 / 知识点绑定共用） */

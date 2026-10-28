@@ -6,7 +6,13 @@
       <span>课程已归档 · 内容只读，如需修改请先在「课程主页」取消归档</span>
     </div>
 
-    <div class="two-col">
+    <SkeletonList v-if="loading && chapters.length === 0 && materials.length === 0" :rows="5" />
+    <LoadError
+      v-else-if="error && chapters.length === 0 && materials.length === 0"
+      :message="error"
+      @retry="load"
+    />
+    <div v-else class="two-col">
       <!-- 目录结构 -->
       <div class="card">
         <h3>目录结构
@@ -261,9 +267,13 @@
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import EmptyState from "../components/EmptyState.vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import {
   queryMaterials,
@@ -286,7 +296,6 @@ import {
   updateKnowledgePoint,
   startOrganizeTask,
   startExtractTask,
-  DATA_SAVED_EVENT,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
@@ -655,12 +664,29 @@ async function loadChapters() {
   expandedChapters.value = new Set([...expandedChapters.value].filter((id) => existing.has(id)));
 }
 
-async function load() {
-  await Promise.all([loadMaterials(), loadKnowledgePoints(), loadChapters()]);
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
+    materials.value = [];
+    knowledgePoints.value = [];
+    chapters.value = [];
+    return;
+  }
+  const [ms, kps, chs] = await Promise.all([
+    queryMaterials(ctx.courseId),
+    queryKnowledgePoints(ctx.courseId),
+    queryChapters(ctx.courseId),
+  ]);
+  if (ctx.isStale()) return;
+  materials.value = ms;
+  knowledgePoints.value = kps;
+  chapters.value = chs;
+  // 只保留仍存在的章节：重进页面/切换课程时展开集合自然清空（默认全收起），同会话重载保留用户状态
+  const existing = new Set(chs.map((c) => c.id));
+  expandedChapters.value = new Set([...expandedChapters.value].filter((id) => existing.has(id)));
   // 抽取任务状态来自 notify store（localStorage 持久化），组件重挂载后自然恢复
   if (isFullExtracting()) fullExtracting.value = true;
   focusChapterFromQuery();
-}
+});
 
 /** 报告热力图 → ?chapter=<id>：展开父章、选中并滚动到该行，然后清掉 query */
 function focusChapterFromQuery() {
@@ -896,16 +922,28 @@ async function fullReExtract() {
     if (ids.length) await deleteKnowledgePoints(ids);
     await loadKnowledgePoints();
     const mats = [...materials.value];
+    let skipped = 0;
     for (let i = 0; i < mats.length; i++) {
       fullExtractProgress.value = { material: i + 1, total: mats.length, block: "" };
-      await extractKnowledgePoints(mats[i].id, {
-        onProgress: (current, total, blockTitle) => {
-          fullExtractProgress.value = { material: i + 1, total: mats.length, block: `第 ${current}/${total} 块 · ${blockTitle}` };
-        },
-      });
+      try {
+        await extractKnowledgePoints(mats[i].id, {
+          onProgress: (current, total, blockTitle) => {
+            fullExtractProgress.value = { material: i + 1, total: mats.length, block: `第 ${current}/${total} 块 · ${blockTitle}` };
+          },
+        });
+      } catch (e) {
+        // 单资料并发冲突跳过并计数，不打断全量流程；其他错误仍整体中止
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("正在抽取中")) {
+          skipped++;
+          console.warn(`全量重抽跳过资料「${mats[i].name}」：`, e);
+          continue;
+        }
+        throw e;
+      }
     }
     await loadKnowledgePoints();
-    window.siyuanAiStudy.showMessage("全量重新抽取完成");
+    window.siyuanAiStudy.showMessage(skipped > 0 ? `全量重新抽取完成，${skipped} 个资料冲突已跳过` : "全量重新抽取完成");
   } catch (e) {
     console.error("全量重新抽取失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "全量重新抽取失败", 4000, "error");
@@ -952,7 +990,7 @@ watch(
     exitKpBatchMode();
     currentPage.value = 1;
     searchKeyword.value = "";
-    load();
+    void load();
   },
 );
 
@@ -977,17 +1015,15 @@ watch(
 );
 
 // 后台 AI 梳理/知识点抽取任务完成回写数据 → 刷新资料与知识点展示
-function onAnyDataSaved() {
+useDataSavedRefresh(() => {
   loadMaterials();
   loadKnowledgePoints();
-}
+});
 onMounted(() => {
   document.addEventListener("click", closeRowMenu);
-  load();
-  window.addEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
+  void load();
 });
 onBeforeUnmount(() => {
   document.removeEventListener("click", closeRowMenu);
-  window.removeEventListener(DATA_SAVED_EVENT, onAnyDataSaved);
 });
 </script>

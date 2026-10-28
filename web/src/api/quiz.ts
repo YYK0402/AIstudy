@@ -3,7 +3,7 @@ import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, parseQuestionKpIds, parseQuestionOptions } from "./format";
 import { EXPLAIN_MASTER_SCORE, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPE_LABELS, WRONG_ERROR_TYPE_LABELS } from "./constants";
 import type { QuestionDifficulty, QuestionType, WrongErrorType } from "./constants";
-import { findTaskBinding } from "./ai";
+import { findTaskBinding, callAi } from "./ai";
 import { ensureQuestionReviewInData } from "./review";
 import { appendWeakPointTaskInData, completeKpTasksInData, logStudyInData } from "./studyData";
 import { recordWrongResult } from "../utils/wrongStreak";
@@ -21,9 +21,6 @@ export interface AnswerResult {
   planNotes: string[];
 }
 
-// 掌握度阶梯与文案统一在 utils/mastery
-
-/** 讲解评估升级掌握度的分数门槛（高于进复习池的 EXPLAIN_PASS_SCORE） */
 /** 按阶梯升降一档（钳制在两端），返回「前 → 后」说明或 null（未变动/不存在） */
 export function adjustMasteryInData(data: AppData, kpId: number, delta: number): string | null {
   const kp = data.knowledgePoints.find((k) => k.id === kpId);
@@ -65,62 +62,57 @@ function parseAiGradeResponse(content: string): { score: number; feedback: strin
   return null;
 }
 
-/** 提交一次作答。客观题本地判分，简答题调用 grade_answer AI 阅卷。fromReview=true 时答对不计入错题毕业连对（由复习评分统一计） */
-export async function submitAnswer(
+/** 简答/翻译题 AI 判分失败（作答已先落盘，可凭 recordId 重新判分） */
+export class GradingFailedError extends Error {
+  recordId: number;
+  constructor(message: string, recordId: number) {
+    super(message);
+    this.recordId = recordId;
+  }
+}
+
+/** 调用 grade_answer 任务 AI 阅卷，返回归一化分数与反馈；失败抛原始错误 */
+async function callAiGrade(
+  data: AppData,
   question: Question,
   userAnswer: string,
-  durationSec = 0,
-  options?: { fromReview?: boolean },
-): Promise<AnswerResult> {
-  const data = await getData();
-  let isCorrect: boolean;
-  let score: string;
-  let feedback = "";
-
-  if (question.qType === "essay" || question.qType === "translation") {
-    const binding = findTaskBinding(data, "grade_answer", question.courseId);
-    if (!binding) {
-      throw new Error(
-        "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「grade_answer」任务或「全局默认模型」",
-      );
-    }
-    const gradeVars = {
-      title: question.title,
-      answer: question.answer,
-      userAnswer: userAnswer || "（未作答）",
-    };
-    const gradeTpl = resolvePromptTemplate(data, "grade_answer");
-    const res = await window.siyuanAiStudy.callAi({
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      taskKey: "grade_answer",
-      messages: [
-        { role: "system", content: renderPrompt(gradeTpl.system, gradeVars) },
-        { role: "user", content: renderPrompt(gradeTpl.user, gradeVars) },
-      ],
-    });
-    const graded = parseAiGradeResponse(res.content);
-    if (!graded) {
-      throw new Error("AI 阅卷结果无法解析，请重试");
-    }
-    isCorrect = graded.score >= 60;
-    score = String(graded.score);
-    feedback = graded.feedback;
-  } else {
-    isCorrect = normalizeAnswer(userAnswer) === normalizeAnswer(question.answer);
-    score = isCorrect ? "100" : "0";
+): Promise<{ score: number; feedback: string }> {
+  const binding = findTaskBinding(data, "grade_answer", question.courseId);
+  if (!binding) {
+    throw new Error(
+      "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「grade_answer」任务或「全局默认模型」",
+    );
   }
-
-  const record: AnswerRecord = {
-    id: nextId(data.answerRecords),
-    qId: question.id,
-    userAnswer,
-    isCorrect,
-    score,
-    createTime: now(),
+  const gradeVars = {
+    title: question.title,
+    answer: question.answer,
+    userAnswer: userAnswer || "（未作答）",
   };
-  data.answerRecords.push(record);
+  const gradeTpl = resolvePromptTemplate(data, "grade_answer");
+  const res = await callAi({
+    providerId: binding.providerId,
+    modelId: binding.modelId,
+    taskKey: "grade_answer",
+    scope: "course-" + question.courseId,
+    messages: [
+      { role: "system", content: renderPrompt(gradeTpl.system, gradeVars) },
+      { role: "user", content: renderPrompt(gradeTpl.user, gradeVars) },
+    ],
+  });
+  const graded = parseAiGradeResponse(res.content);
+  if (!graded) {
+    throw new Error("AI 阅卷结果无法解析，请重试");
+  }
+  return graded;
+}
 
+/** 判分成功后的副作用（就地修改 data）：错题本/复习池/掌握度/任务勾选/学习日志 */
+function applyGradeSideEffectsInData(
+  data: AppData,
+  question: Question,
+  isCorrect: boolean,
+  options?: { fromReview?: boolean },
+): { masteryNotes: string[]; planNotes: string[] } {
   const masteryNotes: string[] = [];
   const planNotes: string[] = [];
   if (!isCorrect) {
@@ -145,6 +137,68 @@ export async function submitAnswer(
     // 答对 → 错题连对 +1（复习中提交不在此计，由 submitReview 按自评分统一计）
     if (!options?.fromReview) recordWrongResult(data.wrongQuestions, question.id, "correct", now());
   }
+  return { masteryNotes, planNotes };
+}
+
+/** 提交一次作答。客观题本地判分；简答/翻译题先落盘作答（graded=false）再调 AI 阅卷，
+ * 判分失败时作答不丢，抛 GradingFailedError 供 UI 提供「重新判分」。
+ * fromReview=true 时答对不计入错题毕业连对（由复习评分统一计） */
+export async function submitAnswer(
+  question: Question,
+  userAnswer: string,
+  durationSec = 0,
+  options?: { fromReview?: boolean },
+): Promise<AnswerResult> {
+  const data = await getData();
+  let isCorrect: boolean;
+  let score: string;
+  let feedback = "";
+  let record: AnswerRecord;
+
+  if (question.qType === "essay" || question.qType === "translation") {
+    // 先落盘作答记录（graded=false）：AI 判分失败/中断也不丢作答
+    record = {
+      id: nextId(data.answerRecords),
+      qId: question.id,
+      userAnswer,
+      isCorrect: false,
+      score: "0",
+      createTime: now(),
+      graded: false,
+    };
+    data.answerRecords.push(record);
+    await saveData(data);
+
+    let graded: { score: number; feedback: string };
+    try {
+      graded = await callAiGrade(data, question, userAnswer);
+    } catch (e) {
+      throw new GradingFailedError(
+        `判分失败，作答已保存（${e instanceof Error ? e.message : String(e)}）`,
+        record.id,
+      );
+    }
+    isCorrect = graded.score >= 60;
+    score = String(graded.score);
+    feedback = graded.feedback;
+    record.isCorrect = isCorrect;
+    record.score = score;
+    record.graded = true;
+  } else {
+    isCorrect = normalizeAnswer(userAnswer) === normalizeAnswer(question.answer);
+    score = isCorrect ? "100" : "0";
+    record = {
+      id: nextId(data.answerRecords),
+      qId: question.id,
+      userAnswer,
+      isCorrect,
+      score,
+      createTime: now(),
+    };
+    data.answerRecords.push(record);
+  }
+
+  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(data, question, isCorrect, options);
 
   logStudyInData(data, {
     courseId: question.courseId,
@@ -155,6 +209,27 @@ export async function submitAnswer(
   });
   await saveData(data);
   return { isCorrect, score, feedback, masteryNotes, planNotes };
+}
+
+/** 对已保存的简答/翻译题作答（graded=false）重新判分：成功则回填记录并应用副作用 */
+export async function regradeAnswer(
+  question: Question,
+  recordId: number,
+  options?: { fromReview?: boolean },
+): Promise<AnswerResult> {
+  const data = await getData();
+  const record = data.answerRecords.find((r) => r.id === recordId);
+  if (!record) {
+    throw new Error("作答记录不存在，无法重新判分");
+  }
+  const graded = await callAiGrade(data, question, record.userAnswer);
+  const isCorrect = graded.score >= 60;
+  record.isCorrect = isCorrect;
+  record.score = String(graded.score);
+  record.graded = true;
+  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(data, question, isCorrect, options);
+  await saveData(data);
+  return { isCorrect, score: record.score, feedback: graded.feedback, masteryNotes, planNotes };
 }
 
 // 归一化作答：中文逗号统一为半角再按逗号拆分排序（AI 生成的多选答案可能用「，」分隔）

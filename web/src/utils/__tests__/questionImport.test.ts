@@ -52,4 +52,29 @@ describe("parseQuestionsMarkdown", () => {
     const { errors } = parseQuestionsMarkdown("题目\nA. 甲\nB. 乙\n答案: D", []);
     expect(errors[0].reason).toContain("超出选项范围");
   });
+
+  it("多选题连续字母答案「AB」按字母展开（U1）", () => {
+    const { drafts, errors } = parseQuestionsMarkdown("多选题\nA. 甲\nB. 乙\nC. 丙\nD. 丁\n答案: AB", []);
+    expect(errors).toHaveLength(0);
+    expect(drafts[0].qType).toBe("multiple");
+    expect(drafts[0].answer).toBe("甲,乙");
+  });
+
+  it("显式题型多选 + 连续字母「ABC」", () => {
+    const { drafts } = parseQuestionsMarkdown("多选题\n题型: 多选\nA. 甲\nB. 乙\nC. 丙\nD. 丁\n答案: ABC", []);
+    expect(drafts[0].qType).toBe("multiple");
+    expect(drafts[0].answer).toBe("甲,乙,丙");
+  });
+
+  it("单字母单选题答案不受展开影响", () => {
+    const { drafts } = parseQuestionsMarkdown("题目\nA. 甲\nB. 乙\n答案: B", []);
+    expect(drafts[0].qType).toBe("single");
+    expect(drafts[0].answer).toBe("乙");
+  });
+
+  it("块内重复「答案:」行产生 warning 且取最后一行（U2）", () => {
+    const r = parseQuestionsMarkdown("题目\nA. 甲\nB. 乙\n答案: A\n答案: B", []);
+    expect(r.drafts[0].answer).toBe("乙");
+    expect(r.warnings.some((w) => w.reason.includes("重复"))).toBe(true);
+  });
 });

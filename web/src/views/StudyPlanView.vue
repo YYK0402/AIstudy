@@ -7,6 +7,13 @@
     </div>
 
     <template v-else>
+      <SkeletonList v-if="loading && !plan && tasks.length === 0" :rows="4" />
+      <LoadError
+        v-else-if="error && !plan && tasks.length === 0"
+        :message="error"
+        @retry="load"
+      />
+      <template v-else>
       <div class="card">
         <h3>
           {{ plan ? (editing ? "重新生成学习计划" : "当前计划") : "生成学习计划" }}
@@ -79,6 +86,30 @@
               {{ daysOp === "shift" ? "确认延期" : "确认延长" }}
             </button>
             <button class="btn sm ghost" @click="daysOp = null">取消</button>
+          </template>
+        </div>
+      </div>
+
+      <div v-if="plan && coverageGroups.length" class="card" style="margin-top:14px">
+        <h3>
+          计划覆盖 · 章节与知识点
+          <span class="day-total">{{ coverageStats.total }} 个知识点 · 已排期 {{ coverageStats.scheduled }} · 未排期 {{ coverageStats.unscheduled }}</span>
+        </h3>
+        <div v-for="g in coverageGroups" :key="g.label" class="cov-group">
+          <div class="cov-ch">{{ g.label }}</div>
+          <template v-for="r in g.rows" :key="r.row.kpId">
+            <div v-if="r.unit" class="cov-unit">{{ r.unit }}</div>
+            <div class="cov-row" :class="{ unscheduled: r.row.unscheduled }">
+              <span class="cov-name">{{ r.row.name }}</span>
+              <span class="tag" :class="r.row.mastery"><span class="d"></span>{{ masteryLabel(r.row.mastery) }}</span>
+              <span v-for="s in r.row.schedules" :key="s.date" class="cov-sched">
+                {{ s.date.slice(5) }} {{ s.types.map(taskTypeLabel).join("/") }}
+              </span>
+              <span v-if="r.row.learnTotal > 0" class="cov-done" :class="{ ok: r.row.learnDone === r.row.learnTotal }">
+                {{ r.row.learnDone === r.row.learnTotal ? "✓" : r.row.learnDone > 0 ? `${r.row.learnDone}/${r.row.learnTotal}` : "未开始" }}
+              </span>
+              <span v-else-if="r.row.unscheduled" class="cov-done">未排期</span>
+            </div>
           </template>
         </div>
       </div>
@@ -194,13 +225,17 @@
           </div>
         </div>
       </div>
+      </template>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import SkeletonList from "../components/SkeletonList.vue";
+import LoadError from "../components/LoadError.vue";
+import { useLoad } from "../composables/useLoad";
 import { useCourseStore } from "../stores/course";
 import {
   generateStudyPlan,
@@ -216,12 +251,12 @@ import {
   syncPlanKps,
   postponeOverdueTasks,
   formatLocalDate,
-  DATA_SAVED_EVENT,
 } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
 import ProgressBar from "../components/ProgressBar.vue";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { taskTypeLabel } from "../constants/tasks";
-import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, ReviewDueItem } from "../api";
+import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, Mastery, ReviewDueItem } from "../api";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -485,6 +520,101 @@ const planTypeStats = computed(() => {
   ].filter((x) => x.count > 0);
 });
 
+// ===== 计划覆盖 · 章节与知识点 卡片：一次快照本地计算（不逐 KP 桥调用） =====
+interface CoverageKpRow {
+  kpId: number;
+  name: string;
+  mastery: Mastery;
+  /** 去重排期：日期 + 任务类型 */
+  schedules: { date: string; types: string[] }[];
+  learnTotal: number;
+  learnDone: number;
+  /** 无任何任务 → 灰显 */
+  unscheduled: boolean;
+}
+
+interface CoverageGroup {
+  label: string;
+  rows: { unit?: string; row: CoverageKpRow }[];
+}
+
+const coverageGroups = computed<CoverageGroup[]>(() => {
+  if (!plan.value || !knowledgePoints.value.length) return [];
+  const byKp = new Map<number, StudyTask[]>();
+  for (const t of tasks.value) {
+    if (t.kpId == null) continue;
+    const list = byKp.get(t.kpId) ?? [];
+    list.push(t);
+    byKp.set(t.kpId, list);
+  }
+  const buildRow = (kp: KnowledgePoint): CoverageKpRow => {
+    const list = byKp.get(kp.id) ?? [];
+    const byDate = new Map<string, Set<string>>();
+    for (const t of list) {
+      const s = byDate.get(t.scheduledDate) ?? new Set<string>();
+      s.add(t.taskType);
+      byDate.set(t.scheduledDate, s);
+    }
+    const schedules = [...byDate.entries()]
+      .map(([date, types]) => ({
+        date,
+        types: [...types].sort((a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b)),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const learns = list.filter((t) => t.taskType === "learn");
+    return {
+      kpId: kp.id,
+      name: kp.name,
+      mastery: kp.mastery,
+      schedules,
+      learnTotal: learns.length,
+      learnDone: learns.filter((t) => t.status === "done").length,
+      unscheduled: list.length === 0,
+    };
+  };
+  const topLevel = chapters.value
+    .filter((c) => c.level === "chapter" || c.parentId == null)
+    .sort((a, b) => a.sort - b.sort);
+  const groups: CoverageGroup[] = [];
+  const placed = new Set<number>();
+  for (const ch of topLevel) {
+    const unitNodes = chapters.value.filter((c) => c.parentId === ch.id).sort((a, b) => a.sort - b.sort);
+    const rows: CoverageGroup["rows"] = [];
+    for (const u of unitNodes) {
+      const unitKps = knowledgePoints.value.filter((k) => k.chapterId === u.id).sort((a, b) => a.sort - b.sort);
+      unitKps.forEach((kp, i) => {
+        // 节标题只在该节首行显示
+        rows.push({ unit: i === 0 ? u.name : undefined, row: buildRow(kp) });
+        placed.add(kp.id);
+      });
+    }
+    for (const kp of knowledgePoints.value.filter((k) => k.chapterId === ch.id).sort((a, b) => a.sort - b.sort)) {
+      rows.push({ row: buildRow(kp) });
+      placed.add(kp.id);
+    }
+    if (rows.length) groups.push({ label: ch.name, rows });
+  }
+  const rest = knowledgePoints.value.filter((k) => !placed.has(k.id)).sort((a, b) => a.sort - b.sort);
+  if (rest.length) {
+    groups.push({ label: "未分组", rows: rest.map((kp) => ({ row: buildRow(kp) })) });
+  }
+  return groups;
+});
+
+const coverageStats = computed(() => {
+  const all = coverageGroups.value.flatMap((g) => g.rows.map((r) => r.row));
+  return {
+    total: all.length,
+    scheduled: all.filter((r) => !r.unscheduled).length,
+    unscheduled: all.filter((r) => r.unscheduled).length,
+  };
+});
+
+const masteryLabel = (m: Mastery): string => {
+  const map: Record<Mastery, string> = { unlearn: "未学习", known: "了解", mastered: "掌握", proficient: "精通" };
+  return map[m];
+};
+
 /** 知识点行操作入口：每种当日任务类型给一个跳转 */
 function lineActions(line: KpLine): { to: { path: string; query: Record<string, string> }; label: string }[] {
   const map: Record<string, { path: string; label: string }> = {
@@ -508,8 +638,8 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-async function load() {
-  if (!currentCourseId()) {
+const { loading, error, load } = useLoad(async (ctx) => {
+  if (!ctx.courseId) {
     plan.value = null;
     tasks.value = [];
     chapters.value = [];
@@ -517,16 +647,22 @@ async function load() {
     dueReviews.value = [];
     return;
   }
-  const plans = await queryStudyPlans(currentCourseId());
-  plan.value = plans[0] ?? null;
-  tasks.value = plan.value ? await queryStudyTasks(plan.value.id) : [];
-  applyDefaultCollapse();
-  [chapters.value, knowledgePoints.value, dueReviews.value] = await Promise.all([
-    queryChapters(currentCourseId()),
-    queryKnowledgePoints(currentCourseId()),
-    queryDueReviews(currentCourseId()),
+  const plans = await queryStudyPlans(ctx.courseId);
+  const p = plans[0] ?? null;
+  const ts = p ? await queryStudyTasks(p.id) : [];
+  const [chs, kps, due] = await Promise.all([
+    queryChapters(ctx.courseId),
+    queryKnowledgePoints(ctx.courseId),
+    queryDueReviews(ctx.courseId),
   ]);
-}
+  if (ctx.isStale()) return;
+  plan.value = p;
+  tasks.value = ts;
+  applyDefaultCollapse();
+  chapters.value = chs;
+  knowledgePoints.value = kps;
+  dueReviews.value = due;
+});
 
 async function generate() {
   if (!currentCourseId()) return;
@@ -678,19 +814,13 @@ watch(
   () => {
     generateError.value = "";
     editing.value = false;
-    load();
+    void load();
   },
 );
 
-function onDataSaved() {
-  load().catch((e) => console.error("刷新学习计划失败:", e));
-}
+useDataSavedRefresh(() => void load());
 
 onMounted(() => {
-  load();
-  window.addEventListener(DATA_SAVED_EVENT, onDataSaved);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener(DATA_SAVED_EVENT, onDataSaved);
+  void load();
 });
 </script>

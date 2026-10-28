@@ -6,8 +6,8 @@ export function isSiyuanDocId(id: string): boolean {
   return /^\d{14}-[0-9a-z]{7}$/.test(id);
 }
 
-/** 按设置决定是否落库；失败不阻塞主流程 */
-export async function persistDocIfEnabled(markdown: string, path: string): Promise<string | null> {
+/** 按设置决定是否落库；失败不阻塞主流程。传 label 时失败会统一提示（不传则静默，调用方自行聚合提示） */
+export async function persistDocIfEnabled(markdown: string, path: string, label?: string): Promise<string | null> {
   const settings = await getSettings();
   if (!settings.persistToSiyuan) return null;
   try {
@@ -16,6 +16,10 @@ export async function persistDocIfEnabled(markdown: string, path: string): Promi
     return id;
   } catch (e) {
     console.error("落库思源失败:", e);
+    if (label) {
+      const msg = e instanceof Error ? e.message : "未知错误";
+      window.siyuanAiStudy.showMessage(`思源笔记落库失败（${label}）：${msg}`, 4000, "error");
+    }
     return null;
   }
 }
@@ -30,4 +34,14 @@ export async function createSiyuanDoc(markdown: string, path: string, notebook: 
 
 export async function removeSiyuanDoc(id: string): Promise<void> {
   await window.siyuanAiStudy.removeSiyuanDoc(id);
+}
+
+/** 幂等删除：删父文档时思源会级联删子树，子文档已不存在不算失败 */
+export async function removeSiyuanDocIfExists(id: string): Promise<void> {
+  try {
+    await removeSiyuanDoc(id);
+  } catch (e) {
+    const stillExists = await window.siyuanAiStudy.siyuanDocExists(id).catch(() => false);
+    if (stillExists) throw e;
+  }
 }

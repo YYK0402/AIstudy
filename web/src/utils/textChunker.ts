@@ -4,6 +4,15 @@ export function chunkText(text: string, maxChars: number = 2000): string[] {
   const chunks: string[] = [];
   let current = "";
   for (const line of lines) {
+    // 单行超 maxChars：先落已累积部分，再行内顺序硬切，保证每块不超长且不改变内容顺序
+    if (line.length > maxChars) {
+      if (current.trim()) chunks.push(current.trim());
+      for (let i = 0; i < line.length; i += maxChars) {
+        chunks.push(line.slice(i, i + maxChars));
+      }
+      current = "";
+      continue;
+    }
     const lineLen = line.length;
     if (current.length > 0 && current.length + lineLen + 1 > maxChars) {
       chunks.push(current.trim());

@@ -1,7 +1,7 @@
 import type { Course } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now } from "./format";
-import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc } from "./siyuanDoc";
+import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc, removeSiyuanDocIfExists } from "./siyuanDoc";
 import { removeAssetIfUnused } from "./material";
 
 export async function queryCourses(): Promise<Course[]> {
@@ -18,7 +18,7 @@ export async function createCourse(input: {
 }): Promise<Course> {
   const data = await getData();
   // 落库思源：开启持久化时建课程顶层文档（path 含文档名）；未开启或失败为 null（不阻塞主流程）
-  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`);
+  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`, `课程「${input.name}」文档`);
   const course: Course = {
     id: nextId(data.courses),
     siyuanDocId: docId,
@@ -118,6 +118,20 @@ export async function deleteCourse(id: number): Promise<void> {
       } catch (e) {
         siyuanCleanupErrors.push(`资料「${m.name}」删除失败`);
       }
+    }
+  }
+  // 学习对话文档条目：随章节删除清理（思源文档已随课程文档级联删除，幂等兜底）
+  const removedChapterIds = new Set(
+    data.chapters.filter((c) => c.courseId === id).map((c) => String(c.id)),
+  );
+  for (const key of [...removedChapterIds, `course-${id}`]) {
+    const entry = data.conversationsDocs?.[key];
+    if (!entry) continue;
+    delete data.conversationsDocs![key];
+    try {
+      await removeSiyuanDocIfExists(entry.docId);
+    } catch (e) {
+      siyuanCleanupErrors.push(`学习对话文档删除失败（${key}）`);
     }
   }
   data.courses = data.courses.filter((c) => c.id !== id);

@@ -49,6 +49,7 @@
           <span class="sy-dir-ico">{{ b.type === "h" ? "＃" : "▪" }}</span>
           <span class="sy-doc-name">{{ blockLabel(b) }}</span>
         </div>
+        <div v-if="blocksTruncated" class="sy-doc-row muted">仅显示前 200 个块，更早的块不在列表中</div>
         <div v-if="!blocksLoading && blocks.length === 0" class="sy-doc-row muted">该文档暂无可绑定块，可选「整篇文档」</div>
       </div>
     </template>
@@ -89,6 +90,7 @@ const error = ref("");
 const pendingDoc = ref<{ id: string; name: string; markdown: string } | null>(null);
 const blocks = ref<SiyuanBlockEntry[]>([]);
 const blocksLoading = ref(false);
+const blocksTruncated = ref(false);
 
 function stripFrontMatter(md: string): string {
   return md.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, "");
@@ -165,9 +167,12 @@ async function pick(f: SiyuanDocEntry) {
     if (props.showBlocks) {
       pendingDoc.value = { id: f.id, name: f.name, markdown: md };
       blocks.value = [];
+      blocksTruncated.value = false;
       blocksLoading.value = true;
       try {
-        blocks.value = await listSiyuanBlocks(f.id);
+        const r = await listSiyuanBlocks(f.id);
+        blocks.value = r.entries;
+        blocksTruncated.value = r.truncated;
       } catch (e) {
         console.error("加载块列表失败:", e);
         blocks.value = [];
@@ -201,6 +206,7 @@ function confirmDoc() {
   });
   pendingDoc.value = null;
   blocks.value = [];
+  blocksTruncated.value = false;
 }
 
 function confirmBlock(b: SiyuanBlockEntry) {
@@ -214,6 +220,7 @@ function confirmBlock(b: SiyuanBlockEntry) {
   });
   pendingDoc.value = null;
   blocks.value = [];
+  blocksTruncated.value = false;
 }
 </script>
 

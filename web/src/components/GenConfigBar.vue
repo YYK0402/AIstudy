@@ -10,19 +10,21 @@
       </span>
       <span v-if="$slots.scope" class="gen-scope-extra"><slot name="scope" /></span>
     </div>
-    <div v-if="$slots.options" class="gen-form">
-      <slot name="options" />
-    </div>
-    <div class="gen-actions">
-      <button
-        class="btn primary"
-        :disabled="disabled || actionDisabled || selectedCount === 0"
-        @click="$emit('action')"
-      >
-        <AppIcon name="spark" :size="14" />
-        {{ actionLabel }}
-      </button>
-      <slot name="actions" />
+    <div class="gen-row">
+      <div v-if="$slots.options" class="gen-form">
+        <slot name="options" />
+      </div>
+      <div class="gen-actions">
+        <button
+          class="btn primary"
+          :disabled="disabled || actionDisabled || selectedCount === 0"
+          @click="$emit('action')"
+        >
+          <AppIcon name="spark" :size="14" />
+          {{ actionLabel }}
+        </button>
+        <slot name="actions" />
+      </div>
     </div>
   </div>
 </template>

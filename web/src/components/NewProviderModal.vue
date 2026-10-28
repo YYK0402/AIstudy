@@ -65,10 +65,20 @@ function isLocalUrl(url: string): boolean {
   }
 }
 
+/** 完整 http/https URL 才允许保存（与 provider.ts 服务端校验同口径） */
+function isUrlValid(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const keyRequired = computed(() => !isEdit.value && !isLocalUrl(form.baseUrl.trim()));
 
 const valid = computed(() => {
-  if (form.name.trim() === "" || form.baseUrl.trim() === "") {
+  if (form.name.trim() === "" || !isUrlValid(form.baseUrl)) {
     return false;
   }
   return isEdit.value || form.apiKey.trim() !== "" || isLocalUrl(form.baseUrl.trim());

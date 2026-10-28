@@ -83,6 +83,10 @@ function mergeConvMarkdown(oldMd: string, newMd: string): string {
   return newMd + (oldBody ? `\n\n${oldBody}\n` : "");
 }
 
+// per-doc 串行队列（storage.ts saveChain 同款）：同一目标节点的两轮对话同步串行，
+// 避免并发读旧文档→各自合并→后写覆盖先写，丢一轮对话
+const convSyncChains = new Map<string, Promise<unknown>>();
+
 /**
  * 同步 KP 所属章/节节点的讲解对话到思源（幂等：整段重建锚点区）。
  * fire-and-forget 语义：不阻塞主流程，失败仅提示。
@@ -96,6 +100,22 @@ export async function syncExplainConversations(courseId: number, kpId: number): 
   if (!course || !kp) return;
   const target = convDocTarget(course, data.chapters, kp);
 
+  const run = (convSyncChains.get(target.key) ?? Promise.resolve()).then(() =>
+    syncConvDocSerial(courseId, target),
+  );
+  convSyncChains.set(target.key, run.catch(() => undefined));
+  return run;
+}
+
+async function syncConvDocSerial(
+  courseId: number,
+  target: ReturnType<typeof convDocTarget>,
+): Promise<void> {
+  // 串行段内重新取数，确保上一轮同步已落库的讲解记录不丢
+  const data = await getData();
+  const settings = await getSettings();
+  const course = data.courses.find((c) => c.id === courseId);
+  if (!course) return;
   const nodeKps = data.knowledgePoints.filter(
     (k) => k.courseId === courseId && convDocTarget(course, data.chapters, k).key === target.key,
   );
@@ -107,15 +127,21 @@ export async function syncExplainConversations(courseId: number, kpId: number): 
     if (!data.conversationsDocs) data.conversationsDocs = {};
     const entry = data.conversationsDocs[target.key];
     if (entry?.docId) {
-      const current =
-        (await window.siyuanAiStudy.getSiyuanDocMarkdown(entry.docId)) ?? entry.lastMarkdown ?? null;
-      if (!current) {
+      const current = await window.siyuanAiStudy.getSiyuanDocMarkdown(entry.docId);
+      if (current != null) {
+        const merged = mergeConvMarkdown(current, newMd);
+        await window.siyuanAiStudy.updateSiyuanDoc(entry.docId, merged);
+        data.conversationsDocs[target.key] = { docId: entry.docId, lastMarkdown: merged };
+      } else if (await window.siyuanAiStudy.siyuanDocExists(entry.docId)) {
+        // 文档存在但读取失败（瞬时错误）→ 跳过，避免用旧副本覆盖用户在思源里的改动
         window.siyuanAiStudy.showMessage("学习对话文档读取失败，本次跳过同步", 4000, "error");
-        return;
+      } else {
+        // 文档已被删除 → 重建（轮次数据都在库里，重建不丢内容）
+        const notebook = await ensureNotebook(settings.notebookName);
+        const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook);
+        data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
+        window.siyuanAiStudy.showMessage("学习对话文档曾被删除，已自动重建", 3000);
       }
-      const merged = mergeConvMarkdown(current, newMd);
-      await window.siyuanAiStudy.updateSiyuanDoc(entry.docId, merged);
-      data.conversationsDocs[target.key] = { docId: entry.docId, lastMarkdown: merged };
     } else {
       const notebook = await ensureNotebook(settings.notebookName);
       const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook);

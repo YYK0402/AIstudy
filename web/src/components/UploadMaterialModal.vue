@@ -191,9 +191,10 @@ async function save() {
     const aiOrganize = useAiOrganize.value;
     const contentText = result.value.contentText;
     const headings = result.value.headings;
+    // 资料已落库，但后续设置读取失败时保留 modal 展示错误，不静默关闭
+    const settings = await getSettings();
     close();
     modalStore.notifyMaterialSaved();
-    const settings = await getSettings();
     if (aiOrganize) {
       // 第三步目录预览等梳理完成后再自动弹出（梳理后的标题更干净），见 runOrganizeTask
       startOrganizeTask(material.id, courseId, contentText);
