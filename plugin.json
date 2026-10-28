@@ -5,10 +5,6 @@
   "version": "0.2.0",
   "minAppVersion": "3.8.0",
   "kernels": [
-    "windows",
-    "linux",
-    "darwin",
-    "docker",
     "all"
   ],
   "backends": [
