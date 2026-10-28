@@ -61,7 +61,7 @@
         <div v-else class="dist-list">
           <div v-for="row in distributionRows" :key="row.key" class="dist-row">
             <span class="tag" :class="row.key"><span class="d"></span>{{ row.label }}</span>
-            <div class="dist-bar"><div class="dist-fill" :style="{ width: row.pct + '%', background: row.color }"></div></div>
+            <div class="dist-track"><div class="dist-fill" :style="{ width: row.pct + '%', background: row.color }"></div></div>
             <span class="dist-num">{{ row.count }}</span>
           </div>
         </div>

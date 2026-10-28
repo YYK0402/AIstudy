@@ -19,6 +19,8 @@
   --as-blue: #7fb0c9;
   --as-blue-soft: rgba(127, 176, 201, 0.13);
   --as-red: #cf6f5e;
+  --as-yellow: #d6c062;
+  --as-teal: #62b8ac;
   --as-purple: #a78bfa;
   --as-purple-soft: rgba(167, 139, 250, 0.14);
   --as-purple-line: rgba(167, 139, 250, 0.42);
@@ -57,6 +59,8 @@
   --as-blue: #3d6f8f;
   --as-blue-soft: rgba(61, 111, 143, 0.12);
   --as-red: #b05348;
+  --as-yellow: #7d6a14;
+  --as-teal: #2e7a6d;
   --as-purple: #6b4f9e;
   --as-purple-soft: rgba(107, 79, 158, 0.12);
   --as-purple-line: rgba(107, 79, 158, 0.42);
@@ -910,10 +914,13 @@
 .option.correct .key { background: var(--as-green); border-color: var(--as-green); color: var(--as-on-accent); font-weight: 600; }
 .option.wrong { border-color: var(--as-red); background: var(--as-red-soft); }
 .option.wrong .key { background: var(--as-red); border-color: var(--as-red); color: #fff; }
-.analysis { display: none; margin-top: 16px; padding: 15px 17px; background: var(--as-bg-elev); border: 1px solid var(--as-border); border-radius: var(--as-radius-sm); border-left: 3px solid var(--as-green); }
-.analysis.show { display: block; animation: fadeIn .25s; }
-.analysis .lbl { font-size: 11px; color: var(--as-green); letter-spacing: .1em; margin-bottom: 6px; }
-.analysis p { font-size: 13px; color: var(--as-text-dim); line-height: 1.7; }
+
+
+/* ===== 闪卡本列表 ===== */
+.fc-list { display: flex; flex-direction: column; gap: 8px; }
+.fc-item { padding: 10px 14px; background: var(--as-bg-elev); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); }
+.fc-front { font-size: 13.5px; font-weight: 500; line-height: 1.5; margin-bottom: 8px; }
+.fc-foot { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--as-text-faint); }
 
 /* ===== 报告 ===== */
 .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -1155,7 +1162,7 @@
 .dist-list { display: flex; flex-direction: column; gap: 10px; }
 .dist-row { display: flex; align-items: center; gap: 10px; }
 .dist-row .tag { width: 64px; flex-shrink: 0; }
-.dist-bar { flex: 1; height: 8px; background: var(--as-bg-elev2); border-radius: 5px; overflow: hidden; }
+.dist-track { flex: 1; height: 8px; background: var(--as-bg-elev2); border-radius: 5px; overflow: hidden; }
 .dist-fill { height: 100%; border-radius: 5px; transition: width .4s ease; }
 .dist-num { font-family: var(--as-font-mono); font-size: 12px; color: var(--as-text-dim); width: 24px; text-align: right; }
 .course-card.add:hover { color: var(--as-accent-strong); border-color: var(--as-accent-line); }
