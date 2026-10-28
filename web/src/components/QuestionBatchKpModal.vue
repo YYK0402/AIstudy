@@ -7,11 +7,29 @@
       <div class="field">
         <label>绑定方式</label>
         <div class="mode-grid">
-          <div class="mode-card" :class="{ sel: mode === 'add' }" @click="mode = 'add'">
+          <div
+            class="mode-card"
+            role="button"
+            tabindex="0"
+            :aria-pressed="mode === 'add'"
+            :class="{ sel: mode === 'add' }"
+            @click="mode = 'add'"
+            @keydown.enter.prevent="mode = 'add'"
+            @keydown.space.prevent="mode = 'add'"
+          >
             <div class="t">追加</div>
             <div class="d">在原有绑定上新增所选知识点（去重）</div>
           </div>
-          <div class="mode-card" :class="{ sel: mode === 'replace' }" @click="mode = 'replace'">
+          <div
+            class="mode-card"
+            role="button"
+            tabindex="0"
+            :aria-pressed="mode === 'replace'"
+            :class="{ sel: mode === 'replace' }"
+            @click="mode = 'replace'"
+            @keydown.enter.prevent="mode = 'replace'"
+            @keydown.space.prevent="mode = 'replace'"
+          >
             <div class="t">替换</div>
             <div class="d">清空原绑定，仅保留所选知识点</div>
           </div>

@@ -31,11 +31,29 @@
       <div v-if="!isEdit" class="field">
         <label>目录构建模式</label>
         <div class="mode-grid">
-          <div class="mode-card" :class="{ sel: form.mode === 'manual' }" @click="form.mode = 'manual'">
+          <div
+            class="mode-card"
+            role="button"
+            tabindex="0"
+            :aria-pressed="form.mode === 'manual'"
+            :class="{ sel: form.mode === 'manual' }"
+            @click="form.mode = 'manual'"
+            @keydown.enter.prevent="form.mode = 'manual'"
+            @keydown.space.prevent="form.mode = 'manual'"
+          >
             <div class="t">✍️ 手动模式</div>
             <div class="d">先手动搭建章节/单元目录，再上传资料绑定对应章节</div>
           </div>
-          <div class="mode-card" :class="{ sel: form.mode === 'ai' }" @click="form.mode = 'ai'">
+          <div
+            class="mode-card"
+            role="button"
+            tabindex="0"
+            :aria-pressed="form.mode === 'ai'"
+            :class="{ sel: form.mode === 'ai' }"
+            @click="form.mode = 'ai'"
+            @keydown.enter.prevent="form.mode = 'ai'"
+            @keydown.space.prevent="form.mode = 'ai'"
+          >
             <div class="t">🤖 AI 自动模式</div>
             <div class="d">上传资料后由 AI 识别结构，自动生成章节/单元树</div>
           </div>

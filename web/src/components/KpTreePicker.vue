@@ -15,7 +15,7 @@
           />
           <span class="nm">{{ ch.name }}</span>
           <span class="cnt">{{ allKpIdsOfNode(ch.id).length }}</span>
-          <span class="tgl" :class="{ open: expanded.has(ch.id) }" @click="toggleExpand(ch.id)">▾</span>
+          <span class="tgl" role="button" tabindex="0" :aria-expanded="expanded.has(ch.id)" :class="{ open: expanded.has(ch.id) }" @click="toggleExpand(ch.id)" @keydown.enter.prevent="toggleExpand(ch.id)" @keydown.space.prevent="toggleExpand(ch.id)">▾</span>
         </div>
         <div v-show="isSearching || expanded.has(ch.id)" class="kpsm-children">
           <div v-for="u in visibleUnitsOf(ch.id)" :key="u.id" class="kpsm-unit">

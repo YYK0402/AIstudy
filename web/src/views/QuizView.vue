@@ -23,36 +23,50 @@
             <div class="bar"><div class="fill" :style="{ width: ((quizIdx + 1) / quizList.length * 100) + '%' }"></div></div>
           </div>
           <div class="q-title">{{ currentQuestion!.title }}</div>
-          <!-- 单选 / 判断 -->
+          <!-- 单选 / 判断（radiogroup：方向键移焦，Space/Enter 选择） -->
           <template v-if="currentQuestion!.qType === 'single' || currentQuestion!.qType === 'judge'">
-            <div
-              v-for="opt in currentOptions"
-              :key="opt"
-              class="option"
-              :class="{
-                picked: pickedSingle === opt,
-                right: quizResult && opt === currentQuestion!.answer,
-                wrong: quizResult && pickedSingle === opt && !quizResult.isCorrect,
-              }"
-              @click="pickOption(opt)"
-            >
-              <span class="d"></span>{{ opt }}
+            <div role="radiogroup" :aria-label="`第 ${quizIdx + 1} 题选项`">
+              <div
+                v-for="(opt, oi) in currentOptions"
+                :key="opt"
+                ref="optionEls"
+                class="option"
+                role="radio"
+                :aria-checked="pickedSingle === opt"
+                :tabindex="oi === optionFocusIdx ? 0 : -1"
+                :class="{
+                  picked: pickedSingle === opt,
+                  right: quizResult && opt === currentQuestion!.answer,
+                  wrong: quizResult && pickedSingle === opt && !quizResult.isCorrect,
+                }"
+                @click="pickOption(opt, oi)"
+                @keydown="onOptionKeydown($event, oi)"
+              >
+                <span class="d"></span>{{ opt }}
+              </div>
             </div>
           </template>
-          <!-- 多选 -->
+          <!-- 多选（listbox：方向键移焦，Space/Enter 勾选） -->
           <template v-else-if="currentQuestion!.qType === 'multiple'">
-            <div
-              v-for="opt in currentOptions"
-              :key="opt"
-              class="option"
-              :class="{
-                picked: pickedMulti.includes(opt),
-                right: quizResult && isRightOption(opt),
-                wrong: quizResult && pickedMulti.includes(opt) && !isRightOption(opt),
-              }"
-              @click="toggleMulti(opt)"
-            >
-              <span class="d"></span>{{ opt }}
+            <div role="listbox" aria-multiselectable="true" :aria-label="`第 ${quizIdx + 1} 题选项`">
+              <div
+                v-for="(opt, oi) in currentOptions"
+                :key="opt"
+                ref="optionEls"
+                class="option"
+                role="option"
+                :aria-selected="pickedMulti.includes(opt)"
+                :tabindex="oi === optionFocusIdx ? 0 : -1"
+                :class="{
+                  picked: pickedMulti.includes(opt),
+                  right: quizResult && isRightOption(opt),
+                  wrong: quizResult && pickedMulti.includes(opt) && !isRightOption(opt),
+                }"
+                @click="toggleMulti(opt, oi)"
+                @keydown="onOptionKeydown($event, oi)"
+              >
+                <span class="d"></span>{{ opt }}
+              </div>
             </div>
           </template>
           <!-- 简答 / 填空 / 翻译 -->
@@ -514,6 +528,7 @@ function resetQuestionState() {
   quizResult.value = null;
   quizError.value = "";
   pendingGrading.value = null;
+  optionFocusIdx.value = 0;
 }
 
 function beginQuiz(list: Question[], context: TestTaskContext | null = null) {
@@ -637,9 +652,29 @@ function endPractice() {
   testDoneTitles.value = [];
 }
 
-function pickOption(opt: string) {
+const optionEls = ref<HTMLElement[]>([]);
+const optionFocusIdx = ref(0);
+
+function pickOption(opt: string, oi?: number) {
   if (quizResult.value || submitting.value) return;
   pickedSingle.value = pickedSingle.value === opt ? null : opt;
+  if (oi !== undefined) optionFocusIdx.value = oi;
+}
+
+function onOptionKeydown(e: KeyboardEvent, oi: number): void {
+  if (quizResult.value) return;
+  const opts = currentOptions.value;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const next = e.key === "ArrowDown" ? (oi + 1) % opts.length : (oi - 1 + opts.length) % opts.length;
+    optionFocusIdx.value = next;
+    optionEls.value[next]?.focus();
+  } else if (e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    const opt = opts[oi];
+    if (currentQuestion.value?.qType === "multiple") toggleMulti(opt, oi);
+    else pickOption(opt, oi);
+  }
 }
 
 function getInputLabel(): string {
@@ -672,11 +707,12 @@ function submitPicked() {
   void submitCurrent();
 }
 
-function toggleMulti(opt: string) {
+function toggleMulti(opt: string, oi?: number) {
   if (quizResult.value || submitting.value) return;
   pickedMulti.value = pickedMulti.value.includes(opt)
     ? pickedMulti.value.filter((o) => o !== opt)
     : [...pickedMulti.value, opt];
+  if (oi !== undefined) optionFocusIdx.value = oi;
 }
 
 function isRightOption(opt: string): boolean {

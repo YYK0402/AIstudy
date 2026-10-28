@@ -37,7 +37,7 @@
                   <button class="danger" @click.stop="closeProviderMenu(); handleDelete(p)">删除</button>
                 </div>
               </span>
-              <div class="switch" :class="{ on: p.enabled }" @click="toggleProvider(p)"></div>
+              <div class="switch" role="switch" :aria-checked="p.enabled" tabindex="0" :class="{ on: p.enabled }" @click="toggleProvider(p)" @keydown.enter.prevent="toggleProvider(p)" @keydown.space.prevent="toggleProvider(p)"></div>
             </div>
             <div v-if="expandedId === p.id" class="provider-models">
               <div class="model-list">
@@ -139,7 +139,7 @@
       </div>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">资料持久化到思源</span>
-        <div class="switch" :class="{ on: settings.persistToSiyuan }" @click="togglePersist"></div>
+        <div class="switch" role="switch" :aria-checked="settings.persistToSiyuan" tabindex="0" :class="{ on: settings.persistToSiyuan }" @click="togglePersist" @keydown.enter.prevent="togglePersist" @keydown.space.prevent="togglePersist"></div>
       </div>
       <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
         <span class="t">笔记本名称</span>
@@ -189,7 +189,7 @@
         <table class="log-table">
           <tr><th>任务</th><th>模型</th><th>Token</th><th>状态</th><th>时间</th></tr>
           <template v-for="log in pagedLogs" :key="log.id">
-            <tr class="log-row" :class="{ active: detailLogId === log.id }" title="点击查看明细" @click="toggleLogDetail(log.id)">
+            <tr class="log-row" role="button" tabindex="0" :class="{ active: detailLogId === log.id }" title="点击查看明细" @click="toggleLogDetail(log.id)" @keydown.enter.prevent="toggleLogDetail(log.id)" @keydown.space.prevent="toggleLogDetail(log.id)">
               <td>{{ log.taskKey }}</td>
               <td class="mono">{{ log.modelName }}</td>
               <td class="mono">{{ log.tokenIn + log.tokenOut }}</td>

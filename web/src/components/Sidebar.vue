@@ -15,10 +15,10 @@
 
     <div class="course-switch" ref="switchRef">
       <label>当前课程</label>
-      <div class="course-select" @click.stop="toggleDropdown">
-        <div class="course-emoji">{{ currentEmoji }}</div>
+      <div class="course-select" role="button" tabindex="0" :aria-expanded="dropdownOpen" @click.stop="toggleDropdown" @keydown.enter.stop.prevent="toggleDropdown" @keydown.space.stop.prevent="toggleDropdown">
+        <div class="course-emoji" aria-hidden="true">{{ currentEmoji }}</div>
         <span class="name">{{ currentName }}</span>
-        <span class="chev">▾</span>
+        <span class="chev" aria-hidden="true">▾</span>
       </div>
       <div class="course-dropdown" :class="{ open: dropdownOpen }">
         <div

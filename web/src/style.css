@@ -658,20 +658,21 @@
 .kp-row .kp-types { display: flex; gap: 4px; flex-shrink: 0; }
 .kp-row .kp-types .tag { font-size: 10px; padding: 1px 7px; }
 .kp-row .kp-acts { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.kp-act { font-size: 11px; color: var(--as-blue); text-decoration: none; }
+.kp-act { font-size: 11px; color: var(--as-blue); text-decoration: none; padding: 2px 6px; margin: -2px -6px; }
 .kp-act:hover { text-decoration: underline; }
 .kp-row .btn.sm { padding: 1px 8px; font-size: 11px; }
 .link-btn {
   border: none;
   background: none;
-  padding: 0 2px;
+  padding: 2px 6px;
+  margin: -2px -6px;
   cursor: pointer;
   font-size: 11px;
   font-family: inherit;
   color: var(--as-blue);
 }
 .link-btn:hover { text-decoration: underline; }
-.task-check { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--as-border); border-radius: 5px; background: transparent; color: var(--as-green); font-size: 12px; line-height: 1; cursor: pointer; transition: all .15s; }
+.task-check { width: 22px; height: 22px; flex-shrink: 0; margin-top: 0; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--as-border); border-radius: 5px; background: transparent; color: var(--as-green); font-size: 12px; line-height: 1; cursor: pointer; transition: all .15s; }
 .task-check:disabled { cursor: default; opacity: .7; }
 .task-check-spinner {
   width: 10px; height: 10px;
@@ -1168,7 +1169,9 @@
 .hm-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hm-progress { font-family: var(--as-font-mono); font-size: 11px; color: var(--as-text-dim); }
 .hm-dots { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
-.hm-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; transition: transform 0.12s ease; }
+.hm-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; position: relative; transition: transform 0.12s ease; }
+/* 扩大命中区到 24px（WCAG 目标尺寸），不占布局空间 */
+.hm-dot::after { content: ""; position: absolute; inset: -6px; }
 .hm-dot:hover { transform: scale(1.35); }
 .hm-dot.proficient { background: var(--as-accent); }
 .hm-dot.mastered { background: var(--as-green); }
