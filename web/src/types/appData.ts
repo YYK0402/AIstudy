@@ -19,6 +19,8 @@ export type {
   ReviewSchedule,
   FlashCard,
   StudyLog,
+  StudyLogMonthly,
+  AnswerStatsMonthly,
   AppData,
   AppSettings,
   Mastery,

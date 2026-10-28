@@ -260,6 +260,34 @@ export interface AppSettings {
   aiRetryCount?: number;
   /** AI 请求速率限制（次/分钟，0=不限，旧数据缺失按 0）；超限排队等待窗口释放 */
   aiRateLimitPerMin?: number;
+  /** 学习数据保留天数（studyLogs/answerRecords，旧数据缺失按 90；0 = 永久保留不归档） */
+  studyRetentionDays?: number;
+}
+
+/** StudyLog 月度聚合（超保留期记录归档后保留的汇总，month = "YYYY-MM"） */
+export interface StudyLogMonthly {
+  courseId: number;
+  month: string;
+  /** 当月累计学习时长（秒） */
+  seconds: number;
+  /** 当月学习动作数 */
+  actions: number;
+  /** 当月最后一条记录的本地日期（YYYY-MM-DD），用于归档后精确计算 lastStudyTime */
+  lastDay: string;
+}
+
+/** AnswerRecord 月度聚合（超保留期作答记录归档后保留的汇总，month = "YYYY-MM"） */
+export interface AnswerStatsMonthly {
+  courseId: number;
+  month: string;
+  /** 当月作答总数 */
+  total: number;
+  /** 当月答对数 */
+  correct: number;
+  /** 当月简答题得分总和 */
+  essayTotalScore: number;
+  /** 当月有效简答题数 */
+  essayCount: number;
 }
 
 /**
@@ -282,6 +310,10 @@ export interface CourseData {
   reviewSchedules: ReviewSchedule[];
   flashCards: FlashCard[];
   studyLogs: StudyLog[];
+  /** 超保留期 StudyLog 的月度归档汇总（按 courseId+month 唯一） */
+  studyLogMonthly: StudyLogMonthly[];
+  /** 超保留期 AnswerRecord 的月度归档汇总（按 courseId+month 唯一） */
+  answerStatsMonthly: AnswerStatsMonthly[];
   /**
    * 学习对话落库文档（每章/节一个）：key = 章/节节点 id 的字符串，未挂载 KP 的兜底文档为 `course-${courseId}`；
    * value.docId = 思源文档 id，value.lastMarkdown = 最近一次写入的完整 markdown（内核内存读不到时的兜底）
@@ -310,6 +342,10 @@ export interface AppData {
   reviewSchedules: ReviewSchedule[];
   flashCards: FlashCard[];
   studyLogs: StudyLog[];
+  /** 超保留期 StudyLog 的月度归档汇总（全课程合并视图） */
+  studyLogMonthly: StudyLogMonthly[];
+  /** 超保留期 AnswerRecord 的月度归档汇总（全课程合并视图） */
+  answerStatsMonthly: AnswerStatsMonthly[];
   settings: AppSettings;
   /** 自定义提示词模板（taskKey → 模板）；未覆盖的任务用内置默认模板 */
   promptTemplates?: Record<string, PromptTemplateDef>;
@@ -344,6 +380,8 @@ export function createEmptyData(): AppData {
     reviewSchedules: [],
     flashCards: [],
     studyLogs: [],
+    studyLogMonthly: [],
+    answerStatsMonthly: [],
     settings: {
       chapterMode: "manual",
       persistToSiyuan: false,
@@ -368,5 +406,7 @@ export function createEmptyCourseData(): CourseData {
     reviewSchedules: [],
     flashCards: [],
     studyLogs: [],
+    studyLogMonthly: [],
+    answerStatsMonthly: [],
   };
 }

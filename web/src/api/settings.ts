@@ -9,6 +9,7 @@ export async function getSettings(): Promise<AppSettings> {
     notebookName: data.settings?.notebookName ?? "AI 研习",
     aiRetryCount: data.settings?.aiRetryCount ?? 0,
     aiRateLimitPerMin: data.settings?.aiRateLimitPerMin ?? 0,
+    studyRetentionDays: data.settings?.studyRetentionDays ?? 90,
   };
 }
 

@@ -5,6 +5,8 @@ import { ensureNotebook } from "./siyuanDoc";
 
 const CONV_BEGIN = "<!-- ai-study:conversations:begin -->";
 const CONV_END = "<!-- ai-study:conversations:end -->";
+/** 单个 KP 在对话文档中最多渲染的轮数：超出只渲染最近 N 轮（讲解记录不删除，数据仍在插件库里） */
+export const CONV_MAX_ROUNDS = 50;
 
 /** 按 KP 挂载节点定位对话文档：章 → /课程/章/学习对话；节 → /课程/章/节/学习对话；未挂载 → 课程级兜底 */
 function convDocTarget(
@@ -31,8 +33,9 @@ function convDocTarget(
   };
 }
 
-/** 构建对话文档 markdown（只含本节点下有记录的 KP，sort 序；轮次时间升序） */
-function buildConvMarkdown(label: string, kps: KnowledgePoint[], records: ExplainRecord[]): string {
+/** 构建对话文档 markdown（只含本节点下有记录的 KP，sort 序；轮次时间升序）。
+ *  单 KP 超过 CONV_MAX_ROUNDS 轮时只渲染最近 N 轮（编号保留原始轮次），开头加归档注记。 */
+export function buildConvMarkdown(label: string, kps: KnowledgePoint[], records: ExplainRecord[]): string {
   const byKp = new Map<number, ExplainRecord[]>();
   for (const r of records) {
     const list = byKp.get(r.kpId) ?? [];
@@ -44,7 +47,9 @@ function buildConvMarkdown(label: string, kps: KnowledgePoint[], records: Explai
     const list = byKp.get(kp.id);
     if (!list || list.length === 0) continue;
     list.sort((a, b) => a.createTime.localeCompare(b.createTime) || a.id - b.id);
-    const rounds = list.map((r, i) => {
+    const hidden = list.length > CONV_MAX_ROUNDS ? list.length - CONV_MAX_ROUNDS : 0;
+    const visible = hidden > 0 ? list.slice(hidden) : list;
+    const rounds = visible.map((r, i) => {
       const time = new Date(r.createTime).toLocaleString("zh-CN", {
         year: "numeric",
         month: "2-digit",
@@ -53,13 +58,15 @@ function buildConvMarkdown(label: string, kps: KnowledgePoint[], records: Explai
         minute: "2-digit",
       });
       return [
-        `### 第 ${i + 1} 轮 · ${time} · ${r.aiScore} 分`,
+        `### 第 ${hidden + i + 1} 轮 · ${time} · ${r.aiScore} 分`,
         `**AI 提问**：${r.askPrompt || "（历史轮次未记录提问）"}`,
         `**我的讲解**：${r.userContent}`,
         `**AI 评估**：${r.aiFeedback || "（无点评）"}`,
       ].join("\n\n");
     });
-    sections.push(`## ${kp.name}\n\n${rounds.join("\n\n")}`);
+    const note =
+      hidden > 0 ? `> 共 ${list.length} 轮，仅显示最近 ${CONV_MAX_ROUNDS} 轮（更早的 ${hidden} 轮未删除，数据保留在插件中）\n\n` : "";
+    sections.push(`## ${kp.name}\n\n${note}${rounds.join("\n\n")}`);
   }
   return (
     `# 学习对话\n\n> 本文档由「AI 研习」插件自动维护（${label}）。锚点外内容不会被插件修改。\n\n` +

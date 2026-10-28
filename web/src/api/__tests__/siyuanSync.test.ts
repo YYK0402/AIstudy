@@ -101,3 +101,44 @@ describe("syncExplainConversations 文档缺失处理", () => {
     expect(dataRef.data.conversationsDocs!["course-1"].docId).toBe("doc-deleted");
   });
 });
+
+import { CONV_MAX_ROUNDS, buildConvMarkdown } from "../siyuanSync";
+
+describe("buildConvMarkdown 轮数上限", () => {
+  const kp = {
+    id: 1, courseId: 1, chapterId: null, blockId: null, name: "KP1", content: "",
+    mastery: "unlearn" as const, sourceAssetIds: "", prevKpIds: "", chapterName: "",
+    sort: 0, createTime: "2026-10-01T00:00:00Z",
+  };
+
+  function makeRecords(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      id: i + 1,
+      courseId: 1,
+      kpId: 1,
+      userContent: `第${i + 1}轮讲解`,
+      aiFeedback: "点评",
+      aiScore: "80",
+      createTime: new Date(2026, 0, 1 + i, 10).toISOString(),
+      askPrompt: `Q${i + 1}`,
+    }));
+  }
+
+  it(`超过 ${CONV_MAX_ROUNDS} 轮：只渲染最近 N 轮，编号保留原始轮次，加归档注记`, () => {
+    const md = buildConvMarkdown("测试", [kp], makeRecords(CONV_MAX_ROUNDS + 2));
+    expect(md).toContain(`共 ${CONV_MAX_ROUNDS + 2} 轮，仅显示最近 ${CONV_MAX_ROUNDS} 轮`);
+    // 最早的 2 轮（第 1/2 轮）不渲染，最近一轮编号 = 总数
+    expect(md).not.toContain("### 第 1 轮");
+    expect(md).not.toContain("### 第 2 轮");
+    expect(md).toContain(`### 第 ${CONV_MAX_ROUNDS + 1} 轮`);
+    expect(md).toContain(`### 第 ${CONV_MAX_ROUNDS + 2} 轮`);
+    expect(md).toContain("第51轮讲解"); // 只保留最近 N 轮内容
+    expect(md).not.toContain("第2轮讲解");
+  });
+
+  it(`恰好 ${CONV_MAX_ROUNDS} 轮：全部渲染，无注记`, () => {
+    const md = buildConvMarkdown("测试", [kp], makeRecords(CONV_MAX_ROUNDS));
+    expect(md).toContain("### 第 1 轮");
+    expect(md).not.toContain("仅显示最近");
+  });
+});

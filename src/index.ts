@@ -12,6 +12,7 @@ import {
 } from "./courseSplit";
 import { runWithRetry } from "./aiRetry";
 import type { AiRetryFailInfo } from "./aiRetry";
+import { applyRetention } from "./retention";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
@@ -649,6 +650,7 @@ export default class AiStudyPlugin extends Plugin {
       throw new Error("数据未就绪（加载失败），保存已暂停，请重启插件");
     }
     await migrateProviderKeys(data);
+    applyRetention(data);
     const { global, courses } = splitAppData(data);
     const dirty: { global: boolean; courseIds: number[] } = { global: false, courseIds: [] };
     try {

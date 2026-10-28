@@ -21,6 +21,8 @@ const DIRECT_KEYS = [
   "explainRecords",
   "flashCards",
   "studyLogs",
+  "studyLogMonthly",
+  "answerStatsMonthly",
 ] as const;
 type DirectKey = (typeof DIRECT_KEYS)[number];
 
@@ -157,6 +159,8 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     reviewSchedules: [...global.reviewSchedules],
     flashCards: [...global.flashCards],
     studyLogs: [...global.studyLogs],
+    studyLogMonthly: [...global.studyLogMonthly],
+    answerStatsMonthly: [...global.answerStatsMonthly],
   };
   for (const cd of courses.values()) {
     data.chapters.push(...cd.chapters);
@@ -173,6 +177,8 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     data.reviewSchedules.push(...cd.reviewSchedules);
     data.flashCards.push(...cd.flashCards);
     data.studyLogs.push(...cd.studyLogs);
+    data.studyLogMonthly.push(...cd.studyLogMonthly);
+    data.answerStatsMonthly.push(...cd.answerStatsMonthly);
     if (cd.conversationsDocs && Object.keys(cd.conversationsDocs).length > 0) {
       data.conversationsDocs = { ...(data.conversationsDocs ?? {}), ...cd.conversationsDocs };
     }
@@ -199,6 +205,8 @@ export function hasCourseEntities(data: AppData): boolean {
       cd.reviewSchedules,
       cd.flashCards,
       cd.studyLogs,
+      cd.studyLogMonthly,
+      cd.answerStatsMonthly,
     ].some((arr) => arr.length > 0),
   );
 }
@@ -223,6 +231,8 @@ export function normalizeCourseData(raw: unknown): CourseData {
   if (arr(p.reviewSchedules)) out.reviewSchedules = p.reviewSchedules!;
   if (arr(p.flashCards)) out.flashCards = p.flashCards!;
   if (arr(p.studyLogs)) out.studyLogs = p.studyLogs!;
+  if (arr(p.studyLogMonthly)) out.studyLogMonthly = p.studyLogMonthly!;
+  if (arr(p.answerStatsMonthly)) out.answerStatsMonthly = p.answerStatsMonthly!;
   if (p.conversationsDocs && typeof p.conversationsDocs === "object") {
     out.conversationsDocs = p.conversationsDocs;
   }

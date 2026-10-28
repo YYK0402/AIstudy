@@ -1,4 +1,5 @@
 import type { Course, Mastery } from "../types/appData";
+import { aggregateAnswers, maxStudyTime } from "../utils/answerStats";
 import type { StudyTrend } from "../utils/studyTrend";
 import { aggregateStudyTrend } from "../utils/studyTrend";
 import { getData } from "./storage";
@@ -59,34 +60,37 @@ export async function queryCourseStats(courseId: number): Promise<CourseStats> {
   const distribution: Record<Mastery, number> = { unlearn: 0, known: 0, mastered: 0, proficient: 0 };
   for (const k of kps) distribution[k.mastery]++;
 
-  const correct = records.filter((r) => r.isCorrect).length;
-  // 简答均分只统计简答题（客观题 score 恒为 "100"/"0"，不能混入）
-  const qTypeById = new Map(questions.map((q) => [q.id, q.qType]));
-  const essayScores = records
-    .filter((r) => qTypeById.get(r.qId) === "essay")
-    .map((r) => parseScoreText(r.score))
-    .filter((n): n is number => n !== null);
+  // 超保留期的作答记录已归档为月度汇总（answerStatsMonthly），合并后累计统计与归档前一致
+  const answerAgg = aggregateAnswers(
+    records,
+    questions,
+    (data.answerStatsMonthly ?? []).filter((m) => m.courseId === courseId),
+  );
   const explainScores = explainRecords.map((r) => parseScoreText(r.aiScore)).filter((n): n is number => n !== null);
-
-  const avg = (arr: number[]): string =>
-    arr.length ? String(Math.round(arr.reduce((s, n) => s + n, 0) / arr.length)) : "";
+  const avgOf = (totalScore: number, count: number): string =>
+    count > 0 ? String(Math.round(totalScore / count)) : "";
 
   const courseLogs = data.studyLogs.filter((l) => l.courseId === courseId);
-  const lastStudyTime = courseLogs.length
+  const courseLogMonthly = (data.studyLogMonthly ?? []).filter((m) => m.courseId === courseId);
+  const rawMaxStudyTime = courseLogs.length
     ? courseLogs.reduce((max, l) => (l.createTime > max ? l.createTime : max), courseLogs[0].createTime)
     : "";
+  const lastStudyTime = maxStudyTime(rawMaxStudyTime, courseLogMonthly);
 
   return {
     study: aggregateStudyTrend(courseLogs),
     kp: { total: kps.length, distribution },
     quiz: {
-      total: records.length,
-      correct,
-      accuracy: records.length ? Math.round((correct / records.length) * 100) + "%" : "",
-      essayAvgScore: avg(essayScores),
+      total: answerAgg.total,
+      correct: answerAgg.correct,
+      accuracy: answerAgg.total ? Math.round((answerAgg.correct / answerAgg.total) * 100) + "%" : "",
+      essayAvgScore: avgOf(answerAgg.essayTotalScore, answerAgg.essayCount),
       wrongCount: data.wrongQuestions.filter((w) => qIdSet.has(w.qId) && (w.status ?? "active") !== "graduated").length,
     },
-    explain: { total: explainRecords.length, avgScore: avg(explainScores) },
+    explain: {
+      total: explainRecords.length,
+      avgScore: explainScores.length ? String(Math.round(explainScores.reduce((s, n) => s + n, 0) / explainScores.length)) : "",
+    },
     review: { touchpoints: reviews.length, totalReviews: reviews.reduce((s, r) => s + r.reviewTimes, 0) },
     plan: { done: tasks.filter((t) => t.status === "done").length, total: tasks.length },
     lastStudyTime,

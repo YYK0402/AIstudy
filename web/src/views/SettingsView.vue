@@ -166,6 +166,18 @@
       <div class="s" style="color:var(--as-text-faint);margin-top:6px">
         0 = 不限。AI 调用（全部服务商共享窗口）超过上限时排队等待窗口释放（本地 Ollama 建议 30 以上，公网 API 建议 10-20）。
       </div>
+      <div class="ta-row" style="margin-top:14px">
+        <span class="t">学习数据保留期</span>
+        <select v-model.number="settings.studyRetentionDays" aria-label="学习数据保留天数">
+          <option :value="90">90 天（默认）</option>
+          <option :value="180">180 天</option>
+          <option :value="365">365 天</option>
+          <option :value="0">永久保留</option>
+        </select>
+      </div>
+      <div class="s" style="color:var(--as-text-faint);margin-top:6px">
+        超保留期的学习日志与作答记录自动归档为月度汇总：趋势/连续天数等近期统计不受影响，课程累计统计（答题量/正确率/简答均分/最近学习时间）由汇总补全，数字与归档前一致。
+      </div>
     </div>
     <div class="card" style="margin-top:14px">
       <h3>最近调用日志</h3>
@@ -273,6 +285,7 @@ const settings = reactive({
   notebookName: "AI 研习",
   aiRetryCount: 0 as 0 | 1 | 2,
   aiRateLimitPerMin: 0,
+  studyRetentionDays: 90,
 });
 const settingsSaving = ref(false);
 /** 服务商行「⋯」菜单：同一时间只开一个 */
@@ -611,6 +624,7 @@ async function saveSettings() {
       notebookName: settings.notebookName.trim() || "AI 研习",
       aiRetryCount: settings.aiRetryCount,
       aiRateLimitPerMin: Number(settings.aiRateLimitPerMin) || 0,
+      studyRetentionDays: Number(settings.studyRetentionDays) || 0,
     });
     settings.notebookName = settings.notebookName.trim() || "AI 研习";
     settingsDirty.value = false;
@@ -648,6 +662,8 @@ onMounted(async () => {
     settings.notebookName = s.notebookName;
     settings.aiRetryCount = (s.aiRetryCount === 1 || s.aiRetryCount === 2 ? s.aiRetryCount : 0) as 0 | 1 | 2;
     settings.aiRateLimitPerMin = Number(s.aiRateLimitPerMin) || 0;
+    const r = Number(s.studyRetentionDays);
+    settings.studyRetentionDays = [90, 180, 365, 0].includes(r) ? r : 90;
     // 等 watch 消化完加载赋值再允许置脏，避免一进页面就提示「有修改」
     await nextTick();
     settingsReady = true;
