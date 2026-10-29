@@ -98,7 +98,7 @@ interface StudyApi {
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
   ensureNotebook(name: string): Promise<string>;
-  createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
+  createSiyuanDoc(markdown: string, path: string, notebook: string, parentID?: string | null): Promise<{ id: string }>;
   removeSiyuanDoc(id: string): Promise<void>;
   updateSiyuanDoc(id: string, markdown: string): Promise<void>;
   getSiyuanDocMarkdown(id: string): Promise<string | null>;
@@ -422,8 +422,8 @@ export default class AiStudyPlugin extends Plugin {
       ensureNotebook: async (name: string) => {
         return await this.handleEnsureNotebook(name);
       },
-      createSiyuanDoc: async (markdown: string, path: string, notebook: string) => {
-        return await this.handleCreateSiyuanDoc(markdown, path, notebook);
+      createSiyuanDoc: async (markdown: string, path: string, notebook: string, parentID?: string | null) => {
+        return await this.handleCreateSiyuanDoc(markdown, path, notebook, parentID);
       },
       removeSiyuanDoc: async (id: string) => {
         await this.handleRemoveSiyuanDoc(id);
@@ -472,20 +472,39 @@ export default class AiStudyPlugin extends Plugin {
   }
 
   // 在指定笔记本路径下创建 markdown 文档，返回文档 id
+  // parentID 已知时一并传递：3.8.9 新标题模式下祖先链存在同名文档需 parentID 消歧（旧版忽略该参数无副作用）
   private async handleCreateSiyuanDoc(
     markdown: string,
     path: string,
     notebook: string,
+    parentID?: string | null,
   ): Promise<{ id: string }> {
     const res = (await fetchSyncPost("/api/filetree/createDocWithMd", {
       notebook,
       path,
       markdown,
-    })) as { code: number; data?: string | null; msg?: string };
+      ...(parentID ? { parentID } : {}),
+    })) as {
+      code: number;
+      data?: string | { reason?: string } | null;
+      msg?: string;
+    };
     if (res.code !== 0 || !res.data) {
-      throw new Error(`创建思源文档失败: ${res.msg ?? "未知错误"}`);
+      throw new Error(`创建思源文档失败: ${this.toCreateDocErrorMessage(res)}`);
     }
-    return { id: res.data };
+    return { id: res.data as string };
+  }
+
+  /** 创建文档失败信息：3.8.9 新标题模式的业务错误以 code:-1 + data.reason 返回，映射为可操作提示 */
+  private toCreateDocErrorMessage(res: { data?: string | { reason?: string } | null; msg?: string }): string {
+    const reason = typeof res.data === "object" && res.data !== null ? res.data.reason : undefined;
+    if (reason === "pathAmbiguous") {
+      return "文档路径歧义：笔记本中已存在同名文档，请在思源中重命名同名文档后重试";
+    }
+    if (reason === "legacyPathUnsupported") {
+      return "文档名称含「/」或为空，路径方式无法创建，请调整课程/章节/资料名称后重试";
+    }
+    return res.msg ?? "未知错误";
   }
 
   private async handleRemoveSiyuanDoc(id: string): Promise<void> {

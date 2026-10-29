@@ -7,12 +7,17 @@ export function isSiyuanDocId(id: string): boolean {
 }
 
 /** 按设置决定是否落库；失败不阻塞主流程。传 label 时失败会统一提示（不传则静默，调用方自行聚合提示） */
-export async function persistDocIfEnabled(markdown: string, path: string, label?: string): Promise<string | null> {
+export async function persistDocIfEnabled(
+  markdown: string,
+  path: string,
+  label?: string,
+  parentID?: string | null,
+): Promise<string | null> {
   const settings = await getSettings();
   if (!settings.persistToSiyuan) return null;
   try {
     const notebook = await ensureNotebook(settings.notebookName);
-    const { id } = await createSiyuanDoc(markdown, path, notebook);
+    const { id } = await createSiyuanDoc(markdown, path, notebook, parentID);
     return id;
   } catch (e) {
     console.error("落库思源失败:", e);
@@ -28,8 +33,13 @@ export async function ensureNotebook(name: string): Promise<string> {
   return window.siyuanAiStudy.ensureNotebook(name);
 }
 
-export async function createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }> {
-  return window.siyuanAiStudy.createSiyuanDoc(markdown, path, notebook);
+export async function createSiyuanDoc(
+  markdown: string,
+  path: string,
+  notebook: string,
+  parentID?: string | null,
+): Promise<{ id: string }> {
+  return window.siyuanAiStudy.createSiyuanDoc(markdown, path, notebook, parentID);
 }
 
 export async function removeSiyuanDoc(id: string): Promise<void> {

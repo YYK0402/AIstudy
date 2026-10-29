@@ -13,23 +13,29 @@ function convDocTarget(
   course: Course,
   chapters: Chapter[],
   kp: KnowledgePoint,
-): { path: string; key: string; label: string } {
+): { path: string; key: string; label: string; parentID: string | null } {
   const base = `/${course.name}`;
-  const fallback = { path: `${base}/学习对话`, key: `course-${course.id}`, label: course.name };
+  const fallback = {
+    path: `${base}/学习对话`,
+    key: `course-${course.id}`,
+    label: course.name,
+    parentID: course.siyuanDocId,
+  };
   if (kp.chapterId == null) return fallback;
   const node = chapters.find((c) => c.id === kp.chapterId);
   if (!node) return fallback;
   if (node.level === "chapter" || node.parentId == null) {
-    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name };
+    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
   }
   const parent = chapters.find((c) => c.id === node.parentId);
   if (!parent) {
-    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name };
+    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
   }
   return {
     path: `${base}/${parent.name}/${node.name}/学习对话`,
     key: String(node.id),
     label: `${parent.name} · ${node.name}`,
+    parentID: node.siyuanBlockId,
   };
 }
 
@@ -145,13 +151,13 @@ async function syncConvDocSerial(
       } else {
         // 文档已被删除 → 重建（轮次数据都在库里，重建不丢内容）
         const notebook = await ensureNotebook(settings.notebookName);
-        const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook);
+        const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook, target.parentID);
         data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
         window.siyuanAiStudy.showMessage("学习对话文档曾被删除，已自动重建", 3000);
       }
     } else {
       const notebook = await ensureNotebook(settings.notebookName);
-      const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook);
+      const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook, target.parentID);
       data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
     }
     await saveData(data);

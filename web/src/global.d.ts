@@ -37,7 +37,7 @@ export interface SiYuanAiStudyApi {
   listModels(providerId: number): Promise<ListModelsResult>;
   showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
   ensureNotebook(name: string): Promise<string>;
-  createSiyuanDoc(markdown: string, path: string, notebook: string): Promise<{ id: string }>;
+  createSiyuanDoc(markdown: string, path: string, notebook: string, parentID?: string | null): Promise<{ id: string }>;
   removeSiyuanDoc(id: string): Promise<void>;
   updateSiyuanDoc(id: string, markdown: string): Promise<void>;
   getSiyuanDocMarkdown(id: string): Promise<string | null>;

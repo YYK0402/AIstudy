@@ -84,7 +84,9 @@ export async function createChapter(input: {
   const path = parentChapter
     ? `/${course?.name ?? "课程"}/${parentChapter.name}/${name}`
     : `/${course?.name ?? "课程"}/${name}`;
-  const docId = await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`);
+  // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
+  const parentID = parentChapter ? parentChapter.siyuanBlockId : (course?.siyuanDocId ?? null);
+  const docId = await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`, parentID);
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
   const chapter: Chapter = {
@@ -136,7 +138,9 @@ export async function importChapterTree(
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
     // 落库思源：章作为课程子文档，节作为父章子文档（path 含文档名）
     const path = parent ? `${coursePath}/${parent.name}/${name}` : `${coursePath}/${name}`;
-    const docId = await persistDocIfEnabled(`# ${name}`, path);
+    // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
+    const parentID = parent ? parent.siyuanBlockId : (course?.siyuanDocId ?? null);
+    const docId = await persistDocIfEnabled(`# ${name}`, path, undefined, parentID);
     if (persistOn && !docId) docFailed++;
     const chapter: Chapter = {
       id: nextId(data.chapters),
