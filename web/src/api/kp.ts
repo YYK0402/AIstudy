@@ -108,7 +108,7 @@ export interface ChapterTreeNode {
   parentName: string | null;
 }
 
-/** 从标题结构批量导入章节树（幂等：同名章节不重复创建）。nodes 需保证父章在子节之前。 */
+/** 从标题结构批量导入章节树（幂等：同名章节不重复创建，新章节追加到末尾，已有章节顺序不变）。nodes 需保证父章在子节之前。 */
 export async function importChapterTree(
   courseId: number,
   nodes: ChapterTreeNode[],
@@ -151,31 +151,8 @@ export async function importChapterTree(
     existing.push(chapter);
     created++;
   }
-  // 按 nodes 文档顺序重编号 sort：重复导入时新建行要落回文档序位置，不能全部追加到末尾
-  const renumber = (rows: Chapter[], orderedIds: number[]) => {
-    const unique = orderedIds.filter((id, i) => orderedIds.indexOf(id) === i);
-    const rest = rows
-      .filter((c) => !unique.includes(c.id))
-      .sort((a, b) => a.sort - b.sort || a.id - b.id)
-      .map((c) => c.id);
-    unique.concat(rest).forEach((id, i) => {
-      const c = data.chapters.find((x) => x.id === id);
-      if (c) c.sort = i + 1;
-    });
-  };
-  const chapterRows = existing.filter((c) => c.level === "chapter");
-  const topIds = nodes
-    .filter((n) => !n.parentName)
-    .map((n) => chapterRows.find((c) => norm(c.name) === norm(n.name.trim()))?.id)
-    .filter((id): id is number => id != null);
-  renumber(existing.filter((c) => c.parentId === null), topIds);
-  for (const ch of chapterRows) {
-    const unitIds = nodes
-      .filter((n) => n.parentName && norm(n.parentName) === norm(ch.name))
-      .map((n) => existing.find((c) => c.parentId === ch.id && norm(c.name) === norm(n.name.trim()))?.id)
-      .filter((id): id is number => id != null);
-    renumber(existing.filter((c) => c.parentId === ch.id), unitIds);
-  }
+  // 新章节已在循环内按「同父 max sort + 1」追加到末尾（nodes 文档序）；
+  // 已有章节一律不动，避免分册合并时打乱全书顺序、覆盖用户手动拖拽的顺序
   // 批量导入不逐条弹窗，聚合提示一次（章节数据本身已落库，仅思源文档缺失）
   if (docFailed > 0) {
     window.siyuanAiStudy.showMessage(`章节树导入：${docFailed} 个章节文档未落库到思源（章节数据不受影响）`, 5000, "error");
