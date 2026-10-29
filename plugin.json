@@ -2,7 +2,7 @@
   "name": "AIstudy",
   "author": "yyk",
   "url": "https://github.com/YYK0402/AIstudy",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "minAppVersion": "3.8.0",
   "kernels": [
     "all"
