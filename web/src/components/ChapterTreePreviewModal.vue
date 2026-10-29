@@ -1,8 +1,10 @@
 <template>
   <div class="modal-mask" :class="{ open: modalStore.chapterPreviewOpen }" @click.self="close">
     <div class="modal tp-modal">
-      <h2>目录预览</h2>
-      <div class="s t-faint" style="margin-bottom:14px">识别到以下章节结构，可编辑后确认生成目录</div>
+      <h2>目录预览<template v-if="modalStore.chapterPreviewMaterialCount > 1">（全部 {{ modalStore.chapterPreviewMaterialCount }} 份资料）</template></h2>
+      <div class="s t-faint" style="margin-bottom:14px">
+        识别到以下章节结构<template v-if="modalStore.chapterPreviewMaterialCount > 1">（由 {{ modalStore.chapterPreviewMaterialCount }} 份资料聚合）</template>，可编辑后确认生成目录
+      </div>
       <div class="tp-list">
         <div v-if="chapterNodes.length === 0" class="empty-state" style="padding:16px">
           未识别到标题结构，可手动「添加章节」
@@ -35,7 +37,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { useModalStore } from "../stores/modal";
-import { importChapterTree, startExtractTask } from "../api";
+import { importChapterTree, listUnextractedMaterials, startBatchExtractTask } from "../api";
 import type { ChapterTreeNode } from "../api";
 
 const modalStore = useModalStore();
@@ -119,21 +121,25 @@ async function confirm() {
     window.siyuanAiStudy.showMessage("请至少填写一个章节名称", 4000, "error");
     return;
   }
-  saving.value = true;
-  try {
-    const courseId = modalStore.chapterPreviewCourseId;
-    const sourceMaterialId = modalStore.chapterPreviewSourceMaterialId;
-    const res = await importChapterTree(courseId, nodes);
-    let msg = `已生成目录：新增 ${res.created} 个章节`;
-    if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
-    if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
-    const autoExtract = sourceMaterialId !== null && res.created > 0;
-    if (autoExtract) msg += "；知识点抽取已后台启动（进度见右上铃铛）";
-    window.siyuanAiStudy.showMessage(msg);
-    modalStore.notifyChapterImported();
-    close();
-    if (autoExtract) startExtractTask(sourceMaterialId, courseId);
-  } catch (e) {
+    saving.value = true;
+    try {
+      const courseId = modalStore.chapterPreviewCourseId;
+      const res = await importChapterTree(courseId, nodes);
+      let msg = `已生成目录：新增 ${res.created} 个章节`;
+      if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
+      if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
+      // 目录确认后：所有尚无知识点的资料一起抽取（知识点基于完整目录分析，而非只抽触发本次预览的资料）
+      const unextracted = await listUnextractedMaterials(courseId);
+      if (unextracted.length > 0) {
+        msg += unextracted.length > 1
+          ? `；${unextracted.length} 份未抽资料知识点抽取已后台启动（进度见右上铃铛）`
+          : "；知识点抽取已后台启动（进度见右上铃铛）";
+      }
+      window.siyuanAiStudy.showMessage(msg);
+      modalStore.notifyChapterImported();
+      close();
+      if (unextracted.length > 0) startBatchExtractTask(unextracted.map((m) => m.id), courseId);
+    } catch (e) {
     console.error("生成目录失败:", e);
     window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "生成目录失败", 4000, "error");
   } finally {

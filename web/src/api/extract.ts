@@ -4,13 +4,20 @@ import { formatLocalDate, nextId, now, truncateText } from "./format";
 import { findTaskBinding, callAi, cancelAiCall, AiCanceledError } from "./ai";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
-import { startBgTask } from "./bgTask";
+import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
 import { ensureReviewTouchpointInData } from "./review";
 import { updateKnowledgePoint } from "./kp";
 import { findChapterByTitle, normalizeKpName } from "./kpMatch";
-import { useNotifyStore } from "../stores/notify";
-import { isExtractingMaterial, isFullExtracting, markMaterialExtracting, unmarkMaterialExtracting } from "./extractState";
+import {
+  isExtractingMaterial,
+  isFullExtracting,
+  isBatchExtracting,
+  beginBatchExtract,
+  endBatchExtract,
+  markMaterialExtracting,
+  unmarkMaterialExtracting,
+} from "./extractState";
 import { isSiyuanDocId } from "./siyuanDoc";
 
 export interface ExtractKpResult {
@@ -245,9 +252,62 @@ export function startExtractTask(materialId: number, courseId: number): void {
     window.siyuanAiStudy.showMessage("全量重抽中，请稍候", 3000, "error");
     return;
   }
+  if (isBatchExtracting()) {
+    window.siyuanAiStudy.showMessage("批量抽取进行中，请稍候", 3000, "error");
+    return;
+  }
   const flag = { aborted: false };
   extractAbortFlags.set(materialId, flag);
   void runExtractTask(materialId, courseId, flag);
+}
+
+/** 尚无知识点覆盖的资料（课程知识点 sourceAssetIds 中均未出现的 materialId） */
+export async function listUnextractedMaterials(courseId: number): Promise<Material[]> {
+  const data = await getData();
+  const covered = new Set<string>();
+  for (const k of data.knowledgePoints) {
+    if (k.courseId !== courseId) continue;
+    for (const s of k.sourceAssetIds.split(",")) if (s.trim()) covered.add(s.trim());
+  }
+  return data.materials.filter((m) => m.courseId === courseId && !covered.has(String(m.id)));
+}
+
+/**
+ * 批量抽取多个资料（目录确认后「未抽资料一起抽」）：
+ * 每个资料一个后台任务（铃铛分别显示进度），按启动顺序串行执行，避免并发 AI 调用触发限速。
+ * 互斥：任一抽取（单资料/批量/全量）进行中则拒绝。
+ */
+export function startBatchExtractTask(materialIds: number[], courseId: number): void {
+  if (materialIds.length === 0) return;
+  if (isFullExtracting() || isBatchExtracting()) {
+    window.siyuanAiStudy.showMessage("已有抽取任务进行中，请稍候", 3000, "error");
+    return;
+  }
+  if (!beginBatchExtract()) return;
+  void (async () => {
+    const data = await getData();
+    const names = new Map(data.materials.map((m) => [m.id, m.name] as const));
+    const tasks = materialIds.map((id, i) =>
+      startBgTask({
+        taskId: materialTaskId(id, "extract"),
+        taskType: "extract",
+        label: names.get(id) ?? `资料 ${id}`,
+        materialId: id,
+        courseId,
+        message: i === 0 ? "准备中…" : `排队中（共 ${materialIds.length} 份，等待前面资料完成）`,
+      }),
+    );
+    try {
+      for (let i = 0; i < materialIds.length; i++) {
+        // flag 存入共享的 extractAbortFlags：铃铛「取消」（cancelExtractTask）对运行中/排队项均生效
+        const flag = { aborted: false };
+        extractAbortFlags.set(materialIds[i], flag);
+        await runExtractTask(materialIds[i], courseId, flag, tasks[i]);
+      }
+    } finally {
+      endBatchExtract();
+    }
+  })();
 }
 
 export function cancelExtractTask(materialId: number): void {
@@ -261,27 +321,29 @@ async function runExtractTask(
   materialId: number,
   courseId: number,
   flag: { aborted: boolean },
+  extractTask?: ReturnType<typeof startBgTask> | null,
 ): Promise<void> {
-  const notify = useNotifyStore();
   const extractTaskId = materialTaskId(materialId, "extract");
-  let extractTask: ReturnType<typeof startBgTask> | null = null;
+  let reporter: BgTaskReporter | null = null;
   try {
     const data = await getData();
     const material = data.materials.find((m) => m.id === materialId);
-    if (!material) throw new Error("资料不存在或已删除");
-    extractTask = startBgTask({
-      taskId: extractTaskId,
-      taskType: "extract",
-      label: material.name,
-      materialId,
-      courseId,
-      message: "准备中…",
-    });
+    if (!material) throw new Error("资料不存在");
+    reporter =
+      extractTask ??
+      startBgTask({
+        taskId: extractTaskId,
+        taskType: "extract",
+        label: material.name,
+        materialId,
+        courseId,
+        message: "准备中…",
+      });
     const result = await extractKnowledgePoints(materialId, {
       isAborted: () => flag.aborted,
       onProgress: (current, total, blockTitle) => {
         if (total > 0) {
-          extractTask?.progress({
+          reporter?.progress({
             done: current,
             total,
             message: `知识点抽取：第 ${current}/${total} 块${blockTitle ? " · " + blockTitle : ""}`,
@@ -290,14 +352,14 @@ async function runExtractTask(
       },
     });
     if (flag.aborted) {
-      extractTask?.canceled();
+      reporter.canceled();
       return;
     }
     let msg = `抽取完成：新增 ${result.newCount} 个知识点，合并重复 ${result.duplicateCount} 个`;
     if (result.errors.length > 0) msg += `；${result.errors.length} 块失败（${result.errors[0]}）`;
-    extractTask?.done(msg);
+    reporter.done(msg);
   } catch (e) {
-    extractTask?.fail(e, "知识点抽取失败");
+    if (reporter) reporter.fail(e, "知识点抽取失败");
   } finally {
     extractAbortFlags.delete(materialId);
   }

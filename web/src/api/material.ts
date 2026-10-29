@@ -262,9 +262,19 @@ async function runOrganizeTask(
     if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
     if (siyuanSyncFailed) msg += "；同步思源文档失败";
     orgTask?.done(msg);
-    // 自动目录模式：梳理完成后弹目录预览（梳理后的标题比梳理前的启发式识别更干净）
-    if (latest.settings.chapterMode === "auto" && headings.length > 0) {
-      useModalStore().openChapterPreview(courseId, headings, materialId);
+    // 自动目录模式：弹目录预览。目录从课程全部资料聚合识别（而非只弹本份），
+    // 多份资料并行梳理时等全部梳理完（本份是最后一个）再弹，保证聚合目录完整
+    const otherOrganizing = [...organizingMaterialIds].some((id) => id !== materialId);
+    if (latest.settings.chapterMode === "auto" && headings.length > 0 && !otherOrganizing) {
+      const { aggregateCourseToc } = await import("./kp");
+      const agg = await aggregateCourseToc(courseId);
+      if (agg.headings.length === 0) return;
+      if (agg.corrected) {
+        window.siyuanAiStudy.showMessage("已用 AI 矫正目录，请在预览中核对后确认");
+      } else if (agg.failed) {
+        window.siyuanAiStudy.showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
+      }
+      useModalStore().openChapterPreview(courseId, agg.headings, materialId, agg.materialCount);
     }
   } catch (e) {
     orgTask?.fail(e, "AI 梳理失败");

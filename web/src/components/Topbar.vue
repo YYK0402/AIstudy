@@ -60,13 +60,12 @@ import { useThemeStore } from "../stores/theme";
 import { useCourseStore } from "../stores/course";
 import { useNotifyStore, type BgTaskState, type BgTaskType } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
-import type { ParsedHeading } from "../utils/documentParser";
 import {
+  aggregateCourseToc,
   queryStudyPlans,
   queryStudyTasks,
   queryDueReviews,
   queryWrongQuestions,
-  queryMaterials,
   formatLocalDate,
   startOrganizeTask,
   cancelOrganizeTask,
@@ -162,15 +161,13 @@ function goContent(t: BgTaskState) {
   notifyStore.panelOpen = false;
 }
 
-// 查看目录：切课程 → 课程内容页 → 弹目录预览（用该资料最新标题）
+// 查看目录：切课程 → 课程内容页 → 弹目录预览（聚合课程全部资料的标题）
 async function viewToc(t: BgTaskState) {
   try {
     await switchToCourse(t);
     router.push({ name: "content" });
-    const mats = await queryMaterials(t.courseId);
-    const mat = mats.find((m) => m.id === t.materialId);
-    const headings = (mat ? JSON.parse(mat.headings || "[]") : []) as ParsedHeading[];
-    modalStore.openChapterPreview(t.courseId, headings.filter((h) => h && h.text));
+    const agg = await aggregateCourseToc(t.courseId);
+    modalStore.openChapterPreview(t.courseId, agg.headings, t.materialId ?? null, agg.materialCount);
   } catch (e) {
     console.error("打开目录预览失败:", e);
   } finally {

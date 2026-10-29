@@ -3,9 +3,16 @@
     <div class="modal" style="width:560px">
       <h2>上传资料</h2>
       <div class="field">
-        <label>选择文件（PDF / Word / PPT / TXT / Markdown）</label>
-        <input ref="fileInput" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.markdown" @change="onFile" />
-        <div v-if="selectedFile" class="s" style="margin-top:6px">{{ selectedFile.name }}（{{ fileSize }}）</div>
+        <label>选择文件（PDF / Word / PPT / TXT / Markdown，可多选）</label>
+        <input ref="fileInput" type="file" accept=".pdf,.docx,.pptx,.txt,.md,.markdown" multiple @change="onFile" />
+        <div v-if="fileItems.length > 0" style="margin-top:6px">
+          <div v-for="(it, i) in fileItems" :key="it.file.name + i" class="s">
+            {{ it.file.name }}（{{ fmtSize(it.file.size) }}）
+            <template v-if="it.doc"> · 共 {{ it.doc.contentText.length }} 字符</template>
+            <template v-else-if="it.error"> · <span class="t-danger">{{ it.error }}</span></template>
+            <template v-else> · 解析中…</template>
+          </div>
+        </div>
         <label class="s" style="display:flex;gap:6px;align-items:center;margin-top:8px;cursor:pointer">
           <input type="checkbox" v-model="useAiOrganize" :disabled="parsing || sySel !== null" />
           AI 梳理结构与识别章节（保存后后台运行：去页眉页脚水印、修复断行缺字、识别目录，进度见右上铃铛）
@@ -34,7 +41,7 @@
       <div class="modal-actions">
         <button class="btn ghost" @click="close">取消</button>
         <button class="btn primary" :disabled="!canSave || saving" @click="save">
-          {{ saving ? "保存中…" : "保存到资料库" }}
+          {{ saving ? "保存中…" : canSave ? `保存到资料库${savedCount > 1 ? `（${savedCount} 份）` : ""}` : "保存到资料库" }}
         </button>
       </div>
     </div>
@@ -45,19 +52,27 @@
 import { computed, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import {
+  aggregateCourseToc,
   createMaterial,
   getSettings,
   uploadAsset,
   startOrganizeTask,
+  type Material,
   type SiyuanDocSelection,
 } from "../api";
 import { parseDocument, parseTextInput, type ParsedDocument } from "../utils/documentParser";
 import { ocrPdfText } from "../utils/pdfOcr";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
 
+interface FileItem {
+  file: File;
+  doc?: ParsedDocument;
+  error?: string;
+}
+
 const modalStore = useModalStore();
 const fileInput = ref<HTMLInputElement | null>(null);
-const selectedFile = ref<File | null>(null);
+const fileItems = ref<FileItem[]>([]);
 const pastedText = ref("");
 const parsing = ref(false);
 const saving = ref(false);
@@ -69,16 +84,15 @@ const error = ref("");
 // ===== 从思源选择文档（SiyuanDocPicker 提供） =====
 const sySel = ref<SiyuanDocSelection | null>(null);
 
-const isPdf = computed(() => (selectedFile.value?.name.toLowerCase().endsWith(".pdf") ?? false));
+const parsedItems = computed(() => fileItems.value.filter((it) => it.doc));
+const savedCount = computed(() => (sySel.value || pastedText.value.trim() ? 1 : parsedItems.value.length));
 
-const fileSize = computed(() => {
-  const f = selectedFile.value;
-  if (!f) return "";
-  const kb = Math.round(f.size / 1024);
+function fmtSize(bytes: number): string {
+  const kb = Math.round(bytes / 1024);
   return kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
-});
+}
 
-const canSave = computed(() => result.value !== null && modalStore.uploadMaterialCourseId > 0);
+const canSave = computed(() => (result.value !== null || parsedItems.value.length > 0) && modalStore.uploadMaterialCourseId > 0);
 
 function close() {
   reset();
@@ -86,7 +100,7 @@ function close() {
 }
 
 function reset() {
-  selectedFile.value = null;
+  fileItems.value = [];
   pastedText.value = "";
   result.value = null;
   error.value = "";
@@ -96,11 +110,15 @@ function reset() {
   if (fileInput.value) fileInput.value.value = "";
 }
 
+function clearFileSelection() {
+  fileItems.value = [];
+  if (fileInput.value) fileInput.value.value = "";
+}
+
 // 选中思源文档 → markdown 解析为资料内容
 watch(sySel, async (sel) => {
   if (!sel) return;
-  selectedFile.value = null;
-  if (fileInput.value) fileInput.value.value = "";
+  clearFileSelection();
   pastedText.value = "";
   useAiOrganize.value = false;
   parsing.value = true;
@@ -122,87 +140,116 @@ async function runOcr(file: File, doc: ParsedDocument) {
     return;
   }
   try {
-    const ocrText = await ocrPdfText(file, (p, t) => (ocrStatus.value = `检测到扫描件，OCR 识别中：第 ${p}/${t} 页`));
+    const ocrText = await ocrPdfText(file, (p, t) => (ocrStatus.value = `检测到扫描件，OCR 识别中：${file.name} 第 ${p}/${t} 页`));
     if (ocrText.trim()) {
-      result.value = { ...doc, contentText: ocrText.trim(), headings: [] };
-      ocrStatus.value = `OCR 完成：识别 ${ocrText.trim().length} 字符，页眉页脚水印与章节结构将由 AI 梳理处理`;
-    } else {
-      ocrStatus.value = "OCR 未识别到文本，请检查扫描图片质量";
+      result.value = null;
+      return { ...doc, contentText: ocrText.trim(), headings: [] };
     }
+    ocrStatus.value = "OCR 未识别到文本，请检查扫描图片质量";
+    return doc;
   } catch (e) {
     ocrStatus.value = `OCR 失败（当前思源环境可能不支持 OCR）：${e instanceof Error ? e.message : String(e)}`;
+    return doc;
   }
 }
 
 async function onFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  selectedFile.value = file;
+  const files = Array.from((e.target as HTMLInputElement).files ?? []);
+  if (files.length === 0) return;
   sySel.value = null;
   pastedText.value = "";
   result.value = null;
   error.value = "";
-    ocrStatus.value = "";
-    parsing.value = true;
-    try {
-      const doc = await parseDocument(file);
-      result.value = doc;
-      // 第二步链路默认启用：AI 梳理去噪 + 识别章节（用户可取消）
-      useAiOrganize.value = true;
-      // 第一步识别层自动决策：PDF 文字层充足直接用（无 OCR 误差且更快），不足（扫描件）自动转 OCR
-      if (isPdf.value) {
-        if (doc.contentText.trim().length >= 100) {
-          ocrStatus.value = "PDF 已有文字层，按文字层解析（无需 OCR）";
-        } else {
-          await runOcr(file, doc);
+  ocrStatus.value = "";
+  fileItems.value = files.map((file) => ({ file }));
+  parsing.value = true;
+  let anyParsed = false;
+  try {
+    // 串行解析：OCR 等耗时操作逐个进行，状态提示不互相覆盖
+    for (const item of fileItems.value) {
+      try {
+        let doc = await parseDocument(item.file);
+        if (item.file.name.toLowerCase().endsWith(".pdf")) {
+          if (doc.contentText.trim().length >= 100) {
+            ocrStatus.value = `${item.file.name} 已有文字层，按文字层解析（无需 OCR）`;
+          } else {
+            doc = (await runOcr(item.file, doc)) as ParsedDocument;
+          }
         }
+        item.doc = doc;
+        anyParsed = true;
+      } catch (err) {
+        item.error = err instanceof Error ? err.message : String(err);
       }
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    }
+    // 第二步链路默认启用：AI 梳理去噪 + 识别章节（用户可取消）
+    if (anyParsed) useAiOrganize.value = true;
   } finally {
     parsing.value = false;
   }
 }
 
 async function save() {
-  if (!canSave.value || !result.value) return;
+  if (!canSave.value || saving.value) return;
   saving.value = true;
   try {
     const courseId = modalStore.uploadMaterialCourseId;
-    // 有原始文件时上传到思源资源目录，便于后续「重新解析」
-    let assetPath = "";
-    if (selectedFile.value) {
-      try {
-        assetPath = await uploadAsset(selectedFile.value);
-      } catch (e) {
-        console.error("上传资源文件失败（不影响资料保存）:", e);
-      }
-    }
-    const material = await createMaterial({
-      courseId,
-      name: result.value.name,
-      fileType: result.value.fileType,
-      contentText: result.value.contentText,
-      headings: JSON.stringify(result.value.headings),
-      assetPath,
-      source: sySel.value ? "siyuan" : selectedFile.value ? "upload" : "paste",
-      siyuanDocId: sySel.value?.docId,
-    });
     const aiOrganize = useAiOrganize.value;
-    const contentText = result.value.contentText;
-    const headings = result.value.headings;
+    const created: { material: Material; organized: boolean }[] = [];
+    if (parsedItems.value.length > 0) {
+      for (const it of parsedItems.value) {
+        const doc = it.doc!;
+        // 有原始文件时上传到思源资源目录，便于后续「重新解析」
+        let assetPath = "";
+        try {
+          assetPath = await uploadAsset(it.file);
+        } catch (e) {
+          console.error("上传资源文件失败（不影响资料保存）:", e);
+        }
+        const material = await createMaterial({
+          courseId,
+          name: doc.name,
+          fileType: doc.fileType,
+          contentText: doc.contentText,
+          headings: JSON.stringify(doc.headings),
+          assetPath,
+          source: "upload",
+        });
+        if (aiOrganize) startOrganizeTask(material.id, courseId, doc.contentText);
+        created.push({ material, organized: aiOrganize });
+      }
+    } else if (result.value) {
+      // 粘贴 / 思源文档通道（单份）
+      let assetPath = "";
+      const material = await createMaterial({
+        courseId,
+        name: result.value.name,
+        fileType: result.value.fileType,
+        contentText: result.value.contentText,
+        headings: JSON.stringify(result.value.headings),
+        assetPath,
+        source: sySel.value ? "siyuan" : "paste",
+        siyuanDocId: sySel.value?.docId,
+      });
+      if (aiOrganize) startOrganizeTask(material.id, courseId, result.value.contentText);
+      created.push({ material, organized: aiOrganize });
+    }
     // 资料已落库，但后续设置读取失败时保留 modal 展示错误，不静默关闭
     const settings = await getSettings();
     close();
     modalStore.notifyMaterialSaved();
-    if (aiOrganize) {
-      // 第三步目录预览等梳理完成后再自动弹出（梳理后的标题更干净），见 runOrganizeTask
-      startOrganizeTask(material.id, courseId, contentText);
+    const n = created.length;
+    if (created.some((c) => c.organized)) {
+      // 第三步目录预览等全部梳理完成后再自动弹出（由 runOrganizeTask 聚合课程全部资料后弹出），见 runOrganizeTask
       const waitToc = settings.chapterMode === "auto" ? "，完成后自动弹目录预览" : "";
-      window.siyuanAiStudy.showMessage(`已保存，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）`, 4000);
-    } else if (settings.chapterMode === "auto" && headings.length > 0) {
-      // 未启用 AI 梳理时，用本地启发式标题立即弹目录预览
-      modalStore.openChapterPreview(courseId, headings);
+      window.siyuanAiStudy.showMessage(
+        n > 1 ? `已保存 ${n} 份资料，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）` : `已保存，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）`,
+        4000,
+      );
+    } else if (settings.chapterMode === "auto") {
+      // 未启用 AI 梳理时，立即弹目录预览（聚合课程全部资料的标题）
+      const agg = await aggregateCourseToc(courseId);
+      if (agg.headings.length > 0) modalStore.openChapterPreview(courseId, agg.headings, null, agg.materialCount);
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -219,8 +266,7 @@ watch(pastedText, async (text) => {
     return;
   }
     sySel.value = null;
-    selectedFile.value = null;
-    if (fileInput.value) fileInput.value.value = "";
+    clearFileSelection();
     result.value = await parseTextInput(text);
     useAiOrganize.value = true;
 });

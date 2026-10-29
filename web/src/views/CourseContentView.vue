@@ -298,6 +298,7 @@ import { useCourseStore } from "../stores/course";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import {
+  aggregateCourseToc,
   queryMaterials,
   deleteMaterial,
   extractKnowledgePoints,
@@ -311,7 +312,6 @@ import {
   deleteChapters,
   relinkUnassignedKps,
   deleteKnowledgePoints,
-  correctTocWithAi,
   materialSourceLabel,
   applyChapterMoves,
   applyKnowledgePointSort,
@@ -320,7 +320,6 @@ import {
   startExtractTask,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
-import type { ParsedHeading } from "../utils/documentParser";
 import { useNotifyStore, materialTaskId } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
 import { expandChapterNodeIds, kpCountByNode } from "../utils/chapterScope";
@@ -746,39 +745,18 @@ async function reidentifyChapters() {
   if (!currentCourseId() || reidentifying.value) return;
   reidentifying.value = true;
   try {
-    const allHeadings: ParsedHeading[] = [];
-    for (const m of materials.value) {
-      try {
-        const hs = JSON.parse(m.headings || "[]") as Array<{ level: number; text: string }>;
-        for (const h of hs) {
-          if (h && typeof h.level === "number" && typeof h.text === "string" && h.text.trim()) {
-            allHeadings.push({ level: h.level, text: h.text.trim() });
-          }
-        }
-      } catch {
-        // 忽略无法解析的 headings
-      }
-    }
-    // 按「层级 + 标题」去重
-    const seen = new Set<string>();
-    const deduped = allHeadings.filter((h) => {
-      const key = `${h.level}:${h.text}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    if (deduped.length === 0) {
+    const agg = await aggregateCourseToc(currentCourseId());
+    if (agg.headings.length === 0) {
       window.siyuanAiStudy.showMessage("未识别到标题结构，请先上传资料", 4000, "error");
       return;
     }
-    // AI 矫正目录（未配置「recognize_toc」任务模型时跳过，失败时回退原列表并提示）
-    const { headings: finalHeadings, corrected, failed } = await correctTocWithAi(deduped, currentCourseId());
-    if (corrected) {
+    // AI 矫正提示（aggregateCourseToc 内已完成矫正）
+    if (agg.corrected) {
       window.siyuanAiStudy.showMessage("已用 AI 矫正目录，请在预览中核对后确认");
-    } else if (failed) {
+    } else if (agg.failed) {
       window.siyuanAiStudy.showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
     }
-    modalStore.openChapterPreview(currentCourseId(), finalHeadings);
+    modalStore.openChapterPreview(currentCourseId(), agg.headings, null, agg.materialCount);
   } finally {
     reidentifying.value = false;
   }

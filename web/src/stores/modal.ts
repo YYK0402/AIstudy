@@ -16,8 +16,10 @@ export const useModalStore = defineStore("modal", {
     chapterPreviewOpen: false,
     chapterPreviewCourseId: 0,
     chapterPreviewHeadings: [] as ParsedHeading[],
-    /** 目录来源资料 id（确认生成后自动对该资料抽取知识点；课程级重新识别时为空） */
+    /** 目录来源资料 id（保留字段：课程级重新识别/聚合预览时为空） */
     chapterPreviewSourceMaterialId: null as number | null,
+    /** 目录聚合的资料数（>1 时标题显示「全部 N 份资料」） */
+    chapterPreviewMaterialCount: 0,
     // 章节导入后递增，通知课程内容页刷新目录树
     chapterVersion: 0,
     // 危险操作确认框（单例，见 composables/useConfirm.ts）
@@ -63,10 +65,11 @@ export const useModalStore = defineStore("modal", {
     notifyMaterialSaved() {
       this.materialVersion++;
     },
-    openChapterPreview(courseId: number, headings: ParsedHeading[], sourceMaterialId?: number | null) {
+    openChapterPreview(courseId: number, headings: ParsedHeading[], sourceMaterialId?: number | null, materialCount?: number) {
       this.chapterPreviewCourseId = courseId;
       this.chapterPreviewHeadings = headings;
       this.chapterPreviewSourceMaterialId = sourceMaterialId ?? null;
+      this.chapterPreviewMaterialCount = materialCount ?? 0;
       this.chapterPreviewOpen = true;
     },
     closeChapterPreview() {
@@ -74,6 +77,7 @@ export const useModalStore = defineStore("modal", {
       this.chapterPreviewCourseId = 0;
       this.chapterPreviewHeadings = [];
       this.chapterPreviewSourceMaterialId = null;
+      this.chapterPreviewMaterialCount = 0;
     },
     notifyChapterImported() {
       this.chapterVersion++;

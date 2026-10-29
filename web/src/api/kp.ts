@@ -257,6 +257,45 @@ export async function correctTocWithAi(
   }
 }
 
+/**
+ * 聚合课程全部资料的标题结构生成课程级目录（目录永远从所有资料一起识别，而非单份资料）：
+ * 合并各资料 headings → 按「层级+标题」去重 → AI 矫正（可选）。
+ */
+export interface AggregateTocResult {
+  headings: ParsedHeading[];
+  corrected: boolean;
+  failed: boolean;
+  materialCount: number;
+}
+
+export async function aggregateCourseToc(courseId: number): Promise<AggregateTocResult> {
+  const data = await getData();
+  const mats = data.materials.filter((m) => m.courseId === courseId);
+  const allHeadings: ParsedHeading[] = [];
+  for (const m of mats) {
+    try {
+      const hs = JSON.parse(m.headings || "[]") as Array<{ level: number; text: string }>;
+      for (const h of hs) {
+        if (h && typeof h.level === "number" && typeof h.text === "string" && h.text.trim()) {
+          allHeadings.push({ level: h.level, text: h.text.trim() });
+        }
+      }
+    } catch {
+      // 忽略无法解析的 headings
+    }
+  }
+  // 按「层级 + 标题」去重
+  const seen = new Set<string>();
+  const deduped = allHeadings.filter((h) => {
+    const key = `${h.level}:${h.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const { headings, corrected, failed } = await correctTocWithAi(deduped, courseId);
+  return { headings, corrected, failed, materialCount: mats.length };
+}
+
 export async function updateChapter(chapter: Chapter): Promise<void> {
   const data = await getData();
   const idx = data.chapters.findIndex((c) => c.id === chapter.id);
