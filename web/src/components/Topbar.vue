@@ -44,6 +44,9 @@
         </div>
       </div>
     </div>
+    <button class="theme-toggle" title="反馈 / 建议" @click="openFeedback">
+      <AppIcon name="quiz" :size="17" />
+    </button>
     <button class="theme-toggle" title="切换明暗主题" @click="theme.toggle()">
       <AppIcon class="ic-sun" name="sun" :size="17" />
       <AppIcon class="ic-moon" name="moon" :size="17" />
@@ -74,12 +77,20 @@ import {
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 
+/** 用户反馈/BUG 表单（飞书多维表格表单，匿名可填） */
+const FEEDBACK_FORM_URL = "https://liprcmvuqc0.feishu.cn/share/base/shrcnMLw7N7EXR4UB6y9zY3KHbr";
+
 const route = useRoute();
 const router = useRouter();
 const theme = useThemeStore();
 const courseStore = useCourseStore();
 const notifyStore = useNotifyStore();
 const modalStore = useModalStore();
+
+function openFeedback() {
+  // 思源桌面版 Electron 由 setWindowOpenHandler 接管 window.open → shell.openExternal（系统浏览器）
+  window.open(FEEDBACK_FORM_URL, "_blank");
+}
 
 const currentCourseId = computed(() => courseStore.currentCourseId);
 
