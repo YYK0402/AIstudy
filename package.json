@@ -1,6 +1,6 @@
 {
   "name": "siyuan-ai-study",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "AI 智能学习插件：基于思源笔记底座 + 可自定义大模型服务商的课程自学插件",
   "author": "yyk",
