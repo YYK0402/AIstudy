@@ -54,6 +54,8 @@ export interface Course {
   createTime: string;
   /** 本课程指定模型（AiModel 行 id）；null/缺失 = 跟随任务分配（任务级 → 全局默认） */
   modelId?: number | null;
+  /** 内置示例课标记；用于首页「试一试示例课」卡片显隐、防重与「示例」徽标 */
+  isSample?: boolean;
 }
 
 export interface Chapter {
