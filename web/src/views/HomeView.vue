@@ -14,6 +14,10 @@
 
     <div class="section-head">
       <h2>我的课程</h2><span class="hint">点击卡片进入课程继续学习</span>
+      <button class="btn sm" :disabled="importing" @click="triggerImport">
+        <AppIcon name="upload" :size="13" /> {{ importing ? "导入中…" : "导入课程包" }}
+      </button>
+      <input ref="importInput" type="file" accept=".zip" style="display:none" @change="onImportFile" />
       <div class="filter-tabs">
         <button v-for="t in filterTabs" :key="t.key" class="ftab" :class="{ active: courseFilter === t.key }" @click="courseFilter = t.key">
           {{ t.label }}{{ t.count > 0 ? ` ${t.count}` : "" }}
@@ -147,6 +151,7 @@ import {
   setCourseStatus,
   formatLocalDate,
   truncateText,
+  importCourseZip,
 } from "../api";
 import type { Course } from "../api";
 import { aggregateStudyTrend } from "../utils/studyTrend";
@@ -159,6 +164,36 @@ const router = useRouter();
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
+
+// ===== 导入课程包 =====
+const importInput = ref<HTMLInputElement | null>(null);
+const importing = ref(false);
+
+function triggerImport() {
+  if (importing.value) return;
+  importInput.value?.click();
+}
+
+async function onImportFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // 允许重选同一文件
+  if (!file || importing.value) return;
+  importing.value = true;
+  window.siyuanAiStudy.showMessage("正在导入课程包…");
+  try {
+    const res = await importCourseZip(file);
+    const c = res.counts;
+    const asset = res.assetFiles > 0 ? ` / ${res.assetFiles} 原始文件` : "";
+    window.siyuanAiStudy.showMessage(`已导入「${res.courseName}」：${c.chapters} 章 / ${c.kps} 知识点 / ${c.materials} 资料 / ${c.questions} 题${asset}`);
+    await courseStore.refresh().catch(() => undefined);
+  } catch (err) {
+    console.error("导入课程包失败:", err);
+    window.siyuanAiStudy.showMessage(err instanceof Error ? err.message : "导入课程包失败", 4000, "error");
+  } finally {
+    importing.value = false;
+  }
+}
 
 /** 课程看板筛选：全部 / 进行中 / 已归档 */
 const courseFilter = ref<"all" | "active" | "archived">("all");

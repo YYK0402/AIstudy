@@ -5,6 +5,7 @@
         {{ courseName }}<small>{{ courseDesc || "暂无简介" }}</small>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button v-if="courseStore.currentCourse" class="btn sm" @click="openEdit"><AppIcon name="pencil" :size="13" /> 编辑课程信息</button>
+          <button v-if="courseStore.currentCourse" class="btn sm" @click="exportOpen = true"><AppIcon name="download" :size="13" /> 导出课程包</button>
           <button v-if="!archived && questionCount > 0" class="btn sm primary" @click="startFinalExam"><AppIcon name="quiz" :size="13" /> 结业模考</button>
         </div>
       </div>
@@ -66,8 +67,9 @@
           </div>
         </div>
       </div>
-    </div>
+      </div>
     </template>
+    <CoursePackageExportModal :course-id="courseStore.currentCourseId" :open="exportOpen" @close="exportOpen = false" />
   </div>
 </template>
 
@@ -88,6 +90,7 @@ import {
 } from "../api";
 import type { CourseStats, StudyTask, Mastery } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
+import CoursePackageExportModal from "../components/CoursePackageExportModal.vue";
 import { taskAction } from "../constants/tasks";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
@@ -107,6 +110,7 @@ const questionCount = ref(0);
 const todayTasks = ref<StudyTask[]>([]);
 /** 正在写入的任务：防止连点，勾选框显示转圈 */
 const pendingTaskIds = ref<Set<number>>(new Set());
+const exportOpen = ref(false);
 
 const masteredCount = computed(
   () => (stats.value?.kp.distribution.mastered ?? 0) + (stats.value?.kp.distribution.proficient ?? 0),

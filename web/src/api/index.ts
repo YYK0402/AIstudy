@@ -24,6 +24,7 @@ export * from "./kp";
 export * from "./kpMatch";
 export * from "./extract";
 export * from "./course";
+export * from "./coursePackage";
 export * from "./provider";
 export * from "./prompts";
 export * from "./siyuanSync";
