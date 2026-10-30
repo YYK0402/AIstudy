@@ -1081,6 +1081,8 @@
 .filter-tabs .ftab.active { background: var(--as-bg-elev); color: var(--as-text); box-shadow: var(--as-shadow); font-weight: 600; }
 .tag.archived-tag { color: var(--as-text-faint); border-color: var(--as-border); background: var(--as-bg-elev2); }
 .tag.archived-tag .d { background: var(--as-text-faint); }
+/* 示例课「示例」徽标：accent 系金色，与灰调「已归档」区分 */
+.tag.sample-tag { color: var(--as-accent); background: var(--as-accent-soft); }
 /* 归档横幅 */
 .archived-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

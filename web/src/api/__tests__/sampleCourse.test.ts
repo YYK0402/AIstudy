@@ -52,6 +52,10 @@ describe("createSampleCourse", () => {
     await createSampleCourse();
     const plans = store.studyPlans;
     expect(plans).toHaveLength(1);
+    // targetDate = startDate + 14 天（关系式断言，避免跨午夜 flaky）
+    const s = new Date(plans[0].startDate + "T00:00:00");
+    const t = new Date(plans[0].targetDate + "T00:00:00");
+    expect(Math.round((t.getTime() - s.getTime()) / 86400000)).toBe(14);
     const tasks = store.studyTasks.filter((t) => t.planId === plans[0].id);
     expect(tasks.filter((t) => t.taskType === "learn")).toHaveLength(12);
     expect(tasks.some((t) => t.taskType === "test")).toBe(true);
@@ -74,6 +78,7 @@ describe("createSampleCourse", () => {
     const second = await createSampleCourse();
     expect(store.courses.length).toBe(before);
     expect(second.courseId).toBe(first.courseId);
+    expect(store.studyPlans).toHaveLength(1);
   });
 
   it("hasSampleCourse：无示例课为 false，添加后为 true", async () => {

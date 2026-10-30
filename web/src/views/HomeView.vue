@@ -34,7 +34,7 @@
       >
         <div class="cc-top">
           <div class="cc-icon" style="background:var(--as-accent-soft)" aria-hidden="true">{{ emojiOf(c.id) }}</div>
-          <div><div class="cc-name">{{ c.name }}<span v-if="isArchived(c)" class="tag archived-tag" style="margin-left:6px">已归档</span></div><div class="cc-desc">{{ c.description || "尚未添加简介" }}</div></div>
+          <div><div class="cc-name">{{ c.name }}<span v-if="c.isSample" class="tag sample-tag" style="margin-left:6px">示例</span><span v-if="isArchived(c)" class="tag archived-tag" style="margin-left:6px">已归档</span></div><div class="cc-desc">{{ c.description || "尚未添加简介" }}</div></div>
         </div>
         <div class="cc-stats" style="margin-top:14px">
           <span>创建于 {{ formatDate(c.createTime) }}</span>
