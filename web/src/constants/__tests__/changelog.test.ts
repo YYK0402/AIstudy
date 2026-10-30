@@ -32,9 +32,9 @@ describe("changelogSince", () => {
 });
 
 describe("CHANGELOG 数据形状", () => {
-  it("非空且最新在前（0.3.1）", () => {
+  it("非空且最新在前（0.4.0）", () => {
     expect(CHANGELOG.length).toBeGreaterThan(0);
-    expect(CHANGELOG[0].version).toBe("0.3.1");
+    expect(CHANGELOG[0].version).toBe("0.4.0");
   });
 
   it("每条都有非空 version/date 与 items", () => {
