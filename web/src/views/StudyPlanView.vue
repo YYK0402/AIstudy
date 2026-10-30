@@ -90,35 +90,89 @@
         </div>
       </div>
 
-      <div v-if="plan && coverageGroups.length" class="card">
+      <div v-if="plan && coverageStats.unscheduled > 0" class="card">
         <h3>
-          计划覆盖 · 章节与知识点
+          计划覆盖 · 未排期知识点
           <span class="day-total">{{ coverageStats.total }} 个知识点 · 已排期 {{ coverageStats.scheduled }} · 未排期 {{ coverageStats.unscheduled }}</span>
+          <button class="link-btn" @click="coverageDetailOpen = !coverageDetailOpen">
+            {{ coverageDetailOpen ? "收起全部排期" : "展开全部排期" }}
+          </button>
         </h3>
-        <div v-for="g in coverageGroups" :key="g.label" class="cov-group">
+        <div v-for="g in unscheduledGroups" :key="g.label" class="cov-group">
           <div class="cov-ch">{{ g.label }}</div>
           <template v-for="r in g.rows" :key="r.row.kpId">
             <div v-if="r.unit" class="cov-unit">{{ r.unit }}</div>
-            <div class="cov-row" :class="{ unscheduled: r.row.unscheduled }">
+            <div class="cov-row unscheduled">
               <span class="cov-name">{{ r.row.name }}</span>
               <span class="tag" :class="r.row.mastery"><span class="d"></span>{{ masteryLabel(r.row.mastery) }}</span>
-              <span v-for="s in r.row.schedules" :key="s.date" class="cov-sched">
-                {{ s.date.slice(5) }} {{ s.types.map(taskTypeLabel).join("/") }}
-              </span>
-              <span v-if="r.row.learnTotal > 0" class="cov-done" :class="{ ok: r.row.learnDone === r.row.learnTotal }">
-                {{ r.row.learnDone === r.row.learnTotal ? "✓" : r.row.learnDone > 0 ? `${r.row.learnDone}/${r.row.learnTotal}` : "未开始" }}
-              </span>
-              <span v-else-if="r.row.unscheduled" class="cov-done">未排期</span>
+              <span class="cov-done">未排期</span>
             </div>
           </template>
         </div>
+        <div class="s t-accent" style="margin-top:8px">点上方「同步新知识点」将它们排入计划</div>
+        <template v-if="coverageDetailOpen">
+          <div class="cov-ch" style="margin-top:14px">全部排期</div>
+          <div v-for="g in coverageGroups" :key="'full-' + g.label" class="cov-group">
+            <div class="cov-ch">{{ g.label }}</div>
+            <template v-for="r in g.rows" :key="r.row.kpId">
+              <div v-if="r.unit" class="cov-unit">{{ r.unit }}</div>
+              <div class="cov-row" :class="{ unscheduled: r.row.unscheduled }">
+                <span class="cov-name">{{ r.row.name }}</span>
+                <span class="tag" :class="r.row.mastery"><span class="d"></span>{{ masteryLabel(r.row.mastery) }}</span>
+                <span v-for="s in r.row.schedules" :key="s.date" class="cov-sched">
+                  {{ s.date.slice(5) }} {{ s.types.map(taskTypeLabel).join("/") }}
+                </span>
+                <span v-if="r.row.learnTotal > 0" class="cov-done" :class="{ ok: r.row.learnDone === r.row.learnTotal }">
+                  {{ r.row.learnDone === r.row.learnTotal ? "✓" : r.row.learnDone > 0 ? `${r.row.learnDone}/${r.row.learnTotal}` : "未开始" }}
+                </span>
+                <span v-else-if="r.row.unscheduled" class="cov-done">未排期</span>
+              </div>
+            </template>
+          </div>
+        </template>
       </div>
 
       <div v-if="plan && displayDays.length" class="card">
         <h3>
           任务列表
+          <div class="gantt-view-tabs">
+            <button class="chip chip--sm" :class="{ on: viewMode === 'list' }" @click="viewMode = 'list'">列表</button>
+            <button class="chip chip--sm" :class="{ on: viewMode === 'gantt' }" :disabled="!ganttModel" :title="ganttModel ? '' : '暂无任务'" @click="viewMode = 'gantt'">甘特</button>
+          </div>
           <span class="day-total">共 {{ tasks.length }} 条 · 已完成 {{ doneCount }} 条</span>
         </h3>
+        <template v-if="viewMode === 'gantt' && ganttModel">
+          <div class="gantt-focusbar">
+            <div class="gantt-focus-tabs">
+              <button
+                v-for="m in FOCUS_TABS"
+                :key="m.v"
+                class="chip chip--sm"
+                :class="{ on: ganttFocus === m.v }"
+                @click="setGanttFocus(m.v)"
+              >{{ m.label }}</button>
+            </div>
+            <div class="gantt-focus-pager">
+              <button class="chip chip--sm" :disabled="ganttFocus === 'all'" @click="gotoGanttToday()">今天</button>
+              <button class="chip chip--sm" :disabled="ganttFocus === 'all'" @click="shiftGanttFocus(-1)">◀</button>
+              <span class="gantt-focus-label">{{ ganttFocusLabel || `${plan!.startDate} ~ ${plan!.targetDate}` }}</span>
+              <button class="chip chip--sm" :disabled="ganttFocus === 'all'" @click="shiftGanttFocus(1)">▶</button>
+            </div>
+          </div>
+          <PlanGanttView
+            :model="ganttModel"
+            :archived="archived"
+            :pending-task-ids="pendingTaskIds"
+            :expanded-chapters="expandedGanttChapters"
+            :expanded-cells="expandedGanttCells"
+            :postpone-busy="overdueBusy"
+            @toggle-chapter="toggleGanttChapter"
+            @toggle-row="toggleTasks"
+            @toggle-cell="toggleGanttCell"
+            @postpone-tasks="postponeTasks"
+          />
+        </template>
+        <template v-else>
         <div
           v-for="d in displayDays"
           :key="d.date"
@@ -224,6 +278,7 @@
             </template>
           </div>
         </div>
+        </template>
       </div>
       </template>
     </template>
@@ -253,7 +308,18 @@ import {
   formatLocalDate,
 } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
+import PlanGanttView from "../components/PlanGanttView.vue";
 import ProgressBar from "../components/ProgressBar.vue";
+import {
+  addDaysLocal,
+  addMonthsLocal,
+  addYearsLocal,
+  buildGanttModel,
+  monthRangeOf,
+  quarterRangeOf,
+  weekRangeOf,
+  type GanttColUnit,
+} from "../api/planGantt";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { taskTypeLabel } from "../constants/tasks";
 import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, Mastery, ReviewDueItem } from "../api";
@@ -286,6 +352,120 @@ const editing = ref(false);
 const today = formatLocalDate();
 
 const doneCount = computed(() => tasks.value.filter((t) => t.status === "done").length);
+
+// ===== 甘特视图 =====
+const viewMode = ref<"list" | "gantt">("list");
+const expandedGanttChapters = ref<Set<string>>(new Set());
+const expandedGanttCells = ref<Set<string>>(new Set());
+
+// 时间粒度聚焦（仿飞书）：全部 / 周 / 月 / 季 / 年
+type GanttFocusMode = "all" | "week" | "month" | "quarter" | "year";
+const FOCUS_TABS: { v: GanttFocusMode; label: string }[] = [
+  { v: "all", label: "全部" },
+  { v: "week", label: "周" },
+  { v: "month", label: "月" },
+  { v: "quarter", label: "季" },
+  { v: "year", label: "年" },
+];
+const ganttFocus = ref<GanttFocusMode>("all");
+// 锚点日期：聚焦「锚点所在」的该粒度区间
+const ganttAnchor = ref(today);
+
+// 计划就绪后校准锚点：今天落在计划区间内用今天，否则用计划开始日
+watch(
+  () => plan.value,
+  (p) => {
+    if (!p) return;
+    const s = p.startDate ?? today;
+    const e = p.targetDate || s;
+    ganttAnchor.value = today >= s && today <= e ? today : s;
+  },
+  { immediate: true },
+);
+
+/** 聚焦区间：周=含锚点的 ISO 周，月/季/年=锚点所在月/季/年；「全部」为 null */
+const ganttFocusRange = computed(() => {
+  const a = ganttAnchor.value;
+  if (ganttFocus.value === "week") return weekRangeOf(a);
+  if (ganttFocus.value === "month") return monthRangeOf(a);
+  if (ganttFocus.value === "quarter") return quarterRangeOf(a);
+  if (ganttFocus.value === "year") {
+    const y = a.slice(0, 4);
+    return { start: `${y}-01-01`, end: `${y}-12-31` };
+  }
+  return null;
+});
+
+const ganttFocusLabel = computed(() => {
+  const r = ganttFocusRange.value;
+  if (!r) return "";
+  if (ganttFocus.value === "week") return `${r.start} ~ ${r.end}`;
+  if (ganttFocus.value === "month") return `${r.start.slice(0, 4)}年${Number(r.start.slice(5, 7))}月`;
+  if (ganttFocus.value === "quarter") {
+    const [y, m] = r.start.split("-").map(Number);
+    return `${y}年 Q${Math.floor((m - 1) / 3) + 1}`;
+  }
+  return `${r.start.slice(0, 4)}年`;
+});
+
+function setGanttFocus(mode: GanttFocusMode) {
+  ganttFocus.value = mode;
+}
+
+/** 按当前粒度翻上一个/下一个区间 */
+function shiftGanttFocus(dir: -1 | 1) {
+  if (ganttFocus.value === "all") return;
+  const a = ganttAnchor.value;
+  ganttAnchor.value =
+    ganttFocus.value === "week"
+      ? addDaysLocal(a, 7 * dir)
+      : ganttFocus.value === "month"
+        ? addMonthsLocal(a, dir)
+        : ganttFocus.value === "quarter"
+          ? addMonthsLocal(a, 3 * dir)
+          : addYearsLocal(a, dir);
+}
+
+/** 跳回含今天的区间 */
+function gotoGanttToday() {
+  const p = plan.value;
+  const s = p?.startDate ?? today;
+  const e = p?.targetDate || s;
+  ganttAnchor.value = today >= s && today <= e ? today : s;
+}
+
+const ganttModel = computed(() => {
+  if (!plan.value || !tasks.value.length) return null;
+  const r = ganttFocusRange.value;
+  const opts = r
+    ? {
+        colUnit: (ganttFocus.value === "quarter" ? "week" : ganttFocus.value === "year" ? "month" : "day") as GanttColUnit,
+        range: r,
+      }
+    : undefined;
+  return buildGanttModel(plan.value, tasks.value, chapters.value, knowledgePoints.value, today, opts);
+});
+
+/** 首次有模型时默认展开全部章（呈现整体甘特），用户可再收起 */
+watch(ganttModel, (m) => {
+  if (m && expandedGanttChapters.value.size === 0) {
+    expandedGanttChapters.value = new Set(m.chapters.map((c) => c.key));
+  }
+});
+
+function toggleGanttChapter(key: string) {
+  const s = new Set(expandedGanttChapters.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  expandedGanttChapters.value = s;
+}
+
+function toggleGanttCell(key: string) {
+  const s = new Set(expandedGanttCells.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  expandedGanttCells.value = s;
+}
 
 interface TaskGroup {
   date: string;
@@ -611,6 +791,14 @@ const coverageStats = computed(() => {
     unscheduled: all.filter((r) => r.unscheduled).length,
   };
 });
+
+/** 覆盖卡默认只列未排期 KP（全量排期收进可展开详情） */
+const coverageDetailOpen = ref(false);
+const unscheduledGroups = computed(() =>
+  coverageGroups.value
+    .map((g) => ({ label: g.label, rows: g.rows.filter((r) => r.row.unscheduled) }))
+    .filter((g) => g.rows.length > 0),
+);
 
 const masteryLabel = (m: Mastery): string => {
   const map: Record<Mastery, string> = { unlearn: "未学习", known: "了解", mastered: "掌握", proficient: "精通" };
