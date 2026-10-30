@@ -1717,3 +1717,50 @@
   font-size: 10px; font-family: var(--as-font-mono); color: var(--as-text-dim);
   border-left: 1px solid var(--as-border); overflow: hidden;
 }
+
+/* ===== 试一试示例课卡片 ===== */
+.course-card.sample {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--as-accent);
+  background: var(--as-accent-soft);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.course-card.sample:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.course-card.sample .sample-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.course-card.sample .sample-ico {
+  color: var(--as-accent);
+  font-size: 16px;
+}
+.course-card.sample .sample-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.course-card.sample .sample-busy {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--as-accent);
+}
+.course-card.sample .sample-desc {
+  font-size: 13px;
+  color: var(--as-text-dim);
+}
+.course-card.sample .sample-meta {
+  font-size: 12px;
+  color: var(--as-text-faint);
+}
+.course-card.sample .sample-cta {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--as-accent);
+}

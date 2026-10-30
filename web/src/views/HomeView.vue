@@ -53,6 +53,16 @@
           <span class="cc-go">{{ isArchived(c) ? "查看 →" : "开始学习 →" }}</span>
         </div>
       </div>
+      <div v-if="showSampleCard" class="course-card sample" @click="addSampleCourse">
+        <div class="sample-head">
+          <span class="sample-ico" aria-hidden="true">✦</span>
+          <span class="sample-title">试一试示例课</span>
+          <span v-if="addingSample" class="sample-busy">添加中…</span>
+        </div>
+        <div class="sample-desc">无需上传资料、无需先配 AI，点一下就能开始学</div>
+        <div class="sample-meta">中国近代史 · 4 章 12 知识点 · 含现成题目与两周计划</div>
+        <div class="sample-cta">添加并开始学习 →</div>
+      </div>
       <div class="course-card add" @click="modalStore.openNewCourse()">
         <span class="plus">＋</span>
         <span class="txt">新建一门课程</span>
@@ -152,6 +162,7 @@ import {
   formatLocalDate,
   truncateText,
   importCourseZip,
+  createSampleCourse,
 } from "../api";
 import type { Course } from "../api";
 import { aggregateStudyTrend } from "../utils/studyTrend";
@@ -164,6 +175,29 @@ const router = useRouter();
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
+
+// ===== 试一试示例课（开箱即用）=====
+const addingSample = ref(false);
+/** 仅当数据中无示例课时显示卡片 */
+const showSampleCard = computed(() => !courseStore.courses.some((c) => c.isSample === true));
+
+async function addSampleCourse() {
+  if (addingSample.value) return;
+  addingSample.value = true;
+  try {
+    const res = await createSampleCourse();
+    const c = res.counts;
+    window.siyuanAiStudy.showMessage(
+      `已添加示例课「${res.courseName}」：${c.chapters} 章 / ${c.kps} 知识点 / ${c.questions} 题 / ${c.cards} 闪卡，已生成两周学习计划`,
+    );
+    await courseStore.refresh().catch(() => undefined);
+  } catch (e) {
+    console.error("添加示例课失败:", e);
+    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "添加示例课失败", 4000, "error");
+  } finally {
+    addingSample.value = false;
+  }
+}
 
 // ===== 导入课程包 =====
 const importInput = ref<HTMLInputElement | null>(null);
