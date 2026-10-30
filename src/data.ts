@@ -173,6 +173,8 @@ export interface StudyPlan {
   planContent: string;
   /** 旧数据无此字段，按 active 处理 */
   status?: "active" | "paused";
+  /** 暂停时记录的暂停日（YYYY-MM-DD）；恢复时未完成任务按此顺延天数推移，非暂停为 undefined */
+  pausedAt?: string;
   /** 计划开始日期（YYYY-MM-DD）；旧数据无此字段，按首个任务日/今天处理 */
   startDate?: string;
   targetDate: string;

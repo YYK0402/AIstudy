@@ -148,13 +148,59 @@ function resyncTaskSort(data: AppData, planId: number): void {
   }
 }
 
-export async function setPlanStatus(planId: number, status: "active" | "paused"): Promise<StudyPlan> {
+/** 纯函数：恢复时应顺延的天数 = 暂停日到今天；pausedAt 缺失或早于/等于今天为 0 */
+export function resumeShiftDays(pausedAt: string | undefined, today: string): number {
+  if (!pausedAt) return 0;
+  const delta = Math.round((new Date(today + "T00:00:00").getTime() - new Date(pausedAt + "T00:00:00").getTime()) / 86400000);
+  return delta > 0 ? delta : 0;
+}
+
+/** 纯函数：计划未完成任务与目标日期整体后移 n 天（只改内存对象，不落盘）；返回影响的任务条数 */
+export function shiftPlanTasksForward(plan: StudyPlan, tasks: StudyTask[], n: number): number {
+  if (n <= 0) return 0;
+  let moved = 0;
+  for (const t of tasks) {
+    if (t.planId === plan.id && t.status === "todo") {
+      t.scheduledDate = addDaysToDate(t.scheduledDate, n);
+      moved++;
+    }
+  }
+  plan.targetDate = addDaysToDate(plan.targetDate, n);
+  return moved;
+}
+
+export interface PlanStatusResult {
+  plan: StudyPlan;
+  /** 恢复时未完成任务顺延的天数（暂停或同日为 0） */
+  shiftedDays: number;
+  /** 顺延影响的任务条数 */
+  movedTasks: number;
+}
+
+/**
+ * 暂停/恢复计划。暂停 = 排期冻结：记录暂停日；
+ * 恢复时未完成任务（含已过期）与目标日期按暂停天数整体顺延，已完成任务不动。
+ */
+export async function setPlanStatus(planId: number, status: "active" | "paused"): Promise<PlanStatusResult> {
   const data = await getData();
   const plan = data.studyPlans.find((p) => p.id === planId);
   if (!plan) throw new Error("计划不存在");
-  plan.status = status;
+  let shiftedDays = 0;
+  let movedTasks = 0;
+  if (status === "paused") {
+    plan.status = "paused";
+    plan.pausedAt = formatLocalDate();
+  } else {
+    shiftedDays = resumeShiftDays(plan.pausedAt, formatLocalDate());
+    if (shiftedDays > 0) {
+      movedTasks = shiftPlanTasksForward(plan, data.studyTasks, shiftedDays);
+      if (movedTasks > 0) resyncTaskSort(data, planId);
+    }
+    plan.status = "active";
+    plan.pausedAt = undefined;
+  }
   await saveData(data);
-  return { ...plan };
+  return { plan: { ...plan }, shiftedDays, movedTasks };
 }
 
 /** 延期 N 天：未完成任务 + 起止/目标日期整体 +N 天，已完成任务不动 */

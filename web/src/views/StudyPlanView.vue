@@ -74,7 +74,7 @@
         </div>
         <div v-if="plan && !editing && !archived" class="plan-ops">
           <button class="btn sm ghost" @click="togglePause">{{ plan.status === "paused" ? "▶ 恢复" : "⏸ 暂停" }}</button>
-          <span v-if="plan.status === 'paused'" class="tag paused"><span class="d"></span>已暂停</span>
+          <span v-if="plan.status === 'paused'" class="tag paused" :title="plan.pausedAt ? `自 ${plan.pausedAt} 暂停，恢复时未完成任务将顺延` : '暂停中'"><span class="d"></span>已暂停{{ plan.pausedAt ? ` · 自 ${plan.pausedAt.slice(5).replace("-", "/")}` : "" }}</span>
           <button class="btn sm ghost" :disabled="!!daysOp" @click="openDaysOp('shift')">延期 N 天</button>
           <button class="btn sm ghost" :disabled="!!daysOp" @click="openDaysOp('extend')">延长 N 天</button>
           <button class="btn sm ghost" :disabled="!!daysOp || unscheduledCount === 0" @click="doSync">
@@ -914,7 +914,11 @@ async function togglePause() {
   if (!plan.value) return;
   const next: "active" | "paused" = plan.value.status === "paused" ? "active" : "paused";
   try {
-    plan.value = await setPlanStatus(plan.value.id, next);
+    const r = await setPlanStatus(plan.value.id, next);
+    plan.value = r.plan;
+    if (next === "active" && r.shiftedDays > 0) {
+      window.siyuanAiStudy.showMessage(`已恢复计划，${r.movedTasks} 条未完成任务顺延 ${r.shiftedDays} 天`);
+    }
   } catch (e) {
     failMsg(e, "更新计划状态失败");
   }
