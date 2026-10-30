@@ -997,6 +997,19 @@
 .mode-card .d { font-size: 11.5px; color: var(--as-text-faint); line-height: 1.5; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 
+/* 更新说明 / 更新日志 */
+.changelog-body { flex: 1; min-height: 0; overflow-y: auto; }
+.cl-entry { margin-bottom: 22px; }
+.cl-entry:last-child { margin-bottom: 0; }
+.cl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.cl-version { font-family: var(--as-font-display); font-size: 15px; font-weight: 600; color: var(--as-accent-strong); }
+.cl-date { font-size: 12px; color: var(--as-text-faint); }
+.cl-intro { font-size: 13px; color: var(--as-text-dim); line-height: 1.6; margin-bottom: 10px; }
+.cl-sub { font-size: 12.5px; font-weight: 600; color: var(--as-text); margin: 12px 0 4px; }
+.cl-item { position: relative; padding-left: 14px; font-size: 13px; color: var(--as-text-dim); line-height: 1.65; margin-bottom: 5px; }
+.cl-item::before { content: ""; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--as-accent); opacity: .7; }
+.cl-empty { font-size: 13px; color: var(--as-text-faint); }
+
 /* 组卷面板 */
 .qset-row { display: flex; flex-wrap: wrap; gap: 6px; }
 

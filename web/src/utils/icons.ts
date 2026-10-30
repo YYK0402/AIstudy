@@ -43,6 +43,7 @@ export const ICONS = {
   clock: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 6v6l4 2"],
   download: ["M12 3v12", "M7 10l5 5 5-5", "M5 21h14"],
   upload: ["M12 21V9", "M7 14l5-5 5 5", "M5 3h14"],
+  changelog: ["M6 3h8l5 5v13H6z", "M14 3v5h5", "M9 13h6", "M9 17h6"],
 } as const;
 
 export type IconName = keyof typeof ICONS;

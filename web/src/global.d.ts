@@ -49,6 +49,8 @@ export interface SiYuanAiStudyApi {
 }
 
 declare global {
+  /** 当前插件版本（构建期由 web/vite.config.ts 从 package.json 注入） */
+  const __APP_VERSION__: string;
   interface Window {
     siyuanAiStudy: SiYuanAiStudyApi;
     AiStudyApp: {

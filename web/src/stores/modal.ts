@@ -28,6 +28,9 @@ export const useModalStore = defineStore("modal", {
     confirmMessage: "",
     confirmText: "确认",
     confirmDanger: false,
+    // 更新说明 / 更新日志：seenVersion 为 null 显示全部历史（常驻入口），为版本号时只显示其后的增量
+    changelogOpen: false,
+    changelogSeenVersion: null as string | null,
   }),
   actions: {
     openNewCourse() {
@@ -81,6 +84,14 @@ export const useModalStore = defineStore("modal", {
     },
     notifyChapterImported() {
       this.chapterVersion++;
+    },
+    openChangelog(seenVersion: string | null) {
+      this.changelogSeenVersion = seenVersion;
+      this.changelogOpen = true;
+    },
+    closeChangelog() {
+      this.changelogOpen = false;
+      this.changelogSeenVersion = null;
     },
   },
 });

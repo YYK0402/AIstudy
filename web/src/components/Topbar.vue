@@ -44,6 +44,9 @@
         </div>
       </div>
     </div>
+    <button class="theme-toggle" title="更新日志" @click="openChangelog">
+      <AppIcon name="changelog" :size="17" />
+    </button>
     <button class="theme-toggle" title="反馈 / 建议" @click="openFeedback">
       <AppIcon name="quiz" :size="17" />
     </button>
@@ -97,6 +100,11 @@ const themeTitle = computed(() => {
 function openFeedback() {
   // 思源桌面版 Electron 由 setWindowOpenHandler 接管 window.open → shell.openExternal（系统浏览器）
   window.open(FEEDBACK_FORM_URL, "_blank");
+}
+
+function openChangelog() {
+  // seenVersion 传 null → 显示全部历史
+  modalStore.openChangelog(null);
 }
 
 const currentCourseId = computed(() => courseStore.currentCourseId);
