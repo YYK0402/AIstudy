@@ -106,9 +106,6 @@
 .theme-toggle:hover { border-color: var(--as-accent-line); color: var(--as-accent-strong); }
 .brand-mark svg { stroke: var(--as-on-accent); }
 .theme-toggle svg { width: 17px; height: 17px; }
-.theme-toggle .ic-moon { display: none; }
-.ai-study-app[data-theme="light"] .theme-toggle .ic-sun { display: none; }
-.ai-study-app[data-theme="light"] .theme-toggle .ic-moon { display: block; }
 
 /* ===== 顶栏任务通知铃 ===== */
 .notify-wrap { position: relative; flex-shrink: 0; }

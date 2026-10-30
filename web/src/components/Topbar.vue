@@ -47,9 +47,10 @@
     <button class="theme-toggle" title="反馈 / 建议" @click="openFeedback">
       <AppIcon name="quiz" :size="17" />
     </button>
-    <button class="theme-toggle" title="切换明暗主题" @click="theme.toggle()">
-      <AppIcon class="ic-sun" name="sun" :size="17" />
-      <AppIcon class="ic-moon" name="moon" :size="17" />
+    <button class="theme-toggle" :title="themeTitle" @click="theme.cycle()">
+      <AppIcon v-if="theme.mode === 'auto'" name="auto" :size="17" />
+      <AppIcon v-else-if="theme.mode === 'light'" name="sun" :size="17" />
+      <AppIcon v-else name="moon" :size="17" />
     </button>
   </div>
 </template>
@@ -86,6 +87,12 @@ const theme = useThemeStore();
 const courseStore = useCourseStore();
 const notifyStore = useNotifyStore();
 const modalStore = useModalStore();
+
+const themeTitle = computed(() => {
+  if (theme.mode === "auto") return `自动主题（当前${theme.getEffective() === "light" ? "亮" : "暗"}）`;
+  if (theme.mode === "light") return "亮色主题（点击切换暗色）";
+  return "暗色主题（点击回到自动）";
+});
 
 function openFeedback() {
   // 思源桌面版 Electron 由 setWindowOpenHandler 接管 window.open → shell.openExternal（系统浏览器）
@@ -239,14 +246,20 @@ function onModalOpen() {
 // 顶栏统计按当前课程刷新（global 脏集兜底全量）
 useDataSavedRefresh(loadStats);
 
+// 自动主题：每分钟重估一次，页签开着跨昼夜边界时自动切换明暗
+let themeTimer: number | undefined;
 onMounted(() => {
   loadStats();
   window.addEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.addEventListener("click", onDocClick);
+  themeTimer = window.setInterval(() => {
+    if (theme.mode === "auto") theme.apply();
+  }, 60_000);
 });
 onBeforeUnmount(() => {
   window.removeEventListener(MODAL_OPEN_EVENT, onModalOpen);
   document.removeEventListener("click", onDocClick);
+  window.clearInterval(themeTimer);
 });
 watch(() => courseStore.currentCourseId, onCourseChange);
 </script>
