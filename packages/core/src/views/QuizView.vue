@@ -56,42 +56,11 @@
             <div style="display:flex;gap:8px">
               <button class="btn ghost" :disabled="quizIdx === 0" @click="goReview(quizIdx - 1)">上一题</button>
               <button class="btn ghost" :disabled="quizIdx >= quizList.length - 1" @click="goReview(quizIdx + 1)">下一题</button>
+              <button class="btn ghost" @click="askModalOpen = true">
+                <AppIcon name="spark" :size="14" /> AI 问答
+              </button>
             </div>
             <button class="btn primary" @click="reviewing = false">返回小结</button>
-          </div>
-          <!-- 就本题 AI 问答（辅助理解，会话按题留存） -->
-          <div class="ask-panel">
-            <button class="ask-toggle" @click="toggleAsk">
-              <AppIcon name="spark" :size="14" /> AI 问答
-              <span class="s t-faint" style="font-weight:400">就这道题和它的知识点提问，帮你弄懂为止</span>
-            </button>
-            <div v-if="askOpen" class="ask-body">
-              <div v-if="askTurns.length === 0" class="s t-faint ask-empty">围绕题干、选项、答案或关联知识点问点什么吧。</div>
-              <div v-else class="ask-list">
-                <div v-for="(t, i) in askTurns" :key="i" class="ask-msg" :class="t.role">
-                  <div class="who">{{ t.role === "user" ? "我" : "AI" }}</div>
-                  <div class="txt">{{ t.content }}</div>
-                </div>
-                <div v-if="askLoading" class="ask-msg assistant">
-                  <div class="who">AI</div>
-                  <div class="txt">思考中…</div>
-                </div>
-              </div>
-              <div v-if="askError" class="s t-danger" style="margin-bottom:8px">✗ {{ askError }}</div>
-              <div class="ask-input-row">
-                <input
-                  v-model="askInput"
-                  class="ask-input"
-                  :disabled="askLoading"
-                  placeholder="就这道题/知识点问点什么…"
-                  aria-label="向 AI 提问"
-                  @keydown.enter.prevent="sendAsk"
-                />
-                <button class="btn sm primary" :disabled="!askInput.trim() || askLoading" @click="sendAsk">
-                  {{ askLoading ? "回答中…" : "发送" }}
-                </button>
-              </div>
-            </div>
           </div>
         </div>
         <div v-else-if="quizSummary" class="quiz-summary">
@@ -413,6 +382,12 @@
         :on-quiz-start="beginPractice"
         @close="paperModalOpen = false"
       />
+      <AskModal
+        :open="askModalOpen"
+        :question="reviewing ? currentQuestion : null"
+        :result="reviewResult"
+        @close="askModalOpen = false"
+      />
     </template>
   </div>
 </template>
@@ -455,16 +430,15 @@ import {
   QUESTION_DIFFICULTY_LABELS,
   completeTestTasks,
   getSettings,
-  queryQuestionAsk,
-  sendQuizAsk,
 } from "../api";
 import { kpsOfChapter } from "../utils/chapterScope";
 import { capStudySec } from "../constants/study";
 import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
-import type { AnswerResult, AskTurn } from "../api";
+import type { AnswerResult } from "../api";
 import QuestionEditModal from "../components/QuestionEditModal.vue";
 import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
 import QuestionSetModal from "../components/QuestionSetModal.vue";
+import AskModal from "../components/AskModal.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
@@ -617,51 +591,13 @@ function isReviewRight(opt: string): boolean {
 function startReview() {
   reviewing.value = true;
   quizIdx.value = 0;
-  void resetAskPanel();
 }
 function goReview(i: number) {
   if (i < 0 || i >= quizList.value.length || i === quizIdx.value) return;
   quizIdx.value = i;
-  void resetAskPanel();
 }
-async function resetAskPanel() {
-  askOpen.value = false;
-  askTurns.value = [];
-  askError.value = "";
-  askInput.value = "";
-  const q = currentQuestion.value;
-  if (!q) return;
-  const s = await queryQuestionAsk(q.id);
-  if (currentQuestion.value?.id === q.id) askTurns.value = s ? [...s.turns] : [];
-}
-// ===== 回看 AI 问答 =====
-const askOpen = ref(false);
-const askTurns = ref<AskTurn[]>([]);
-const askLoading = ref(false);
-const askError = ref("");
-const askInput = ref("");
-function toggleAsk() {
-  askOpen.value = !askOpen.value;
-}
-async function sendAsk() {
-  const q = currentQuestion.value;
-  const text = askInput.value.trim();
-  if (!q || !text || askLoading.value) return;
-  askLoading.value = true;
-  askError.value = "";
-  // 乐观追加 user 轮（sendQuizAsk 内部落库；失败时本地与存储一致，重问自然续上）
-  askTurns.value.push({ role: "user", content: text, createTime: new Date().toISOString() });
-  askInput.value = "";
-  try {
-    const reply = await sendQuizAsk(q.courseId, q.id, text);
-    askTurns.value.push({ role: "assistant", content: reply, createTime: new Date().toISOString() });
-  } catch (e) {
-    console.error("回看问答失败:", e);
-    askError.value = e instanceof Error ? e.message : "问答失败，请重试";
-  } finally {
-    askLoading.value = false;
-  }
-}
+// ===== 回看 AI 问答（弹窗 AskModal 自管会话；此处只管开关） =====
+const askModalOpen = ref(false);
 /** 本轮刷题的测评来源：仅章节组卷（?set=）/结业模考（?exam=1）入口开刷时非空，答完最后一题据此自动勾 test 任务 */
 const currentTestContext = ref<TestTaskContext | null>(null);
 /** 本轮自动勾掉的测评任务标题（小结展示用） */
@@ -701,10 +637,7 @@ function beginQuiz(list: Question[], context: TestTaskContext | null = null, rev
   currentTestContext.value = context;
   revealMode.value = reveal ?? quizRevealDefault.value;
   reviewing.value = false;
-  askOpen.value = false;
-  askTurns.value = [];
-  askError.value = "";
-  askInput.value = "";
+  askModalOpen.value = false;
   resetQuestionState();
   startQuestionTimer();
   practicing.value = true;
@@ -815,9 +748,7 @@ function endPractice() {
   quizSummary.value = null;
   quizError.value = "";
   reviewing.value = false;
-  askOpen.value = false;
-  askTurns.value = [];
-  askInput.value = "";
+  askModalOpen.value = false;
   setPreset.value = null;
   currentTestContext.value = null;
   testDoneTitles.value = [];
