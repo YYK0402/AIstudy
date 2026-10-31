@@ -181,14 +181,14 @@
         超保留期的学习日志与作答记录自动归档为月度汇总：趋势/连续天数等近期统计不受影响，课程累计统计（答题量/正确率/简答均分/最近学习时间）由汇总补全，数字与归档前一致。
       </div>
       <div class="ta-row" style="margin-top:14px">
-        <span class="t">刷题解析时机</span>
-        <select v-model="settings.quizRevealMode" aria-label="刷题解析时机">
-          <option value="immediate">答完一题立即出解析（默认）</option>
-          <option value="afterAll">全部答完再统一出解析</option>
+        <span class="t">刷题阅卷时机</span>
+        <select v-model="settings.quizRevealMode" aria-label="刷题阅卷时机">
+          <option value="immediate">逐题立即阅卷（默认）</option>
+          <option value="afterAll">整卷交卷后统一阅卷</option>
         </select>
       </div>
       <div class="s t-faint" style="margin-top:6px">
-        作用于刷题练习的默认值；试卷/结业模考固定「全部答完再出」。组卷面板可临时改本轮。答完一轮可回看全部题目并就该题向 AI 提问。
+        作用于刷题练习的默认值；试卷/结业模考固定「整卷阅卷」。组卷面板可临时改本轮。整卷模式下作答不立即判分，交卷时自动检查未作答题并统一阅卷。答完一轮可回看全部题目并就该题向 AI 提问。
       </div>
     </div>
     <div class="card">

@@ -192,7 +192,7 @@
                       :value="passageUser[b.no] ?? ''"
                       :placeholder="b.hint ? `（${b.hint} 的适当形式）` : '填写此空'"
                       :aria-label="`第 ${b.no} 空`"
-                      :disabled="submitting"
+                      :disabled="submitting || gradingAll"
                       @input="onPassageInput(b.no, $event)"
                     />
                     <span v-else class="pv-user">{{ (passageUser[b.no] ?? '').trim() || '（未作答）' }}</span>
@@ -214,7 +214,7 @@
                       ok: revealed && revealedBlank(b.no),
                       bad: revealed && !revealedBlank(b.no),
                     }"
-                    :disabled="!!quizResult"
+                    :disabled="!!quizResult || gradingAll"
                     :aria-label="`第 ${b.no} 空${passageUser[b.no] ? '，已填 ' + passageUser[b.no] : ''}`"
                     @click="toggleBlankPick(b.no)"
                   >{{ b.no }}{{ passageUser[b.no] ? " " + passageUser[b.no] : "" }}</button>
@@ -245,7 +245,7 @@
                       ok: revealed && revealedBlank(b.no),
                       bad: revealed && !revealedBlank(b.no),
                     }"
-                    :disabled="!!quizResult"
+                    :disabled="!!quizResult || gradingAll"
                     :aria-label="`第 ${b.no} 空${passageUser[b.no] ? '，已选 ' + passageUser[b.no] : ''}`"
                     @click="toggleBlankPick(b.no)"
                   >{{ b.no }}{{ passageUser[b.no] ? " " + passageUser[b.no] : "" }}</button>
@@ -273,7 +273,7 @@
                 rows="6"
                 :aria-label="getInputLabel()"
                 :placeholder="getInputPlaceholder()"
-                :disabled="!!quizResult"
+                :disabled="!!quizResult || gradingAll"
               />
             </template>
             <div v-if="revealed && ['essay', 'translation'].includes(currentQuestion!.qType)" class="essay-feedback">
@@ -289,16 +289,25 @@
               {{ submitting ? "判分中…" : "重新判分" }}
             </button>
           </div>
-          <div v-if="quizResult && !revealed" class="s t-faint" style="margin:10px 14px 0">已作答 · 收口模式：本轮交卷后统一揭晓解析与得分。</div>
+          <div v-if="unansweredIdx != null" class="s t-danger" style="margin:10px 14px 0">
+            ⚠ 第 {{ unansweredIdx + 1 }} 题还未作答
+            <button class="btn sm" style="margin-left:8px" @click="void submitAll(true)">仍要交卷</button>
+          </div>
+          <div v-else-if="isAfterAll && currentAnswered && !quizResult" class="s t-faint" style="margin:10px 14px 0">已作答 · 交卷后统一阅卷出分</div>
           <div v-if="revealed && ['single', 'judge', 'multiple'].includes(currentQuestion!.qType)" class="judge-line judge-line--in" :class="quizResult!.isCorrect ? 'ok' : 'bad'">
             {{ quizResult!.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
           </div>
           <div v-if="revealed && quizResult!.masteryNotes.length" class="mastery-note" style="margin:0 14px">↓ 掌握度：{{ quizResult!.masteryNotes.join(" · ") }}</div>
           <div v-if="revealed && quizResult!.planNotes.length" class="plan-note" style="margin:0 14px">✓ 计划任务已自动勾选：{{ quizResult!.planNotes.join("、") }}</div>
           <div v-if="revealed && currentQuestion!.analysis" class="analysis" style="margin:0 14px 14px">{{ displayAnalysis(currentQuestion!) }}</div>
+          <div v-if="revealed" style="display:flex;justify-content:flex-end;margin:0 14px 14px">
+            <button class="btn ghost sm" @click="askModalOpen = true">
+              <AppIcon name="spark" :size="14" /> AI 问答
+            </button>
+          </div>
 
           <div class="quiz-actions">
-            <button class="btn ghost" :disabled="quizIdx === 0" @click="goPrev">上一题</button>
+            <button class="btn ghost" :disabled="quizIdx === 0 || gradingAll" @click="goPrev">上一题</button>
             <template v-if="!quizResult">
               <button
                 v-if="primaryLabel"
@@ -306,11 +315,14 @@
                 :disabled="primaryDisabled"
                 @click="primaryAction"
               >{{ primaryLabel }}</button>
+              <button v-if="isAfterAll" class="btn primary" :disabled="gradingAll || submitting" @click="nextOrSubmit">
+                {{ gradingAll ? `阅卷中 ${gradingDone}/${quizList.length}` : quizIdx + 1 < quizList.length ? "下一题" : "交卷" }}
+              </button>
             </template>
             <button v-else class="btn primary" :disabled="submitting" @click="nextQuestion">
               {{ quizIdx + 1 < quizList.length ? "下一题" : "查看成绩单" }}
             </button>
-            <button class="btn ghost" @click="endPractice">结束</button>
+            <button class="btn ghost" :disabled="gradingAll || submitting" @click="endPractice">结束</button>
           </div>
         </template>
       </div>
@@ -508,7 +520,7 @@
       />
       <AskModal
         :open="askModalOpen"
-        :question="reviewing ? currentQuestion : null"
+        :question="currentQuestion"
         @close="askModalOpen = false"
       />
     </template>
@@ -558,6 +570,7 @@ import {
 import { formatPassageAnswer, formatPassageAnalysis, gradePassage, parsePassageAnswer, parsePassageBlanks } from "../utils/passage";
 import type { PassageBlank } from "../utils/passage";
 import { kpsOfChapter } from "../utils/chapterScope";
+import { isQuizAnswered, resolveAnswerText, type AnswerState } from "../utils/quizDraft";
 import { capStudySec } from "../constants/study";
 import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
 import type { AnswerResult } from "../api";
@@ -718,12 +731,21 @@ const passageUser = ref<Record<number, string>>({});
 const passagePick = ref<number | null>(null);
 /** 完形：当前展开四选项弹层的空位 */
 const passagePop = ref<number | null>(null);
-/** 本轮解析展示时机：immediate 即时 / afterAll 收口（组卷面板选定或全局默认；模考强制收口） */
+/** 本轮阅卷时机：immediate 逐题立即阅卷 / afterAll 整卷交卷后统一阅卷（组卷面板选定或全局默认；模考强制整卷） */
 const revealMode = ref<"immediate" | "afterAll">("immediate");
-/** 全局默认解析时机（设置页 quizRevealMode，组卷面板未指定时的回退） */
+/** 全局默认阅卷时机（设置页 quizRevealMode，组卷面板未指定时的回退） */
 const quizRevealDefault = ref<"immediate" | "afterAll">("immediate");
-/** 收口模式下「已判分但未揭示」的可见性解耦：revealed=true 才展示对错/解析 */
+/** 整卷阅卷模式：作答只记录不判分，交卷时统一阅卷 */
+const isAfterAll = computed(() => revealMode.value === "afterAll");
+/** revealed=true 才展示单题对错/解析（逐题模式提交后即揭晓；整卷模式交卷前无判分） */
 const revealed = computed(() => quizResult.value !== null && revealMode.value === "immediate");
+/** 整卷模式草稿：题 id → 作答快照 + 累计实际作答秒数（切题快照、回来恢复） */
+const answerDrafts = ref<Record<number, { state: AnswerState; sec: number }>>({});
+/** 批量阅卷中（禁用全部作答交互）与已完成题数 */
+const gradingAll = ref(false);
+const gradingDone = ref(0);
+/** 交卷检查命中的未作答题（题序号，提示 + 「仍要交卷」入口） */
+const unansweredIdx = ref<number | null>(null);
 // ===== 回看模式（答完一轮后只读回顾 + 就题 AI 问答） =====
 const reviewing = ref(false);
 const reviewResult = computed(() => answeredResults.value[quizIdx.value] ?? null);
@@ -822,7 +844,7 @@ function onPassageInput(no: number, e: Event) {
   passageUser.value = { ...passageUser.value, [no]: v };
 }
 function toggleBlankPick(no: number) {
-  if (quizResult.value || submitting.value) return;
+  if (quizResult.value || submitting.value || gradingAll.value) return;
   // 已填的空再点一次 = 清空（词池题的词归还）
   if (passageUser.value[no]) {
     const next = { ...passageUser.value };
@@ -841,13 +863,13 @@ function toggleBlankPick(no: number) {
 }
 function pickPoolWord(w: string) {
   const no = passagePick.value;
-  if (no == null || quizResult.value || submitting.value) return;
+  if (no == null || quizResult.value || submitting.value || gradingAll.value) return;
   if (isPoolUsed(w)) return;
   passageUser.value = { ...passageUser.value, [no]: w };
   passagePick.value = null;
 }
 function pickClozeOpt(no: number, letter: string) {
-  if (quizResult.value || submitting.value) return;
+  if (quizResult.value || submitting.value || gradingAll.value) return;
   passageUser.value = { ...passageUser.value, [no]: letter };
   passagePop.value = null;
 }
@@ -888,11 +910,53 @@ function resetQuestionState() {
   resetPassageState();
 }
 
-/** 回到某题：已答过则恢复其作答状态（只读展示），未答过则重置 */
+/** 整卷模式：从草稿恢复作答（不判分、不揭示） */
+function restoreDraftState(s: AnswerState) {
+  resetQuestionState();
+  pickedSingle.value = s.single;
+  pickedMulti.value = [...s.multi];
+  userAnswer.value = s.text;
+  passageUser.value = { ...s.passage };
+}
+
+function emptyState(): AnswerState {
+  return { single: null, multi: [], text: "", passage: {} };
+}
+
+/** 整卷模式：当前界面作答状态快照 */
+function currentAnswerState(): AnswerState {
+  return {
+    single: pickedSingle.value,
+    multi: [...pickedMulti.value],
+    text: userAnswer.value,
+    passage: { ...passageUser.value },
+  };
+}
+
+/** 整卷模式：离开本题前把作答 + 实际作答时长累计进草稿 */
+function saveDraft() {
+  if (!isAfterAll.value || gradingAll.value) return;
+  const q = currentQuestion.value;
+  if (!q) return;
+  const d = answerDrafts.value[q.id];
+  answerDrafts.value = {
+    ...answerDrafts.value,
+    [q.id]: { state: currentAnswerState(), sec: (d?.sec ?? 0) + elapsedQuestionSec() },
+  };
+}
+
+/** 回到某题：已判分则恢复其作答（只读展示）；整卷模式有草稿则恢复草稿；否则重置 */
 function restoreOrReset() {
   const r = answeredResults.value[quizIdx.value];
-  if (r) restoreAnsweredState(r);
-  else resetQuestionState();
+  const q = currentQuestion.value;
+  if (r) {
+    restoreAnsweredState(r);
+  } else if (isAfterAll.value && q && answerDrafts.value[q.id]) {
+    restoreDraftState(answerDrafts.value[q.id].state);
+  } else {
+    resetQuestionState();
+  }
+  unansweredIdx.value = null;
   startQuestionTimer();
 }
 
@@ -924,9 +988,88 @@ function restoreAnsweredState(r: AnsweredEntry) {
 }
 
 function goPrev() {
-  if (quizIdx.value === 0) return;
+  if (quizIdx.value === 0 || gradingAll.value) return;
+  saveDraft();
   quizIdx.value--;
   restoreOrReset();
+}
+
+/** 整卷模式主操作：下一题（记录草稿）/ 末题=交卷 */
+function nextOrSubmit() {
+  if (gradingAll.value) return;
+  saveDraft();
+  if (quizIdx.value + 1 < quizList.value.length) {
+    quizIdx.value++;
+    restoreOrReset();
+  } else {
+    void submitAll();
+  }
+}
+
+/** 当前题是否已作答（整卷模式「已作答」提示用） */
+const currentAnswered = computed(() => {
+  const q = currentQuestion.value;
+  return q ? isQuizAnswered(q, currentAnswerState()) : false;
+});
+
+/** 整卷交卷：检查未作答 → 自动导航过去；全部已答 → 批量阅卷后出成绩单 */
+async function submitAll(force = false) {
+  if (gradingAll.value) return;
+  saveDraft();
+  if (!force) {
+    const firstUn = quizList.value.findIndex(
+      (q) => !isQuizAnswered(q, answerDrafts.value[q.id]?.state ?? emptyState()),
+    );
+    if (firstUn >= 0) {
+      quizIdx.value = firstUn;
+      restoreOrReset();
+      // restoreOrReset 会清提示，导航完成后再标记未作答题
+      unansweredIdx.value = firstUn;
+      return;
+    }
+  }
+  unansweredIdx.value = null;
+  gradingAll.value = true;
+  gradingDone.value = 0;
+  try {
+    for (let i = 0; i < quizList.value.length; i++) {
+      if (quizIdx.value !== i) {
+        quizIdx.value = i;
+        restoreOrReset();
+      }
+      if (!quizResult.value) {
+        const q = quizList.value[i];
+        const s = answerDrafts.value[q.id]?.state ?? currentAnswerState();
+        userAnswer.value = resolveAnswerText(q, s);
+        await submitCurrent(answerDrafts.value[q.id]?.sec ?? elapsedQuestionSec());
+        // 简答 AI 判分失败不中断批量阅卷：记 0 分占位（作答已落盘 graded=false）
+        if (pendingGrading.value !== null) {
+          answeredResults.value.push({
+            isCorrect: false,
+            score: "0",
+            qType: q.qType,
+            userAnswer: userAnswer.value,
+            feedback: "AI 判分失败，本次记 0 分",
+            masteryNotes: [],
+            planNotes: [],
+          });
+          pendingGrading.value = null;
+          quizError.value = "";
+        }
+      }
+      gradingDone.value++;
+    }
+  } finally {
+    gradingAll.value = false;
+  }
+  const total = answeredResults.value.length;
+  const correct = answeredResults.value.filter((r) => r.isCorrect).length;
+  const essays = answeredResults.value.filter((r) => r.qType === "essay");
+  const essayAvg = essays.length
+    ? String(Math.round(essays.reduce((s, r) => s + Number(r.score || 0), 0) / essays.length))
+    : "";
+  quizSummary.value = { total, correct, essayCount: essays.length, essayAvg };
+  void finishTestTasks();
 }
 
 function beginQuiz(list: Question[], context: TestTaskContext | null = null, reveal?: "immediate" | "afterAll") {
@@ -940,6 +1083,10 @@ function beginQuiz(list: Question[], context: TestTaskContext | null = null, rev
   reviewing.value = false;
   askModalOpen.value = false;
   markedIds.value = new Set();
+  answerDrafts.value = {};
+  gradingAll.value = false;
+  gradingDone.value = 0;
+  unansweredIdx.value = null;
   resetQuestionState();
   startQuestionTimer();
   practicing.value = true;
@@ -1059,16 +1206,19 @@ function endPractice() {
 const optionEls = ref<HTMLElement[]>([]);
 const optionFocusIdx = ref(0);
 
-/** 单选/判断：点选即判（一步提交，即时反馈或按收口模式锁定） */
+/** 单选/判断：逐题模式点选即判；整卷模式只记录选择（可反复改，交卷时统一阅卷） */
 function pickOption(opt: string, oi?: number) {
-  if (quizResult.value || submitting.value) return;
+  if (quizResult.value || submitting.value || gradingAll.value) return;
   pickedSingle.value = opt;
   if (oi !== undefined) optionFocusIdx.value = oi;
-  userAnswer.value = opt;
-  void submitCurrent();
+  if (!isAfterAll.value) {
+    userAnswer.value = opt;
+    void submitCurrent();
+  }
 }
 
 function toggleMark() {
+  if (gradingAll.value) return;
   const q = currentQuestion.value;
   if (!q) return;
   const next = new Set(markedIds.value);
@@ -1077,22 +1227,25 @@ function toggleMark() {
   markedIds.value = next;
 }
 
-/** 底部主按钮：多选取提交 / 简答翻译提交 / 文章题提交本篇 / 已答=下一题 */
+/** 底部主按钮（逐题模式）：多选取提交 / 简答翻译提交 / 文章题提交本篇；整卷模式主操作恒为「下一题/交卷」 */
 const primaryLabel = computed(() => {
   const q = currentQuestion.value;
-  if (!q) return "";
+  if (!q || isAfterAll.value) return "";
   if (quizResult.value) return quizIdx.value + 1 < quizList.value.length ? "下一题" : "查看成绩单";
   if (q.qType === "multiple") return submitting.value ? "提交中…" : "提交答案";
   if (q.qType === "essay" || q.qType === "translation") return submitting.value ? "AI 阅卷中…" : "提交（AI 阅卷）";
   if (isPassage.value && currentBlanks.value.length > 0) return submitting.value ? "提交中…" : "提交本篇";
+  // 无空位标记的填空/选填/完形：走文本框作答，同样需要提交
+  if (["fill", "banked", "cloze"].includes(q.qType)) return submitting.value ? "提交中…" : "提交答案";
   return "";
 });
 const primaryDisabled = computed(() => {
   const q = currentQuestion.value;
-  if (!q || quizResult.value) return true;
+  if (!q || isAfterAll.value || quizResult.value) return true;
   if (q.qType === "multiple") return pickedMulti.value.length === 0 || submitting.value;
   if (q.qType === "essay" || q.qType === "translation") return !userAnswer.value.trim() || submitting.value;
   if (isPassage.value && currentBlanks.value.length > 0) return !allPassageFilled.value || submitting.value;
+  if (["fill", "banked", "cloze"].includes(q.qType)) return !userAnswer.value.trim() || submitting.value;
   return true;
 });
 function primaryAction() {
@@ -1154,7 +1307,7 @@ function getAnswerLabel(): string {
 }
 
 function toggleMulti(opt: string, oi?: number) {
-  if (quizResult.value || submitting.value) return;
+  if (quizResult.value || submitting.value || gradingAll.value) return;
   pickedMulti.value = pickedMulti.value.includes(opt)
     ? pickedMulti.value.filter((o) => o !== opt)
     : [...pickedMulti.value, opt];
@@ -1173,12 +1326,12 @@ function submitMulti() {
   void submitCurrent();
 }
 
-async function submitCurrent() {
+async function submitCurrent(secOverride?: number) {
   const q = currentQuestion.value;
   if (!q || quizResult.value) return;
   submitting.value = true;
   try {
-    const result = await submitAnswer(q, userAnswer.value, elapsedQuestionSec());
+    const result = await submitAnswer(q, userAnswer.value, secOverride ?? elapsedQuestionSec());
     quizResult.value = result;
     answeredResults.value.push({
       isCorrect: result.isCorrect,
@@ -1233,6 +1386,7 @@ async function regrade() {
 
 function nextQuestion() {
   if (quizIdx.value + 1 < quizList.value.length) {
+    saveDraft();
     quizIdx.value++;
     // 前进的目标题可能已答过（先回退再前进），需恢复状态而非重置
     restoreOrReset();
@@ -1380,7 +1534,7 @@ function exportMarkdown() {
 const importOpen = ref(false);
 const paperModalOpen = ref(false);
 
-/** 真题试卷开刷：模拟考试语义，强制收口（全部答完再出解析） */
+/** 真题试卷开刷：模拟考试语义，强制整卷阅卷（交卷后统一出分） */
 function beginPractice(questions: Question[]) {
   beginQuiz(shuffleList(questions), null, "afterAll");
 }

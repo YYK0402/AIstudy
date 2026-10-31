@@ -75,10 +75,10 @@
               </div>
             </div>
             <div class="field" style="margin-bottom:0">
-              <label>解析时机</label>
+              <label>阅卷时机</label>
               <div class="qset-row">
-                <button class="chip" :class="{ on: revealMode === 'immediate' }" :disabled="revealLocked" @click="revealMode = 'immediate'">每题</button>
-                <button class="chip" :class="{ on: revealMode === 'afterAll' }" :disabled="revealLocked" @click="revealMode = 'afterAll'">整轮</button>
+                <button class="chip" :class="{ on: revealMode === 'immediate' }" :disabled="revealLocked" @click="revealMode = 'immediate'">逐题</button>
+                <button class="chip" :class="{ on: revealMode === 'afterAll' }" :disabled="revealLocked" @click="revealMode = 'afterAll'">整卷</button>
               </div>
             </div>
           </div>
@@ -120,9 +120,9 @@ const props = defineProps<{
   chapters: Chapter[];
   /** 预填入口（T2.16 章节复盘 / T2.17 结业模考）：知识点范围与标题 */
   preset?: { kpIds: number[]; title: string } | null;
-  /** 解析时机默认值（来自全局设置 quizRevealMode） */
+  /** 阅卷时机默认值（来自全局设置 quizRevealMode） */
   revealDefault?: "immediate" | "afterAll";
-  /** 模考强制收口：锁定为 afterAll，不可选 */
+  /** 模考强制整卷阅卷：锁定为 afterAll，不可选 */
   revealLocked?: boolean;
 }>();
 
