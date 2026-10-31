@@ -3,8 +3,8 @@
 //   data        全局：providers/models/taskModels/logs/courses/settings/promptTemplates/cryptoKeyMaterial
 //               + 无法归属任何课程的孤儿实体（保留不丢）
 //   course-<id> 单课程：内容实体 + 学习过程实体 + conversationsDocs
-import type { AppData, CourseData } from "../../core/src/types/appData";
-import { createEmptyCourseData, createEmptyData } from "../../core/src/types/appData";
+import type { AppData, CourseData } from "../types/appData";
+import { createEmptyCourseData, createEmptyData } from "../types/appData";
 
 export function courseStorageName(courseId: number): string {
   return `course-${courseId}`;

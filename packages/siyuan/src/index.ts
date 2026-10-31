@@ -11,7 +11,7 @@ import {
   mergeAppData,
   normalizeCourseData,
   splitAppData,
-} from "./courseSplit";
+} from "../../core/src/utils/courseSplit";
 import { runWithRetry } from "../../core/src/aiRetry";
 import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { applyRetention } from "./retention";

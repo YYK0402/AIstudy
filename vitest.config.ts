@@ -15,6 +15,7 @@ export default defineConfig({
     include: [
       "packages/core/src/**/__tests__/**/*.test.ts",
       "packages/siyuan/src/**/__tests__/**/*.test.ts",
+      "packages/fnos/server/**/__tests__/**/*.test.ts",
     ],
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyCourseData, createEmptyData } from "../../../core/src/types/appData";
-import type { AppData } from "../../../core/src/types/appData";
+import { createEmptyCourseData, createEmptyData } from "../../types/appData";
+import type { AppData } from "../../types/appData";
 import {
   courseStorageName,
   hasCourseEntities,
