@@ -6,5 +6,4 @@ package.zip
 *.log.gz
 .DS_Store
 .vite/
-backend/
 seeds/
