@@ -10,10 +10,10 @@
 - 根 `package.json` 是 private 容器（版本号的唯一来源）；`packages/siyuan/plugin.json` 是思源插件清单。
 
 ## 构建与部署
-- 插件目录是符号链接 `~/SiYuan/data/plugins/siyuan-ai-study -> <repo>/dist`。
+- 插件目录是符号链接 `~/SiYuan/data/plugins/AIstudy -> <repo>/dist`（目录名须与 `plugin.json` 的 name 一致，reloadPlugin 按此名匹配）。
 - **日常迭代用 `npm run build:web && npm run build:plugin`（不 clean）**；`npm run build` 含 `clean` 会删 dist，思源内核会把插件当卸载（petal 掉线，需重启思源才恢复）。
 - 改动后验证顺序：`npx vue-tsc --noEmit -p packages/siyuan/tsconfig.json && npx vue-tsc --noEmit -p packages/core/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`packages/core/src/**/__tests__` 与 `packages/siyuan/src/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
-- **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → `POST /api/backend/plugin/reloadPlugin {name:"siyuan-ai-study"}` → 点顶栏 `div[aria-label="AI 智能学习"]` 开页签 → 验证 `.ai-study-app` 挂载与课程数据 → 经 `window.__AI_STUDY_BRIDGE__` 直接 `callAi`（用启用的 provider/model）→ `saveData` 原样往返 → 临时文档落库全链路（ensureFolder/createDoc/docExists/getDocMarkdown/renameDoc/removeDoc，测完必删）。
+- **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → `POST /api/backend/plugin/reloadPlugin {name:"AIstudy"}` → **整页刷新（page.reload）后再点顶栏** `div[aria-label="AI 智能学习"]` 开页签（web bundle 每页会话只加载一次，不刷新会跑旧 bundle；反复重载插件会在页签栏累积重复页签与隐藏应用实例，发现 `.ai-study-app` 多于一个时用中键点掉多余页签）→ 验证 `.ai-study-app` 挂载与课程数据 → 经 `window.__AI_STUDY_BRIDGE__` 直接 `callAi`（用启用的 provider/model）→ `saveData` 原样往返 → 临时文档落库全链路（ensureFolder/createDoc/docExists/getDocMarkdown/renameDoc/removeDoc，测完必删）。
 - 前端样式统一写在 `packages/core/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
 
 ## 发布（集市上架）
