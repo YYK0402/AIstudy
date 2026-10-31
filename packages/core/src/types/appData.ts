@@ -151,6 +151,23 @@ export interface AnswerRecord {
   graded?: boolean;
 }
 
+/** 回看题目 AI 问答的一轮对话 */
+export interface AskTurn {
+  role: "user" | "assistant";
+  content: string;
+  createTime: string;
+}
+
+/** 题目 AI 问答会话（每题一个，多次回看续聊）；删除题目时连带清理 */
+export interface QuestionAsk {
+  id: number;
+  qId: number;
+  courseId: number;
+  turns: AskTurn[];
+  /** 最近一轮时间（会话排序/展示用） */
+  updateTime: string;
+}
+
 export interface WrongQuestion {
   id: number;
   recordId: number | null;
@@ -254,6 +271,11 @@ export interface PromptTemplateDef {
 export interface AppSettings {
   /** 章节识别方式：manual 手动 / auto 上传后按标题自动建目录 */
   chapterMode: "manual" | "auto";
+  /**
+   * 刷题解析展示时机：immediate 答完一题立即出解析（默认）/ afterAll 全部答完再统一出；
+   * 组卷面板可临时覆盖本轮；试卷模考恒为 afterAll
+   */
+  quizRevealMode?: "immediate" | "afterAll";
   /** 是否将资料/章节/知识点持久化到思源笔记 */
   persistToSiyuan: boolean;
   /** 思源笔记本名称 */
@@ -305,6 +327,8 @@ export interface CourseData {
   questions: Question[];
   examPapers: ExamPaper[];
   answerRecords: AnswerRecord[];
+  /** 回看题目 AI 问答会话（按题目挂接） */
+  questionAsks: QuestionAsk[];
   wrongQuestions: WrongQuestion[];
   studyPlans: StudyPlan[];
   studyTasks: StudyTask[];
@@ -337,6 +361,8 @@ export interface AppData {
   questions: Question[];
   examPapers: ExamPaper[];
   answerRecords: AnswerRecord[];
+  /** 回看题目 AI 问答会话（全课程合并视图） */
+  questionAsks: QuestionAsk[];
   wrongQuestions: WrongQuestion[];
   studyPlans: StudyPlan[];
   studyTasks: StudyTask[];
@@ -375,6 +401,7 @@ export function createEmptyData(): AppData {
     questions: [],
     examPapers: [],
     answerRecords: [],
+    questionAsks: [],
     wrongQuestions: [],
     studyPlans: [],
     studyTasks: [],
@@ -401,6 +428,7 @@ export function createEmptyCourseData(): CourseData {
     questions: [],
     examPapers: [],
     answerRecords: [],
+    questionAsks: [],
     wrongQuestions: [],
     studyPlans: [],
     studyTasks: [],

@@ -8,11 +8,98 @@
 
     <template v-else>
       <div v-if="practicing" class="card quiz-card">
-        <div v-if="quizSummary" class="quiz-summary">
+        <div v-if="quizSummary && reviewing" class="quiz-review">
+          <div class="review-progress">{{ quizIdx + 1 }} / {{ quizList.length }} · 回看</div>
+          <div class="review-chips" aria-label="题目导航">
+            <button
+              v-for="(q, i) in quizList"
+              :key="i"
+              class="chip"
+              :class="{ on: i === quizIdx, ok: answeredResults[i]?.isCorrect === true, bad: answeredResults[i] ? !answeredResults[i].isCorrect : undefined }"
+              :title="answeredResults[i] ? (answeredResults[i].isCorrect ? '答对' : '答错') : '未判分'"
+              @click="goReview(i)"
+            >{{ i + 1 }}</button>
+          </div>
+          <div class="q-title">{{ currentQuestion!.title }}</div>
+          <!-- 客观题：标出用户作答与正确答案 -->
+          <template v-if="['single', 'judge', 'multiple'].includes(currentQuestion!.qType)">
+            <div
+              v-for="(opt, oi) in currentOptions"
+              :key="oi"
+              class="option"
+              :class="{
+                picked: reviewUserPicked.includes(opt),
+                right: isReviewRight(opt),
+                wrong: reviewUserPicked.includes(opt) && !isReviewRight(opt),
+              }"
+            >
+              <span class="d"></span>{{ opt }}
+            </div>
+          </template>
+          <!-- 简答 / 填空 / 翻译：我的作答 + 判分结果 + 参考答案 -->
+          <template v-else>
+            <div class="review-essay">
+              <div class="s t-faint">我的作答</div>
+              <div class="essay-answered">{{ reviewResult?.userAnswer || "（未作答 / 未判分）" }}</div>
+              <div v-if="reviewResult" class="essay-feedback">
+                <div class="score" :class="{ pass: reviewResult.isCorrect, fail: !reviewResult.isCorrect }">{{ reviewResult.score }} 分</div>
+                <div v-if="reviewResult.feedback" class="fb">{{ reviewResult.feedback }}</div>
+                <div class="ref">{{ getAnswerLabel() }}：{{ currentQuestion!.answer }}</div>
+              </div>
+            </div>
+          </template>
+          <div v-if="reviewResult && currentQuestion!.qType !== 'essay'" class="judge-line" :class="reviewResult.isCorrect ? 'ok' : 'bad'">
+            {{ reviewResult.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
+          </div>
+          <div v-if="currentQuestion!.analysis" class="analysis">{{ currentQuestion!.analysis }}</div>
+          <div class="review-actions">
+            <div style="display:flex;gap:8px">
+              <button class="btn ghost" :disabled="quizIdx === 0" @click="goReview(quizIdx - 1)">上一题</button>
+              <button class="btn ghost" :disabled="quizIdx >= quizList.length - 1" @click="goReview(quizIdx + 1)">下一题</button>
+            </div>
+            <button class="btn primary" @click="reviewing = false">返回小结</button>
+          </div>
+          <!-- 就本题 AI 问答（辅助理解，会话按题留存） -->
+          <div class="ask-panel">
+            <button class="ask-toggle" @click="toggleAsk">
+              <AppIcon name="spark" :size="14" /> AI 问答
+              <span class="s t-faint" style="font-weight:400">就这道题和它的知识点提问，帮你弄懂为止</span>
+            </button>
+            <div v-if="askOpen" class="ask-body">
+              <div v-if="askTurns.length === 0" class="s t-faint ask-empty">围绕题干、选项、答案或关联知识点问点什么吧。</div>
+              <div v-else class="ask-list">
+                <div v-for="(t, i) in askTurns" :key="i" class="ask-msg" :class="t.role">
+                  <div class="who">{{ t.role === "user" ? "我" : "AI" }}</div>
+                  <div class="txt">{{ t.content }}</div>
+                </div>
+                <div v-if="askLoading" class="ask-msg assistant">
+                  <div class="who">AI</div>
+                  <div class="txt">思考中…</div>
+                </div>
+              </div>
+              <div v-if="askError" class="s t-danger" style="margin-bottom:8px">✗ {{ askError }}</div>
+              <div class="ask-input-row">
+                <input
+                  v-model="askInput"
+                  class="ask-input"
+                  :disabled="askLoading"
+                  placeholder="就这道题/知识点问点什么…"
+                  aria-label="向 AI 提问"
+                  @keydown.enter.prevent="sendAsk"
+                />
+                <button class="btn sm primary" :disabled="!askInput.trim() || askLoading" @click="sendAsk">
+                  {{ askLoading ? "回答中…" : "发送" }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="quizSummary" class="quiz-summary">
           <h3>本次刷题小结</h3>
           <div class="big">{{ quizSummary.total }} 题 · 答对 {{ quizSummary.correct }} 题<template v-if="quizSummary.essayCount"> · 简答均分 {{ quizSummary.essayAvg }} 分</template></div>
           <div v-if="testDoneTitles.length" class="plan-note">✓ 测评任务已自动勾选：{{ testDoneTitles.join("、") }}</div>
           <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+            <button class="btn ghost" @click="startReview">回看题目</button>
             <button class="btn primary" @click="againPractice">再来一轮</button>
             <button class="btn ghost" @click="endPractice">返回题库</button>
           </div>
@@ -36,8 +123,8 @@
                 :tabindex="oi === optionFocusIdx ? 0 : -1"
                 :class="{
                   picked: pickedSingle === opt,
-                  right: quizResult && opt === currentQuestion!.answer,
-                  wrong: quizResult && pickedSingle === opt && !quizResult.isCorrect,
+                  right: revealed && opt === currentQuestion!.answer,
+                  wrong: revealed && pickedSingle === opt && !quizResult!.isCorrect,
                 }"
                 @click="pickOption(opt, oi)"
                 @keydown="onOptionKeydown($event, oi)"
@@ -59,8 +146,8 @@
                 :tabindex="oi === optionFocusIdx ? 0 : -1"
                 :class="{
                   picked: pickedMulti.includes(opt),
-                  right: quizResult && isRightOption(opt),
-                  wrong: quizResult && pickedMulti.includes(opt) && !isRightOption(opt),
+                  right: revealed && isRightOption(opt),
+                  wrong: revealed && pickedMulti.includes(opt) && !isRightOption(opt),
                 }"
                 @click="toggleMulti(opt, oi)"
                 @keydown="onOptionKeydown($event, oi)"
@@ -79,9 +166,9 @@
               :placeholder="getInputPlaceholder()"
               :disabled="!!quizResult"
             />
-            <div v-if="quizResult" class="essay-feedback">
-              <div class="score" :class="{ pass: quizResult.isCorrect, fail: !quizResult.isCorrect }">{{ quizResult.score }} 分</div>
-              <div class="fb">{{ quizResult.feedback || (currentQuestion!.qType === 'translation' ? 'AI 未给出具体点评' : '') }}</div>
+            <div v-if="revealed" class="essay-feedback">
+              <div class="score" :class="{ pass: quizResult!.isCorrect, fail: !quizResult!.isCorrect }">{{ quizResult!.score }} 分</div>
+              <div class="fb">{{ quizResult!.feedback || (currentQuestion!.qType === 'translation' ? 'AI 未给出具体点评' : '') }}</div>
               <div class="ref">{{ getAnswerLabel() }}：{{ currentQuestion!.answer }}</div>
             </div>
           </template>
@@ -92,12 +179,13 @@
               {{ submitting ? "判分中…" : "重新判分" }}
             </button>
           </div>
-          <div v-if="quizResult && currentQuestion!.qType !== 'essay'" class="judge-line" :class="quizResult.isCorrect ? 'ok' : 'bad'">
-            {{ quizResult.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
+          <div v-if="quizResult && !revealed" class="s t-faint" style="margin-top:12px">已提交。收口模式：本轮答完后可在回看中查看解析与得分。</div>
+          <div v-if="revealed && currentQuestion!.qType !== 'essay'" class="judge-line" :class="quizResult!.isCorrect ? 'ok' : 'bad'">
+            {{ quizResult!.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
           </div>
-          <div v-if="quizResult && quizResult.masteryNotes.length" class="mastery-note">↓ 掌握度：{{ quizResult.masteryNotes.join(" · ") }}</div>
-          <div v-if="quizResult && quizResult.planNotes.length" class="plan-note">✓ 计划任务已自动勾选：{{ quizResult.planNotes.join("、") }}</div>
-          <div v-if="quizResult && currentQuestion!.analysis" class="analysis">{{ currentQuestion!.analysis }}</div>
+          <div v-if="revealed && quizResult!.masteryNotes.length" class="mastery-note">↓ 掌握度：{{ quizResult!.masteryNotes.join(" · ") }}</div>
+          <div v-if="revealed && quizResult!.planNotes.length" class="plan-note">✓ 计划任务已自动勾选：{{ quizResult!.planNotes.join("、") }}</div>
+          <div v-if="revealed && currentQuestion!.analysis" class="analysis">{{ currentQuestion!.analysis }}</div>
 
           <div class="quiz-actions">
             <template v-if="!quizResult">
@@ -291,6 +379,8 @@
         :knowledge-points="knowledgePoints"
         :chapters="chapters"
         :preset="setPreset"
+        :reveal-default="quizRevealDefault"
+        :reveal-locked="currentTestContext?.kind === 'exam'"
         @close="onSetModalClose"
         @generated="onQuizGenerated"
       />
@@ -364,11 +454,14 @@ import {
   QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
   completeTestTasks,
+  getSettings,
+  queryQuestionAsk,
+  sendQuizAsk,
 } from "../api";
 import { kpsOfChapter } from "../utils/chapterScope";
 import { capStudySec } from "../constants/study";
 import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
-import type { AnswerResult } from "../api";
+import type { AnswerResult, AskTurn } from "../api";
 import QuestionEditModal from "../components/QuestionEditModal.vue";
 import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
 import QuestionSetModal from "../components/QuestionSetModal.vue";
@@ -501,7 +594,74 @@ const quizSummary = ref<{
   essayCount: number;
   essayAvg: string;
 } | null>(null);
-const answeredResults = ref<Array<{ isCorrect: boolean; score: string; qType: string }>>([]);
+const answeredResults = ref<Array<{ isCorrect: boolean; score: string; qType: string; userAnswer: string; feedback: string }>>([]);
+/** 本轮解析展示时机：immediate 即时 / afterAll 收口（组卷面板选定或全局默认；模考强制收口） */
+const revealMode = ref<"immediate" | "afterAll">("immediate");
+/** 全局默认解析时机（设置页 quizRevealMode，组卷面板未指定时的回退） */
+const quizRevealDefault = ref<"immediate" | "afterAll">("immediate");
+/** 收口模式下「已判分但未揭示」的可见性解耦：revealed=true 才展示对错/解析 */
+const revealed = computed(() => quizResult.value !== null && revealMode.value === "immediate");
+// ===== 回看模式（答完一轮后只读回顾 + 就题 AI 问答） =====
+const reviewing = ref(false);
+const reviewResult = computed(() => answeredResults.value[quizIdx.value] ?? null);
+const reviewUserPicked = computed<string[]>(() => {
+  const r = reviewResult.value;
+  if (!r || !r.userAnswer) return [];
+  return r.userAnswer.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+});
+function isReviewRight(opt: string): boolean {
+  const q = currentQuestion.value;
+  if (!q) return false;
+  return q.answer.split(/[,，]/).map((s) => s.trim()).includes(opt);
+}
+function startReview() {
+  reviewing.value = true;
+  quizIdx.value = 0;
+  void resetAskPanel();
+}
+function goReview(i: number) {
+  if (i < 0 || i >= quizList.value.length || i === quizIdx.value) return;
+  quizIdx.value = i;
+  void resetAskPanel();
+}
+async function resetAskPanel() {
+  askOpen.value = false;
+  askTurns.value = [];
+  askError.value = "";
+  askInput.value = "";
+  const q = currentQuestion.value;
+  if (!q) return;
+  const s = await queryQuestionAsk(q.id);
+  if (currentQuestion.value?.id === q.id) askTurns.value = s ? [...s.turns] : [];
+}
+// ===== 回看 AI 问答 =====
+const askOpen = ref(false);
+const askTurns = ref<AskTurn[]>([]);
+const askLoading = ref(false);
+const askError = ref("");
+const askInput = ref("");
+function toggleAsk() {
+  askOpen.value = !askOpen.value;
+}
+async function sendAsk() {
+  const q = currentQuestion.value;
+  const text = askInput.value.trim();
+  if (!q || !text || askLoading.value) return;
+  askLoading.value = true;
+  askError.value = "";
+  // 乐观追加 user 轮（sendQuizAsk 内部落库；失败时本地与存储一致，重问自然续上）
+  askTurns.value.push({ role: "user", content: text, createTime: new Date().toISOString() });
+  askInput.value = "";
+  try {
+    const reply = await sendQuizAsk(q.courseId, q.id, text);
+    askTurns.value.push({ role: "assistant", content: reply, createTime: new Date().toISOString() });
+  } catch (e) {
+    console.error("回看问答失败:", e);
+    askError.value = e instanceof Error ? e.message : "问答失败，请重试";
+  } finally {
+    askLoading.value = false;
+  }
+}
 /** 本轮刷题的测评来源：仅章节组卷（?set=）/结业模考（?exam=1）入口开刷时非空，答完最后一题据此自动勾 test 任务 */
 const currentTestContext = ref<TestTaskContext | null>(null);
 /** 本轮自动勾掉的测评任务标题（小结展示用） */
@@ -532,13 +692,19 @@ function resetQuestionState() {
   optionFocusIdx.value = 0;
 }
 
-function beginQuiz(list: Question[], context: TestTaskContext | null = null) {
+function beginQuiz(list: Question[], context: TestTaskContext | null = null, reveal?: "immediate" | "afterAll") {
   quizList.value = [...list];
   quizIdx.value = 0;
   answeredResults.value = [];
   quizSummary.value = null;
   testDoneTitles.value = [];
   currentTestContext.value = context;
+  revealMode.value = reveal ?? quizRevealDefault.value;
+  reviewing.value = false;
+  askOpen.value = false;
+  askTurns.value = [];
+  askError.value = "";
+  askInput.value = "";
   resetQuestionState();
   startQuestionTimer();
   practicing.value = true;
@@ -566,16 +732,16 @@ function onSetModalClose() {
   if (!practicing.value) currentTestContext.value = null;
 }
 
-function onQuizGenerated(list: Question[]) {
+function onQuizGenerated(list: Question[], opts: { revealMode: "immediate" | "afterAll" }) {
   if (list.length === 0) return;
   // 先取出待生效来源，再由 beginQuiz 存为本轮 context
   const ctx = currentTestContext.value;
   currentTestContext.value = null;
-  beginQuiz(list, ctx);
+  beginQuiz(list, ctx, opts.revealMode);
 }
 
 function againPractice() {
-  beginQuiz(shuffleList(quizList.value));
+  beginQuiz(shuffleList(quizList.value), null, revealMode.value);
 }
 
 /** 组卷预填入口：?set=<章节id>（章节复盘）/ ?exam=1（结业模考，全课程知识点） */
@@ -648,6 +814,10 @@ function endPractice() {
   quizList.value = [];
   quizSummary.value = null;
   quizError.value = "";
+  reviewing.value = false;
+  askOpen.value = false;
+  askTurns.value = [];
+  askInput.value = "";
   setPreset.value = null;
   currentTestContext.value = null;
   testDoneTitles.value = [];
@@ -735,7 +905,7 @@ async function submitCurrent() {
   try {
     const result = await submitAnswer(q, userAnswer.value, elapsedQuestionSec());
     quizResult.value = result;
-    answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType });
+    answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType, userAnswer: userAnswer.value, feedback: result.feedback });
   } catch (e) {
     if (e instanceof GradingFailedError) {
       // 简答题：作答已先落盘（graded=false），保留「重新判分」入口
@@ -761,7 +931,7 @@ async function regrade() {
     quizResult.value = result;
     pendingGrading.value = null;
     quizError.value = "";
-    answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType });
+    answeredResults.value.push({ isCorrect: result.isCorrect, score: result.score, qType: q.qType, userAnswer: userAnswer.value, feedback: result.feedback });
   } catch (e) {
     console.error("重新判分失败:", e);
     quizError.value = e instanceof Error ? e.message : String(e);
@@ -919,8 +1089,9 @@ function exportMarkdown() {
 const importOpen = ref(false);
 const paperModalOpen = ref(false);
 
+/** 真题试卷开刷：模拟考试语义，强制收口（全部答完再出解析） */
 function beginPractice(questions: Question[]) {
-  beginQuiz(shuffleList(questions));
+  beginQuiz(shuffleList(questions), null, "afterAll");
 }
 
 async function onQuestionsImported(count: number) {
@@ -978,6 +1149,11 @@ onMounted(async () => {
     enterKpPractice();
     void enterPresetSet();
   }
+  getSettings()
+    .then((s) => {
+      quizRevealDefault.value = s.quizRevealMode ?? "immediate";
+    })
+    .catch(() => {});
 });
 
 watch(

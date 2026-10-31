@@ -23,6 +23,7 @@ const DIRECT_KEYS = [
   "studyLogs",
   "studyLogMonthly",
   "answerStatsMonthly",
+  "questionAsks",
 ] as const;
 type DirectKey = (typeof DIRECT_KEYS)[number];
 
@@ -35,7 +36,7 @@ export interface SplitResult {
 
 /** 把完整 AppData 拆成全局部分 + 每课程部分。
  *  归属规则：
- *  - 带 courseId 的实体直接归属；
+ *  - 带 courseId 的实体直接归属（questionAsks 随其课程走）；
  *  - answerRecords/wrongQuestions 经 qId、studyTasks 经 planId、
  *    reviewSchedules 经 kpId→qId→cardId、materialChapters 经 materialId 间接归属；
  *  - conversationsDocs 的 key 为 `course-<id>` 或章/节节点 id（经 chapters 查归属）；
@@ -152,6 +153,7 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     questions: [...global.questions],
     examPapers: [...global.examPapers],
     answerRecords: [...global.answerRecords],
+    questionAsks: [...global.questionAsks],
     wrongQuestions: [...global.wrongQuestions],
     studyPlans: [...global.studyPlans],
     studyTasks: [...global.studyTasks],
@@ -170,6 +172,7 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     data.questions.push(...cd.questions);
     data.examPapers.push(...cd.examPapers);
     data.answerRecords.push(...cd.answerRecords);
+    data.questionAsks.push(...cd.questionAsks);
     data.wrongQuestions.push(...cd.wrongQuestions);
     data.studyPlans.push(...cd.studyPlans);
     data.studyTasks.push(...cd.studyTasks);
@@ -207,6 +210,7 @@ export function hasCourseEntities(data: AppData): boolean {
       cd.studyLogs,
       cd.studyLogMonthly,
       cd.answerStatsMonthly,
+      cd.questionAsks,
     ].some((arr) => arr.length > 0),
   );
 }
@@ -224,6 +228,7 @@ export function normalizeCourseData(raw: unknown): CourseData {
   if (arr(p.questions)) out.questions = p.questions!;
   if (arr(p.examPapers)) out.examPapers = p.examPapers!;
   if (arr(p.answerRecords)) out.answerRecords = p.answerRecords!;
+  if (arr(p.questionAsks)) out.questionAsks = p.questionAsks!;
   if (arr(p.wrongQuestions)) out.wrongQuestions = p.wrongQuestions!;
   if (arr(p.studyPlans)) out.studyPlans = p.studyPlans!;
   if (arr(p.studyTasks)) out.studyTasks = p.studyTasks!;

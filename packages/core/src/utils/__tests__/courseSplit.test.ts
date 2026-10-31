@@ -43,6 +43,11 @@ function makeData(): AppData {
     { id: 601, qId: 401, userAnswer: "C", isCorrect: false, score: "0", createTime: "2026-01-01T00:00:00Z" },
     { id: 602, qId: 999, userAnswer: "A", isCorrect: true, score: "1", createTime: "2026-01-01T00:00:00Z" },
   ];
+  data.questionAsks = [
+    { id: 1400, qId: 400, courseId: 1, turns: [{ role: "user", content: "为什么？", createTime: "2026-01-01T00:00:00Z" }], updateTime: "2026-01-01T00:00:00Z" },
+    { id: 1401, qId: 401, courseId: 2, turns: [], updateTime: "2026-01-01T00:00:00Z" },
+    { id: 1402, qId: 999, courseId: 99, turns: [], updateTime: "2026-01-01T00:00:00Z" },
+  ];
   data.wrongQuestions = [{ id: 700, recordId: 601, qId: 401, reviewTimes: 0, createTime: "2026-01-01T00:00:00Z" }];
   data.studyPlans = [
     { id: 800, courseId: 1, planContent: "p", targetDate: "2026-02-01", dailyHour: "2", createTime: "2026-01-01T00:00:00Z" },
@@ -95,6 +100,8 @@ describe("splitAppData", () => {
     expect(c2.chapters.map((c) => c.id)).toEqual([11]);
     expect(c2.knowledgePoints.map((k) => k.id)).toEqual([101]);
     expect(c2.flashCards.map((c) => c.id)).toEqual([1200]);
+    expect(c1.questionAsks.map((a) => a.id)).toEqual([1400]);
+    expect(c2.questionAsks.map((a) => a.id)).toEqual([1401]);
   });
 
   it("间接实体经引用链归属", () => {
@@ -115,6 +122,7 @@ describe("splitAppData", () => {
     expect(global.chapters.map((c) => c.id)).toEqual([12]);
     expect(global.answerRecords.map((r) => r.id)).toEqual([602]);
     expect(global.studyTasks.map((t) => t.id)).toEqual([901]);
+    expect(global.questionAsks.map((a) => a.id)).toEqual([1402]);
     expect(global.conversationsDocs).toEqual({ "888": { docId: "conv-orphan" } });
   });
 
@@ -150,6 +158,7 @@ describe("mergeAppData", () => {
     expect(byId(merged.questions)).toEqual(byId(original.questions));
     expect(byId(merged.examPapers)).toEqual(byId(original.examPapers));
     expect(byId(merged.answerRecords)).toEqual(byId(original.answerRecords));
+    expect(byId(merged.questionAsks)).toEqual(byId(original.questionAsks));
     expect(byId(merged.wrongQuestions)).toEqual(byId(original.wrongQuestions));
     expect(byId(merged.studyPlans)).toEqual(byId(original.studyPlans));
     expect(byId(merged.studyTasks)).toEqual(byId(original.studyTasks));

@@ -12,6 +12,7 @@ export * from "./studyData";
 export * from "./review";
 export * from "./question";
 export * from "./quiz";
+export * from "./quizAsk";
 export * from "./explain";
 export * from "./generate";
 export * from "./flashcard";
@@ -43,6 +44,8 @@ export type {
   Question,
   ExamPaper,
   AnswerRecord,
+  AskTurn,
+  QuestionAsk,
   WrongQuestion,
   StudyPlan,
   StudyTask,

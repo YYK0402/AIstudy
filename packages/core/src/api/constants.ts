@@ -57,6 +57,7 @@ export const AI_TASKS = [
   { key: "organize_doc", name: "文档结构梳理" },
   { key: "gen_flashcard", name: "AI 闪卡生成" },
   { key: "gen_ask", name: "费曼提问生成" },
+  { key: "quiz_ask", name: "回看题目 AI 问答" },
 ] as const;
 
 export const GLOBAL_DEFAULT_KEY = "global_default";

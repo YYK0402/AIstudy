@@ -23,6 +23,10 @@ const dataRef: { data: AppData } = {
       { id: 1, qId: 1, userAnswer: "A", isCorrect: false, score: "", createTime: "2026-10-01T00:00:00Z" },
       { id: 2, qId: 2, userAnswer: "A", isCorrect: true, score: "", createTime: "2026-10-01T00:00:00Z" },
     ],
+    questionAsks: [
+      { id: 1, qId: 1, courseId: 1, turns: [], updateTime: "2026-10-01T00:00:00Z" },
+      { id: 2, qId: 2, courseId: 1, turns: [], updateTime: "2026-10-01T00:00:00Z" },
+    ],
     wrongQuestions: [
       { id: 1, recordId: 1, qId: 1, reviewTimes: 0, createTime: "2026-10-01T00:00:00Z" },
     ],
@@ -70,5 +74,7 @@ describe("deleteExamPaper 级联清理", () => {
     expect(d.wrongQuestions).toHaveLength(0);
     // 复习排期：qId=1 的题目触点删除，普通题触点与知识点触点保留
     expect(d.reviewSchedules.map((s) => s.id).sort()).toEqual([2, 3]);
+    // 问答会话：试卷内题的删除，普通题的保留
+    expect(d.questionAsks.map((a) => a.id)).toEqual([2]);
   });
 });

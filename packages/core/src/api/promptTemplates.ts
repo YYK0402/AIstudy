@@ -217,6 +217,33 @@ export const PROMPT_TASKS: PromptTaskMeta[] = [
     },
   },
   {
+    key: "quiz_ask",
+    name: "回看题目 AI 问答",
+    desc: "回看刷题时围绕当前题目与关联知识点的 AI 问答，辅助理解",
+    vars: [
+      { name: "courseName", desc: "课程名称" },
+      { name: "qTypeLabel", desc: "题型中文名（如「单选」）" },
+      { name: "title", desc: "题目题干" },
+      { name: "options", desc: "选项文本（每行「A. xxx」；简答/填空/翻译题为「（无选项：简答/填空/翻译题）」）" },
+      { name: "answer", desc: "正确答案/参考答案" },
+      { name: "analysis", desc: "题目解析（题目无解析时为「（无）」）" },
+      { name: "kpLines", desc: "关联知识点列表，每行「- 名称：描述」（无关联时为「（无）」）" },
+      { name: "userText", desc: "学生的问题（仅首问渲染 user 模板，后续轮次直接携带原始对话）" },
+    ],
+    defaultTemplate: {
+      system:
+        "你是耐心细致的学习助教。学生正在回看课程「{{courseName}}」的一道{{qTypeLabel}}题：\n" +
+        "题目：{{title}}\n" +
+        "选项：\n{{options}}\n" +
+        "正确答案：{{answer}}\n" +
+        "解析：{{analysis}}\n" +
+        "关联知识点：\n{{kpLines}}\n" +
+        "学生将围绕这道题或相关知识点提问。请用中文回答：先直接回应问题，再视需要补充关键点；" +
+        "讲清易错点时可以举生活化例子或类比；学生理解有偏差时明确指出并纠正。回答简洁聚焦，不要长篇大论。",
+      user: "{{userText}}",
+    },
+  },
+  {
     key: "organize_doc",
     name: "文档结构梳理",
     desc: "整理资料正文（去页眉页脚水印噪声、拼断行、修复 OCR 缺字误识、标注章/节标题）",

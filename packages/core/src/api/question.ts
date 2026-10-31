@@ -44,6 +44,7 @@ export async function deleteQuestion(id: number): Promise<void> {
   data.questions = data.questions.filter((q) => q.id !== id);
   // 同步清理答题记录与错题，避免悬挂引用
   data.answerRecords = data.answerRecords.filter((r) => r.qId !== id);
+  data.questionAsks = data.questionAsks.filter((a) => a.qId !== id);
   data.wrongQuestions = data.wrongQuestions.filter((w) => w.qId !== id);
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId !== id);
   await saveData(data);
@@ -85,6 +86,7 @@ export async function deleteQuestions(ids: number[]): Promise<number> {
   const removed = before - data.questions.length;
   // 同步清理答题记录/错题/题目复习排期，避免悬挂引用（qId 为空的知识点/闪卡触点保留）
   data.answerRecords = data.answerRecords.filter((r) => !idSet.has(r.qId));
+  data.questionAsks = data.questionAsks.filter((a) => !idSet.has(a.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !idSet.has(w.qId));
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId === null || !idSet.has(s.qId));
   await saveData(data);
@@ -222,6 +224,7 @@ export async function deleteExamPaper(id: number): Promise<void> {
   // 清理答题记录/错题/题目复习排期（对照 deleteQuestions，避免悬挂 qId 触点；qId 为空的知识点/闪卡触点保留）
   const qIdSet = new Set(paperQuestionIds);
   data.answerRecords = data.answerRecords.filter((r) => !qIdSet.has(r.qId));
+  data.questionAsks = data.questionAsks.filter((a) => !qIdSet.has(a.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !qIdSet.has(w.qId));
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.qId === null || !qIdSet.has(s.qId));
   await saveData(data);

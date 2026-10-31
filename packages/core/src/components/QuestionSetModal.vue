@@ -74,6 +74,13 @@
                 <button class="chip" :class="{ on: !random }" @click="random = false">顺序</button>
               </div>
             </div>
+            <div class="field" style="margin-bottom:0">
+              <label>解析时机</label>
+              <div class="qset-row">
+                <button class="chip" :class="{ on: revealMode === 'immediate' }" :disabled="revealLocked" @click="revealMode = 'immediate'">每题</button>
+                <button class="chip" :class="{ on: revealMode === 'afterAll' }" :disabled="revealLocked" @click="revealMode = 'afterAll'">整轮</button>
+              </div>
+            </div>
           </div>
           <div class="s qset-match" :class="{ warn: matched === 0 }">
             <template v-if="matched === 0">当前筛选无匹配题目，请调整条件</template>
@@ -113,9 +120,16 @@ const props = defineProps<{
   chapters: Chapter[];
   /** 预填入口（T2.16 章节复盘 / T2.17 结业模考）：知识点范围与标题 */
   preset?: { kpIds: number[]; title: string } | null;
+  /** 解析时机默认值（来自全局设置 quizRevealMode） */
+  revealDefault?: "immediate" | "afterAll";
+  /** 模考强制收口：锁定为 afterAll，不可选 */
+  revealLocked?: boolean;
 }>();
 
-const emit = defineEmits<{ (e: "close"): void; (e: "generated", list: Question[]): void }>();
+const emit = defineEmits<{
+  (e: "close"): void;
+  (e: "generated", list: Question[], opts: { revealMode: "immediate" | "afterAll" }): void;
+}>();
 
 const qTypes = ref<QuestionType[]>([]);
 const difficulties = ref<QuestionDifficulty[]>([]);
@@ -123,6 +137,7 @@ const kpIds = ref<number[]>([]);
 const count = ref(10);
 const countAll = ref(false);
 const random = ref(true);
+const revealMode = ref<"immediate" | "afterAll">("immediate");
 
 // 打开时重置为默认（整课程），并按预填入口初始化知识点范围
 watch(
@@ -135,6 +150,7 @@ watch(
     count.value = 10;
     countAll.value = false;
     random.value = true;
+    revealMode.value = props.revealLocked ? "afterAll" : (props.revealDefault ?? "immediate");
   },
 );
 
@@ -181,7 +197,7 @@ function close() {
 
 function confirm() {
   if (pool.value.length === 0) return;
-  emit("generated", pool.value);
+  emit("generated", pool.value, { revealMode: revealMode.value });
   close();
 }
 </script>

@@ -112,6 +112,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     questions: [question(), question({ id: 2, courseId: 2, kpIds: "2", paperId: null })],
     examPapers: [paper()],
     answerRecords: [],
+    questionAsks: [],
     wrongQuestions: [],
     studyPlans: [],
     studyTasks: [],

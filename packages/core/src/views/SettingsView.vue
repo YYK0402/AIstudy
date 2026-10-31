@@ -180,6 +180,16 @@
       <div class="s t-faint" style="margin-top:6px">
         超保留期的学习日志与作答记录自动归档为月度汇总：趋势/连续天数等近期统计不受影响，课程累计统计（答题量/正确率/简答均分/最近学习时间）由汇总补全，数字与归档前一致。
       </div>
+      <div class="ta-row" style="margin-top:14px">
+        <span class="t">刷题解析时机</span>
+        <select v-model="settings.quizRevealMode" aria-label="刷题解析时机">
+          <option value="immediate">答完一题立即出解析（默认）</option>
+          <option value="afterAll">全部答完再统一出解析</option>
+        </select>
+      </div>
+      <div class="s t-faint" style="margin-top:6px">
+        作用于刷题练习的默认值；试卷/结业模考固定「全部答完再出」。组卷面板可临时改本轮。答完一轮可回看全部题目并就该题向 AI 提问。
+      </div>
     </div>
     <div class="card">
       <h3>最近调用日志</h3>
@@ -292,6 +302,7 @@ const settings = reactive({
   aiRetryCount: 0 as 0 | 1 | 2,
   aiRateLimitPerMin: 0,
   studyRetentionDays: 90,
+  quizRevealMode: "immediate" as "immediate" | "afterAll",
 });
 const settingsSaving = ref(false);
 /** 服务商行「⋯」菜单：同一时间只开一个 */
@@ -631,6 +642,7 @@ async function saveSettings() {
       aiRetryCount: settings.aiRetryCount,
       aiRateLimitPerMin: Number(settings.aiRateLimitPerMin) || 0,
       studyRetentionDays: Number(settings.studyRetentionDays) || 0,
+      quizRevealMode: settings.quizRevealMode,
     });
     settings.notebookName = settings.notebookName.trim() || "AI 研习";
     settingsDirty.value = false;
@@ -670,6 +682,7 @@ onMounted(async () => {
     settings.aiRateLimitPerMin = Number(s.aiRateLimitPerMin) || 0;
     const r = Number(s.studyRetentionDays);
     settings.studyRetentionDays = [90, 180, 365, 0].includes(r) ? r : 90;
+    settings.quizRevealMode = s.quizRevealMode === "afterAll" ? "afterAll" : "immediate";
     // 等 watch 消化完加载赋值再允许置脏，避免一进页面就提示「有修改」
     await nextTick();
     settingsReady = true;

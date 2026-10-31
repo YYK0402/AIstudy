@@ -35,7 +35,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     materialChapters: [{ id: 1, materialId: 1, chapterId: 1 }],
     questions: [question()],
     examPapers: [],
-    answerRecords: [], wrongQuestions: [], studyPlans: [], studyTasks: [], explainRecords: [], reviewSchedules: [],
+    answerRecords: [], questionAsks: [], wrongQuestions: [], studyPlans: [], studyTasks: [], explainRecords: [], reviewSchedules: [],
     flashCards: [],
     studyLogs: [], studyLogMonthly: [], answerStatsMonthly: [],
     settings: { chapterMode: "manual", persistToSiyuan: false, notebookName: "AI 研习" },

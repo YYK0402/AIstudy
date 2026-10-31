@@ -10,6 +10,7 @@ export async function getSettings(): Promise<AppSettings> {
     aiRetryCount: data.settings?.aiRetryCount ?? 0,
     aiRateLimitPerMin: data.settings?.aiRateLimitPerMin ?? 0,
     studyRetentionDays: data.settings?.studyRetentionDays ?? 90,
+    quizRevealMode: data.settings?.quizRevealMode ?? "immediate",
   };
 }
 
