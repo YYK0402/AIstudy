@@ -16,6 +16,8 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:web": "vite build --config packages/core/vite.config.ts",
     "build:plugin": "vite build --config packages/siyuan/vite.config.ts",
+    "build:fnos": "npm run build:web && node packages/fnos/scripts/build-ui.mjs && npm run -w @ai-study/fnos build:server",
+    "pack:fnos": "npm run build:fnos && node packages/fnos/scripts/prepare-package.mjs && bash packages/fnos/scripts/pack-app.sh && node packages/fnos/scripts/validate-package.mjs && node packages/fnos/scripts/download-fnpack.mjs && bash packages/fnos/scripts/pack-fpk.sh",
     "build": "npm run clean && npm run build:web && npm run build:plugin",
     "dev": "vite build --watch --config packages/siyuan/vite.config.ts",
     "dev:web": "vite build --watch --config packages/core/vite.config.ts",

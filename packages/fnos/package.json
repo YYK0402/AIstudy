@@ -1,0 +1,22 @@
+{
+  "name": "@ai-study/fnos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI 智能学习 · 飞牛 fnOS 应用（native .fpk，统一网关）",
+  "scripts": {
+    "build:web": "vite build --config ../core/vite.config.ts",
+    "build:ui": "node scripts/build-ui.mjs",
+    "build:server": "nitro build",
+    "build": "npm run build:web && npm run build:ui && npm run build:server",
+    "prepare:package": "node scripts/prepare-package.mjs",
+    "validate:package": "node scripts/validate-package.mjs",
+    "pack:app": "npm run build && npm run prepare:package && bash scripts/pack-app.sh && npm run validate:package",
+    "pack:fpk": "node scripts/download-fnpack.mjs && npm run pack:app && bash scripts/pack-fpk.sh"
+  },
+  "dependencies": {
+    "@trimjs/web-app": "^0.5.0",
+    "h3": "2.0.1-rc.22",
+    "nitro": "3.0.260610-beta"
+  }
+}

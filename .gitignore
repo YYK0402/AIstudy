@@ -7,3 +7,6 @@ package.zip
 .DS_Store
 .vite/
 seeds/
+.fnos-build/
+packages/tools/
+*.fpk

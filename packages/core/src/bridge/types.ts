@@ -20,6 +20,16 @@ export interface ListModelsResult extends TestProviderResult {
   models: string[];
 }
 
+/** NAS 上选中并授权的文件引用（不复制副本，直接引用原路径） */
+export interface NasFileRef {
+  /** NAS 绝对路径（/vol1/...） */
+  path: string;
+  /** 浏览器可直接 fetch 的文件 URL（供重新解析/AI 梳理回读） */
+  url: string;
+  /** 文件名（basename） */
+  name: string;
+}
+
 /** 宿主能力声明：core 按此优雅降级功能入口（不认识的实现直接隐藏对应 UI） */
 export interface BridgeCapabilities {
   /** OCR 实现：kernel = 宿主内核 OCR（走 ocrAsset）/ vision = AI 视觉模型（core 走 callAi）/ none = 不支持扫描版 */
@@ -66,6 +76,11 @@ export interface StudyBridge {
   /** 上传原始资料文件到宿主资源存储，返回浏览器可直接 fetch 的资源 URL（供重新解析） */
   uploadAsset(file: File): Promise<string>;
   removeAsset(path: string): Promise<void>;
+  /**
+   * 打开宿主系统文件选择器选取 NAS 文件（选择即自动授权，不复制副本）。
+   * 仅 capabilities.nasFiles 为 true 的宿主可用；用户取消返回空数组。
+   */
+  pickNasFiles(accept?: string[]): Promise<NasFileRef[]>;
   /** OCR（capabilities.ocr === "kernel" 时由 core 调用；vision 模式 core 自行走 callAi） */
   ocrAsset?(path: string): Promise<string>;
 }

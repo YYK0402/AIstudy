@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 智能学习</title>
+    <style>
+      html,
+      body,
+      #app {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+    <script src="assets/trim-sdk.js"></script>
+    __SHIM__
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (async () => {
+        const el = document.getElementById("app");
+        const showError = (msg) => {
+          el.innerHTML =
+            "<div style='display:flex;align-items:center;justify-content:center;height:100%;color:#c0392b;font-size:14px'>" +
+            msg +
+            "</div>";
+        };
+        try {
+          // 数据先行：getData 是同步契约，页面加载器负责预取
+          const res = await fetch("api/data", { cache: "no-store" });
+          if (!res.ok) throw new Error("数据加载失败：HTTP " + res.status);
+          window.__AI_STUDY_SET_DATA__(await res.json());
+          const s = document.createElement("script");
+          s.src = "assets/index.js";
+          s.onload = () => window.AiStudyApp.mount(el);
+          s.onerror = () => showError("前端资源加载失败（assets/index.js）");
+          document.head.appendChild(s);
+        } catch (e) {
+          showError("初始化失败：" + (e && e.message ? e.message : String(e)));
+        }
+      })();
+    </script>
+  </body>
+</html>

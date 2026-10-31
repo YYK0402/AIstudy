@@ -65,6 +65,7 @@ export const MATERIAL_SOURCE_LABELS: Record<string, string> = {
   upload: "上传",
   paste: "粘贴",
   siyuan: "思源",
+  nas: "NAS",
 };
 
 export function materialSourceLabel(m: Material): string {

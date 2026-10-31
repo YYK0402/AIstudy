@@ -1,0 +1,30 @@
+{
+  "appName": "ai-study",
+  "appTitle": "AI 智能学习",
+  "displayName": "AI 智能学习",
+  "appDescription": "AI 智能学习系统：课程、知识点、刷题、闪卡、间隔复习与学习报告，AI 服务商可配置，支持从 NAS 选择学习资料。",
+  "desktopLaunchName": "ai-study.Application",
+  "gatewayPrefix": "/app/ai-study",
+  "gatewaySocket": "app.sock",
+  "uiAllUsers": true,
+  "localDevPort": 3333,
+  "runtimeDependency": "nodejs_v22",
+  "osMinVersion": "1.2.0401",
+  "maintainer": "YYK0402",
+  "maintainerUrl": "https://github.com/YYK0402/AIstudy",
+  "distributor": "YYK0402",
+  "distributorUrl": "https://github.com/YYK0402/AIstudy",
+  "source": "thirdparty",
+  "platform": "all",
+  "runAs": "package",
+  "logLevel": "info",
+  "releaseNotes": {
+    "summary": "首个版本：完整学习系统（课程/知识点/刷题/闪卡/间隔复习/学习报告），AI 服务商可配置，支持从 NAS 目录选择学习资料。",
+    "highlights": [
+      "课程与知识点管理、AI 出题与费曼讲解",
+      "刷题练习、错题本、闪卡与间隔复习计划",
+      "AI 服务商/模型可配置（OpenAI 兼容接口）",
+      "NAS 资料选择：应用内授权目录，直接解析 PDF/Word/PPT"
+    ]
+  }
+}

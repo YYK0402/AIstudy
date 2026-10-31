@@ -468,7 +468,8 @@ export async function deleteMaterial(id: number): Promise<void> {
   if (material?.siyuanDocId) {
     removeDoc(material.siyuanDocId).catch((e) => console.error("删除思源文档失败:", e));
   }
-  if (material?.assetPath) {
+  // NAS 引用来源只解除资料记录，不删除用户 NAS 上的原文件
+  if (material?.assetPath && material.source !== "nas") {
     await removeAssetIfUnused(material.assetPath, data.materials);
   }
 }

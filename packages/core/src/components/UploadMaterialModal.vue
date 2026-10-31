@@ -29,6 +29,12 @@
           placeholder="选择思源已有文档，其 markdown 将作为资料内容（可跳转原文）"
         />
       </div>
+      <div v-if="nasEnabled" class="field">
+        <label>或从 NAS 选择（直接引用飞牛存储上的文件，不复制副本）</label>
+        <button class="btn" :disabled="parsing || pickingNas" @click="pickNas">
+          {{ pickingNas ? "正在选取并解析…" : "选择文件" }}
+        </button>
+      </div>
       <div v-if="parsing" class="empty-state" style="padding:12px"><span class="s">{{ ocrStatus || "解析中…" }}</span></div>
       <div v-else-if="result" class="card" style="padding:10px 12px;background:var(--as-bg-elev2)">
         <div class="s"><b>{{ result.name }}</b>（{{ result.fileType }}）</div>
@@ -70,11 +76,16 @@ interface FileItem {
   file: File;
   doc?: ParsedDocument;
   error?: string;
+  /** NAS 文件引用 URL（存在时保存直接引用 NAS 原文件，跳过上传副本） */
+  nasUrl?: string;
 }
 
 const modalStore = useModalStore();
+const bridge = getBridge();
+const nasEnabled = bridge.capabilities.nasFiles;
 const fileInput = ref<HTMLInputElement | null>(null);
 const fileItems = ref<FileItem[]>([]);
+const pickingNas = ref(false);
 const pastedText = ref("");
 const parsing = ref(false);
 const saving = ref(false);
@@ -155,6 +166,19 @@ async function runOcr(file: File, doc: ParsedDocument) {
   }
 }
 
+// 解析文件（PDF 文字层不足时走扫描件 OCR 通道）
+async function parseFileWithOcr(file: File): Promise<ParsedDocument> {
+  let doc = await parseDocument(file);
+  if (file.name.toLowerCase().endsWith(".pdf")) {
+    if (doc.contentText.trim().length >= 100) {
+      ocrStatus.value = `${file.name} 已有文字层，按文字层解析（无需 OCR）`;
+    } else {
+      doc = (await runOcr(file, doc)) as ParsedDocument;
+    }
+  }
+  return doc;
+}
+
 async function onFile(e: Event) {
   const files = Array.from((e.target as HTMLInputElement).files ?? []);
   if (files.length === 0) return;
@@ -170,15 +194,7 @@ async function onFile(e: Event) {
     // 串行解析：OCR 等耗时操作逐个进行，状态提示不互相覆盖
     for (const item of fileItems.value) {
       try {
-        let doc = await parseDocument(item.file);
-        if (item.file.name.toLowerCase().endsWith(".pdf")) {
-          if (doc.contentText.trim().length >= 100) {
-            ocrStatus.value = `${item.file.name} 已有文字层，按文字层解析（无需 OCR）`;
-          } else {
-            doc = (await runOcr(item.file, doc)) as ParsedDocument;
-          }
-        }
-        item.doc = doc;
+        item.doc = await parseFileWithOcr(item.file);
         anyParsed = true;
       } catch (err) {
         item.error = err instanceof Error ? err.message : String(err);
@@ -187,6 +203,45 @@ async function onFile(e: Event) {
     // 第二步链路默认启用：AI 梳理去噪 + 识别章节（用户可取消）
     if (anyParsed) useAiOrganize.value = true;
   } finally {
+    parsing.value = false;
+  }
+}
+
+// 从 NAS 选取文件：系统选择器选完即自动授权，下载字节后走同一解析管线；保存时直接引用 NAS 路径
+async function pickNas() {
+  if (pickingNas.value) return;
+  sySel.value = null;
+  pastedText.value = "";
+  result.value = null;
+  error.value = "";
+  ocrStatus.value = "";
+  fileItems.value = [];
+  pickingNas.value = true;
+  parsing.value = true;
+  let anyParsed = false;
+  try {
+    const refs = await bridge.pickNasFiles([".pdf", ".docx", ".pptx", ".txt", ".md", ".markdown"]);
+    if (refs.length === 0) return;
+    // 先整体赋值再迭代代理数组写入 doc/error，确保 parsedItems 计算属性正确失效
+    fileItems.value = refs.map((ref) => ({ file: new File([], ref.name), nasUrl: ref.url }));
+    for (const item of fileItems.value) {
+      try {
+        const res = await fetch(item.nasUrl!);
+        if (!res.ok) throw new Error("读取 NAS 文件失败：HTTP " + res.status);
+        const blob = await res.blob();
+        const file = new File([blob], item.file.name, { type: blob.type });
+        item.doc = await parseFileWithOcr(file);
+        item.file = file;
+        anyParsed = true;
+      } catch (err) {
+        item.error = err instanceof Error ? err.message : String(err);
+      }
+    }
+    if (anyParsed) useAiOrganize.value = true;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    pickingNas.value = false;
     parsing.value = false;
   }
 }
@@ -201,12 +256,14 @@ async function save() {
     if (parsedItems.value.length > 0) {
       for (const it of parsedItems.value) {
         const doc = it.doc!;
-        // 有原始文件时上传到思源资源目录，便于后续「重新解析」
-        let assetPath = "";
-        try {
-          assetPath = await uploadAsset(it.file);
-        } catch (e) {
-          console.error("上传资源文件失败（不影响资料保存）:", e);
+        // 本地上传：存副本到宿主资源存储，便于后续「重新解析」；NAS 引用：直接指向原文件
+        let assetPath = it.nasUrl ?? "";
+        if (!it.nasUrl) {
+          try {
+            assetPath = await uploadAsset(it.file);
+          } catch (e) {
+            console.error("上传资源文件失败（不影响资料保存）:", e);
+          }
         }
         const material = await createMaterial({
           courseId,
@@ -215,7 +272,7 @@ async function save() {
           contentText: doc.contentText,
           headings: JSON.stringify(doc.headings),
           assetPath,
-          source: "upload",
+          source: it.nasUrl ? "nas" : "upload",
         });
         if (aiOrganize) startOrganizeTask(material.id, courseId, doc.contentText);
         created.push({ material, organized: aiOrganize });

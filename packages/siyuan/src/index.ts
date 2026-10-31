@@ -231,8 +231,13 @@ export default class AiStudyPlugin extends Plugin {
 
   async onLayoutReady() {
     this.addIcons(`<symbol id="iconAiStudy" viewBox="0 0 32 32">
-<path d="M16 4l11 6v12l-11 6-11-6V10l11-6z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
-<path d="M16 12.5L27 6.5M16 12.5V28M16 12.5L5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+<line x1="16" y1="5.4" x2="16" y2="2.7" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+<circle cx="16" cy="2.2" r="1.5" fill="currentColor"/>
+<rect x="8.5" y="5.5" width="15" height="10.5" rx="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+<circle cx="13.2" cy="10.6" r="1.5" fill="currentColor"/>
+<circle cx="18.8" cy="10.6" r="1.5" fill="currentColor"/>
+<path d="M16 19.6 C 13.6 17.9, 10.2 17.5, 7.2 18.3 L 7.2 26.2 C 10.2 25.4, 13.6 25.8, 16 27.5 C 18.4 25.8, 21.8 25.4, 24.8 26.2 L 24.8 18.3 C 21.8 17.5, 18.4 17.9, 16 19.6 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+<line x1="16" y1="20" x2="16" y2="27.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </symbol>`);
 
     this.addTopBar({
@@ -371,6 +376,10 @@ export default class AiStudyPlugin extends Plugin {
       },
       removeAsset: async (assetPath: string) => {
         await this.handleRemoveAsset(assetPath);
+      },
+      // 思源端无 NAS 文件选择能力（capabilities.nasFiles=false，UI 入口隐藏）
+      pickNasFiles: async () => {
+        throw new Error("当前环境不支持从 NAS 选择文件");
       },
       ocrAsset: async (assetPath: string) => {
         return await this.handleOcrAsset(assetPath);
