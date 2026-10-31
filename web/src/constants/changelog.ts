@@ -21,6 +21,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.1",
+    date: "2026-10-31",
+    intro: "移动端支持（iOS / Android）",
+    items: [
+      { text: "插件现在可在 iPad / iPhone / Android 上使用：声明支持移动端平台，并修复原生移动端前端资源加载（改走内核 HTTP）" },
+      { text: "界面当前以桌面体验为主，移动端交互优化将在后续版本迭代" },
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-10-31",
     intro: "示例课开箱即用（一键添加内置示例课）+ 更新日志（版本更新说明）",
