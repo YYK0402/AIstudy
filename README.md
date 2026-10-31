@@ -150,11 +150,12 @@
 **fnOS 形态数据**（存于应用数据目录，按系统用户隔离，每个 fnOS 账户一套独立数据）：
 
 ```
-<fnOS 应用数据目录>/ai-study/data/
-└── <uid>.json     # 该用户的全部学习数据（单文件，原子写入）
+<fnOS 应用数据目录>/ai-study/data/<uid>/
+├── global.json      # 全局配置（服务商/模型/设置等）
+└── course-<id>.json # 每课程一个文件
 ```
 
-> fnOS 形态迁移/备份：复制应用数据目录下 `ai-study/data/` 中对应的 `<uid>.json`。
+> fnOS 形态迁移/备份：复制应用数据目录下 `ai-study/data/<uid>/` 整个目录。
 
 ## 真题导入格式
 

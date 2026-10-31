@@ -33,8 +33,8 @@
     "en-US": "A self-study course plugin based on customizable LLM providers: material import, knowledge points, study plans, quizzes, reviews, knowledge graph and reports"
   },
   "readme": {
-    "default": "README.md",
-    "zh-CN": "README.md"
+    "default": "README-siyuan.md",
+    "zh-CN": "README-siyuan.md"
   },
   "icon": "icon.png",
   "preview": "preview.png",
