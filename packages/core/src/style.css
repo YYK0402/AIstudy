@@ -937,7 +937,7 @@
   border-radius: 14px;
   padding: 26px;
   animation: modalIn .22s ease;
-  overflow: hidden;
+  overflow-x: hidden; overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
