@@ -11,12 +11,16 @@
     "windows",
     "linux",
     "darwin",
-    "docker"
+    "docker",
+    "ios",
+    "android"
   ],
   "frontends": [
     "desktop",
     "browser-desktop",
-    "desktop-window"
+    "desktop-window",
+    "mobile",
+    "browser-mobile"
   ],
   "displayName": {
     "default": "AI 智能学习",
