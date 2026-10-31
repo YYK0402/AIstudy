@@ -366,6 +366,9 @@ export default class AiStudyPlugin extends Plugin {
       isValidDocRef: (ref: string) => {
         return /^\d{14}-[0-9a-z]{7}$/.test(ref);
       },
+      uploadAsset: async (file: File) => {
+        return await this.handleUploadAsset(file);
+      },
       removeAsset: async (assetPath: string) => {
         await this.handleRemoveAsset(assetPath);
       },
@@ -510,6 +513,19 @@ export default class AiStudyPlugin extends Plugin {
     if (res.code !== 0) {
       throw new Error(`重命名思源文档失败: ${res.msg ?? "未知错误"}`);
     }
+  }
+
+  // 上传原始资料到思源资源目录，返回浏览器可直接 fetch 的资源路径（供重新解析）
+  private async handleUploadAsset(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append("file[]", file);
+    const res = await fetch("/api/asset/upload", { method: "POST", body: formData });
+    const json = (await res.json()) as { code: number; data?: { succMap?: Record<string, string> | null } };
+    const path = Object.values(json?.data?.succMap ?? {})[0] ?? "";
+    if (!path) {
+      throw new Error("上传资源文件失败");
+    }
+    return path;
   }
 
   // 删除资源文件（内核仅允许删除未被任何文档引用的资源，被引用时抛错由调用方兜底）

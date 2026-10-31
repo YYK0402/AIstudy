@@ -447,15 +447,9 @@ export async function openSiyuanDoc(docId: string): Promise<void> {
   await openFileById({ app, id: docId, action: ["cb-get-focus", "cb-get-scroll"] });
 }
 
-// 上传文件到思源资源目录，返回 asset 路径（用于重新解析）
+// 上传原始资料文件到宿主资源存储，返回资源 URL（用于重新解析）
 export async function uploadAsset(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file[]", file);
-  const res = await fetch("/api/asset/upload", { method: "POST", body: formData });
-  const json = (await res.json()) as { code: number; data?: { succMap?: Record<string, string> | null } };
-  const path = Object.values(json?.data?.succMap ?? {})[0] ?? "";
-  if (!path) throw new Error("上传资源文件失败");
-  return path;
+  return getBridge().uploadAsset(file);
 }
 
 

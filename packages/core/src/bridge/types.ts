@@ -63,6 +63,8 @@ export interface StudyBridge {
   renameDoc(id: string, name: string): Promise<void>;
   /** 校验字符串是否为有效的落库文档句柄（各端 id 格式不同；区分文档句柄与块 id/脏数据） */
   isValidDocRef(ref: string): boolean;
+  /** 上传原始资料文件到宿主资源存储，返回浏览器可直接 fetch 的资源 URL（供重新解析） */
+  uploadAsset(file: File): Promise<string>;
   removeAsset(path: string): Promise<void>;
   /** OCR（capabilities.ocr === "kernel" 时由 core 调用；vision 模式 core 自行走 callAi） */
   ocrAsset?(path: string): Promise<string>;
