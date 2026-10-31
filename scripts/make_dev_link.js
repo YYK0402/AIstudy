@@ -6,7 +6,7 @@ import os from "node:os";
 // 用法: node scripts/make_dev_link.js [思源工作空间路径]
 // 或设置环境变量 SIYUAN_WORKSPACE
 
-const pluginJson = JSON.parse(readFileSync(resolve("plugin.json"), "utf8"));
+const pluginJson = JSON.parse(readFileSync(resolve("packages/siyuan/plugin.json"), "utf8"));
 const pluginName = pluginJson.name;
 
 const home = os.homedir();

@@ -1,7 +1,7 @@
 // 学习数据保留策略：studyLogs/answerRecords 超保留期的记录归档为月度汇总（月粒度不可逆，
 // 但趋势窗口 7/30 天、连续天数等统计不受影响；累计统计由 answerStatsMonthly 合并补全）。
 // 在 commitData 落盘前原地修改 AppData（与 migrateProviderKeys 同模式），幂等。
-import type { AnswerRecord, AppData, StudyLog } from "./data";
+import type { AnswerRecord, AppData, StudyLog } from "../../core/src/types/appData";
 
 export const DEFAULT_RETENTION_DAYS = 90;
 

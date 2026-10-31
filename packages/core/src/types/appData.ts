@@ -1,6 +1,4 @@
-// 插件数据模型（持久化为 JSON，经 loadData/saveData 存储）
-// 说明：思源 /api/query/sql 为只读接口，无法建表/写数据，故放弃 PRD 的 SQLite 表方案，
-//       改用思源官方插件存储机制 loadData/saveData（JSON 文件）。
+// 数据模型（三端共享的唯一类型来源；各端持久化位置不同，结构一致）
 
 export interface AiProvider {
   id: number;

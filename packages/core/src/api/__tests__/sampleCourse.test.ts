@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createEmptyData } from "../../../../src/data";
+import { createEmptyData } from "../../types/appData";
 import type { AppData } from "../../types/appData";
 
 // 有状态 mock：getData 返回最近一次 saveData 的数据

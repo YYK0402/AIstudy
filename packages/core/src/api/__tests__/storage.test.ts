@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppData } from "../../types/appData";
-import { createEmptyData } from "../../../../src/data";
+import { createEmptyData } from "../../types/appData";
 
 const baseData: AppData = createEmptyData();
 let getDataCalls = 0;

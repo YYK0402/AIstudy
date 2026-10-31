@@ -1,0 +1,13 @@
+{
+  "name": "@ai-study/core",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "AI 智能学习核心：功能 UI 与算法（三端共享）",
+  "dependencies": {
+    "d3-force": "^3.0.0",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299"
+  }
+}

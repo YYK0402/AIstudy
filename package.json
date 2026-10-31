@@ -1,20 +1,24 @@
 {
-  "name": "siyuan-ai-study",
+  "name": "ai-study",
   "version": "0.4.1",
+  "private": true,
   "type": "module",
-  "description": "AI 智能学习插件：基于思源笔记底座 + 可自定义大模型服务商的课程自学插件",
+  "description": "AI 智能学习三端 monorepo（思源 / Obsidian / 飞牛 NAS）：共享核心 + 平台适配器",
   "author": "yyk",
   "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build:web": "vite build --config web/vite.config.ts",
-    "build:plugin": "vite build --config vite.config.ts",
+    "build:web": "vite build --config packages/core/vite.config.ts",
+    "build:plugin": "vite build --config packages/siyuan/vite.config.ts",
     "build": "npm run clean && npm run build:web && npm run build:plugin",
-    "dev": "vite build --watch --config vite.config.ts",
-    "dev:web": "vite build --watch --config web/vite.config.ts",
+    "dev": "vite build --watch --config packages/siyuan/vite.config.ts",
+    "dev:web": "vite build --watch --config packages/core/vite.config.ts",
     "make-install": "npm run build && node scripts/make_install.js",
     "make-link": "node scripts/make_dev_link.js",
     "test": "vitest run",
@@ -36,11 +40,5 @@
     "vue": "^3.5.0",
     "vue-router": "^4.5.0",
     "vue-tsc": "^2.1.10"
-  },
-  "dependencies": {
-    "d3-force": "^3.0.0",
-    "jszip": "^3.10.2",
-    "mammoth": "^1.13.0",
-    "pdfjs-dist": "^6.4.299"
   }
 }

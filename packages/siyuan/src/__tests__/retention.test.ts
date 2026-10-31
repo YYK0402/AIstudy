@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyData } from "../../../src/data";
-import type { AppData, StudyLog, AnswerRecord } from "../../../src/data";
-import { applyRetention, getRetentionDays, localDateOfSafe } from "../../../src/retention";
+import { createEmptyData } from "../../../core/src/types/appData";
+import type { AppData, StudyLog, AnswerRecord } from "../../../core/src/types/appData";
+import { applyRetention, getRetentionDays, localDateOfSafe } from "../retention";
 
 // 固定 ref = 本地 2026-10-28，保留 90 天 → cutoffDay = 本地 2026-07-30（该天保留，之前归档）
 const REF = new Date(2026, 9, 28);

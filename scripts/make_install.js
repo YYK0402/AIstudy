@@ -19,7 +19,7 @@ if (!existsSync(distDir)) {
 }
 
 // ---- 校验 plugin.json 清单（对齐内核 bazaar 包校验规则） ----
-const manifest = JSON.parse(readFileSync(join(rootDir, "plugin.json"), "utf8"));
+const manifest = JSON.parse(readFileSync(join(rootDir, "packages/siyuan/plugin.json"), "utf8"));
 
 // 与内核 IsValidPackageName 一致：可作跨平台目录名的合法包名
 const RESERVED_NAMES = new Set([

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AppData } from "../../types/appData";
-import { createEmptyData } from "../../../../src/data";
+import { createEmptyData } from "../../types/appData";
 
 const dataRef: { data: AppData } = {
   data: {

@@ -4,8 +4,9 @@ import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
+const repoRoot = resolve(rootDir, "../..");
 
-// 插件主入口构建：src/index.ts -> dist/index.js（CommonJS，external siyuan）
+// 插件主入口构建：src/index.ts -> <仓库根>/dist/index.js（CommonJS，external siyuan）
 export default defineConfig({
   resolve: {
     alias: {
@@ -15,16 +16,16 @@ export default defineConfig({
   plugins: [
     viteStaticCopy({
       targets: [
-        { src: "./plugin.json", dest: "./" },
-        { src: "./icon.png", dest: "./" },
-        { src: "./preview.png", dest: "./" },
-        { src: "./README*.md", dest: "./" },
-        { src: "./i18n/*.json", dest: "./i18n" },
+        { src: resolve(rootDir, "plugin.json"), dest: "./" },
+        { src: resolve(rootDir, "icon.png"), dest: "./" },
+        { src: resolve(rootDir, "preview.png"), dest: "./" },
+        { src: resolve(repoRoot, "README*.md"), dest: "./" },
+        { src: resolve(rootDir, "i18n/*.json"), dest: "./i18n" },
       ],
     }),
   ],
   build: {
-    outDir: "dist",
+    outDir: resolve(repoRoot, "dist"),
     emptyOutDir: false,
     minify: false,
     sourcemap: false,

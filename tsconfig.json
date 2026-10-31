@@ -12,5 +12,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "vite.config.ts", "scripts/**/*.js"]
+  "include": ["scripts/**/*.js"]
 }

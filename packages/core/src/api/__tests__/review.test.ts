@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AppData, ReviewSchedule } from "../../types/appData";
-import { createEmptyData } from "../../../../src/data";
+import { createEmptyData } from "../../types/appData";
 import { ensureReviewTouchpointInData, reviewNextDue } from "../review";
 import { ensureCardReviewInData } from "../flashcard";
 import { formatLocalDate } from "../format";

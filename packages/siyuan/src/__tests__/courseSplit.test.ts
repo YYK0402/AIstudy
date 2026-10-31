@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyCourseData, createEmptyData } from "../../../src/data";
-import type { AppData } from "../../../src/data";
+import { createEmptyCourseData, createEmptyData } from "../../../core/src/types/appData";
+import type { AppData } from "../../../core/src/types/appData";
 import {
   courseStorageName,
   hasCourseEntities,
   mergeAppData,
   normalizeCourseData,
   splitAppData,
-} from "../../../src/courseSplit";
+} from "../courseSplit";
 
 // 构造两课程样例数据：课程 1 有全套实体，课程 2 只有知识点/题目
 function makeData(): AppData {

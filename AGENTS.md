@@ -5,17 +5,21 @@
   - 纯问答、排查定位、只读分析不需要方案。
   - 用户明确说“直接做”“按刚才的方案做”时可跳过确认。
 
+## 仓库结构（monorepo）
+- npm workspaces：`packages/core`（全部功能，三端共享）+ `packages/siyuan`（思源适配器）；后续 `packages/fnos`、`packages/obsidian`。
+- 根 `package.json` 是 private 容器（版本号的唯一来源）；`packages/siyuan/plugin.json` 是思源插件清单。
+
 ## 构建与部署
 - 插件目录是符号链接 `~/SiYuan/data/plugins/siyuan-ai-study -> <repo>/dist`。
 - **日常迭代用 `npm run build:web && npm run build:plugin`（不 clean）**；`npm run build` 含 `clean` 会删 dist，思源内核会把插件当卸载（petal 掉线，需重启思源才恢复）。
-- 改动后验证顺序：`npx vue-tsc --noEmit -p tsconfig.json && npx vue-tsc --noEmit -p web/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`web/src/**/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
-- 前端样式统一写在 `web/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
+- 改动后验证顺序：`npx vue-tsc --noEmit -p packages/siyuan/tsconfig.json && npx vue-tsc --noEmit -p packages/core/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`packages/core/src/**/__tests__` 与 `packages/siyuan/src/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
+- 前端样式统一写在 `packages/core/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
 
 ## 发布（集市上架）
 - **集市只认 GitHub Release**：思源集市（bazaar）Stage 工作流每 1–3 小时按插件仓库「含 package.zip 的正式 GitHub Release」自动拉取索引。只 bump `plugin.json` 版本 + 推代码**不会**让新版进集市（v0.2.1–v0.2.4 事故：集市停在 v0.2.0 数日，2026-10-30 排查发现）。
 - 标准发布流程（按顺序执行，不能止步于版本 bump）：
   1. 类型检查 + 测试（见「构建与部署」验证顺序）
-  2. `plugin.json` 与 `package.json` 的 version 升到目标版本
+  2. `packages/siyuan/plugin.json` 与根 `package.json` 的 version 升到目标版本
   3. 功能提交（`feat: ...`）与版本 bump（`chore: 发布 vX.Y.Z（…）`）分开提交，push main
   4. `npm run build:web && npm run build:plugin && node scripts/make_install.js` 生成仓库根 `package.zip`（gitignored，脚本校验清单与包结构，失败会退出）
   5. `git tag vX.Y.Z <版本bump提交> && git push origin vX.Y.Z`

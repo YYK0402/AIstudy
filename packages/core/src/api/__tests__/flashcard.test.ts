@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { AppData } from "../../types/appData";
-import { createEmptyData } from "../../../../src/data";
+import { createEmptyData } from "../../types/appData";
 
 setActivePinia(createPinia());
 

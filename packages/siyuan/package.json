@@ -1,0 +1,7 @@
+{
+  "name": "@ai-study/siyuan",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "AI 智能学习 · 思源笔记插件适配器"
+}

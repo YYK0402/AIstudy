@@ -1,7 +1,7 @@
 import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
 import type { TPluginDataChangeReason } from "siyuan";
-import { createEmptyData } from "./data";
-import type { AppData, CallLog, CourseData } from "./data";
+import { createEmptyData } from "../../core/src/types/appData";
+import type { AppData, CallLog, CourseData } from "../../core/src/types/appData";
 import { decryptApiKey, migrateProviderKeys } from "./crypto";
 import {
   courseStorageName,
@@ -17,7 +17,7 @@ import { applyRetention } from "./retention";
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
 // 检测到外部数据变更（其他窗口/同步合并）并刷新内存后派发；
-// 前端 web/src/api/storage.ts 监听该事件并复用 DATA_SAVED 机制刷新视图
+// 前端 packages/core/src/api/storage.ts 监听该事件并复用 DATA_SAVED 机制刷新视图
 const DATA_EXTERNAL_EVENT = "siyuan-ai-study:data-external";
 // 每次插件加载（含构建触发的热重载）模块重新求值生成新 id，前端用它检测进行中的调用是否已被旧实例杀死
 const PLUGIN_INSTANCE_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
