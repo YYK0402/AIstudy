@@ -26,6 +26,8 @@ export interface BridgeCapabilities {
   ocr: "kernel" | "vision" | "none";
   /** 资料来源是否支持「从 NAS 目录选择」 */
   nasFiles: boolean;
+  /** 落库文档体系：siyuan = 思源笔记本（core 展示落库入口）/ none = 无（core 隐藏落库入口，persistDocIfEnabled 短路） */
+  docs: "siyuan" | "none";
 }
 
 /**

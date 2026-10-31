@@ -17,7 +17,7 @@
           </button>
           <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="relayout"><AppIcon name="refresh" :size="14" /> 自动布局</button>
           <button class="btn sm ghost" :disabled="knowledgePoints.length === 0" @click="graphRef?.fitView()"><AppIcon name="graph" :size="14" /> 适应画布</button>
-          <button class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc"><AppIcon name="book" :size="14" /> 写入思源文档</button>
+          <button v-if="docsEnabled()" class="btn sm ghost" :disabled="writingDoc || edgeCount === 0" @click="writeDoc"><AppIcon name="book" :size="14" /> 写入思源文档</button>
           <input
             v-model="searchQuery"
             class="graph-search"
@@ -192,6 +192,7 @@ import {
   removeKpEdge,
   writeGraphToSiyuan,
   parseKpPrevIds,
+  docsEnabled,
 } from "../api";
 import type { KnowledgePoint, Mastery } from "../api";
 import { getBridge } from "@/bridge";

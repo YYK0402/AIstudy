@@ -348,7 +348,7 @@ export default class AiStudyPlugin extends Plugin {
     window.__AI_STUDY_BRIDGE__ = {
       /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
       pluginInstanceId: PLUGIN_INSTANCE_ID,
-      capabilities: { ocr: "kernel", nasFiles: false },
+      capabilities: { ocr: "kernel", nasFiles: false, docs: "siyuan" },
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         try {

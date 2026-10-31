@@ -1,0 +1,13 @@
+{
+  "audience": "刚安装 AI 智能学习插件的思源笔记用户",
+  "reader_task": "完成初始配置（模型配置、建课程、导资料）并跑通学习流程（计划→讲解→刷题→复习→报告）",
+  "genre_contract": "knowledge",
+  "adapter": null,
+  "presentation_mode": "rich",
+  "visual_plan": {
+    "reason": "用户明确要求带截图的使用指南；初始配置与学习流程每个关键步骤配一张真实界面截图作为操作依据",
+    "blocks": [
+      {"type": "img", "min_count": 10, "purpose": "初始配置与学习流程各步骤的界面截图"}
+    ]
+  }
+}

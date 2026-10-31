@@ -2,6 +2,11 @@ import { getSettings } from "./settings";
 import { getBridge } from "@/bridge";
 
 // 落库（经宿主桥接写入平台文档体系）
+/** 宿主是否有落库文档体系（docs=none 的宿主 core 已隐藏入口，此函数短路兜底） */
+export function docsEnabled(): boolean {
+  return getBridge().capabilities?.docs === "siyuan";
+}
+
 /** 按设置决定是否落库；失败不阻塞主流程。传 label 时失败会统一提示（不传则静默，调用方自行聚合提示） */
 export async function persistDocIfEnabled(
   markdown: string,
@@ -9,6 +14,7 @@ export async function persistDocIfEnabled(
   label?: string,
   parentID?: string | null,
 ): Promise<string | null> {
+  if (!docsEnabled()) return null;
   const settings = await getSettings();
   if (!settings.persistToSiyuan) return null;
   try {

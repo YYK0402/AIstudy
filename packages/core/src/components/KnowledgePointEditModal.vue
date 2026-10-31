@@ -54,7 +54,7 @@
         <label>标签</label>
         <input v-model="tagsText" aria-label="知识点标签" placeholder="如：计算题高频, 易混淆（逗号分隔）" />
       </div>
-      <div class="field">
+      <div v-if="docsEnabled()" class="field">
         <label>绑定思源文档（可细化到块，详情可跳转原文）</label>
         <SiyuanDocPicker v-model="binding" :show-blocks="true" :allow-unbind="true" />
       </div>
@@ -71,7 +71,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
+import { docsEnabled, parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
 import type { Chapter, KnowledgePoint, SiyuanDocSelection } from "../api";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
 import { getBridge } from "@/bridge";

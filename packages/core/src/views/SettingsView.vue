@@ -137,17 +137,19 @@
       <div class="s t-faint" style="margin-top:4px">
         自动模式：上传 Word/Markdown/PPT 后按标题层级识别章节结构并弹出预览确认；PDF 采用字号启发式识别，可能不精确，可在预览中修正。
       </div>
-      <div class="ta-row" style="margin-top:14px">
-        <span class="t">资料持久化到思源</span>
-        <div class="switch" role="switch" :aria-checked="settings.persistToSiyuan" tabindex="0" :class="{ on: settings.persistToSiyuan }" @click="togglePersist" @keydown.enter.prevent="togglePersist" @keydown.space.prevent="togglePersist"></div>
-      </div>
-      <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
-        <span class="t">笔记本名称</span>
-        <input v-model="settings.notebookName" aria-label="思源笔记本名称" placeholder="AI 研习" style="flex:1" />
-      </div>
-      <div class="s t-faint" style="margin-top:6px">
-        开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
-      </div>
+      <template v-if="docsEnabled()">
+        <div class="ta-row" style="margin-top:14px">
+          <span class="t">资料持久化到思源</span>
+          <div class="switch" role="switch" :aria-checked="settings.persistToSiyuan" tabindex="0" :class="{ on: settings.persistToSiyuan }" @click="togglePersist" @keydown.enter.prevent="togglePersist" @keydown.space.prevent="togglePersist"></div>
+        </div>
+        <div v-if="settings.persistToSiyuan" class="ta-row" style="margin-top:10px">
+          <span class="t">笔记本名称</span>
+          <input v-model="settings.notebookName" aria-label="思源笔记本名称" placeholder="AI 研习" style="flex:1" />
+        </div>
+        <div class="s t-faint" style="margin-top:6px">
+          开启后，课程、上传的资料、章节会同步写入思源笔记本（一个课程 = 一个顶层文档），方便浏览与检索；关闭则仅存插件数据。
+        </div>
+      </template>
       <div class="ta-row" style="margin-top:14px">
         <span class="t">AI 失败自动重试</span>
         <select v-model.number="settings.aiRetryCount" aria-label="AI 失败重试次数">
@@ -273,6 +275,7 @@ import {
   getPromptTemplateViews,
   savePromptTemplate as savePromptTemplateApi,
   resetPromptTemplate as resetPromptTemplateApi,
+  docsEnabled,
 } from "../api";
 import type { AiProvider, AiModel, PromptTemplateView } from "../api";
 import { useConfirm } from "../composables/useConfirm";
