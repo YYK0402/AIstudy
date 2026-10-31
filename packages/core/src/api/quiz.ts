@@ -1,8 +1,9 @@
 import type { AnswerRecord, AppData, KnowledgePoint, Mastery, Question, WrongQuestion } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, parseQuestionKpIds, parseQuestionOptions } from "./format";
-import { EXPLAIN_MASTER_SCORE, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPE_LABELS, WRONG_ERROR_TYPE_LABELS } from "./constants";
+import { EXPLAIN_MASTER_SCORE, isPassageType, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPE_LABELS, WRONG_ERROR_TYPE_LABELS } from "./constants";
 import type { QuestionDifficulty, QuestionType, WrongErrorType } from "./constants";
+import { gradePassage } from "../utils/passage";
 import { findTaskBinding, callAi } from "./ai";
 import { ensureQuestionReviewInData } from "./review";
 import { appendWeakPointTaskInData, completeKpTasksInData, logStudyInData } from "./studyData";
@@ -184,6 +185,21 @@ export async function submitAnswer(
     record.isCorrect = isCorrect;
     record.score = score;
     record.graded = true;
+  } else if (isPassageType(question.qType) && question.blanks) {
+    // 文章题（填空/选填/完形）：逐空判分，score=正确率，全对才算对
+    const g = gradePassage(userAnswer, question.answer);
+    isCorrect = g.isCorrect;
+    score = g.score;
+    feedback = g.isCorrect ? "" : `答对 ${g.correctCount}/${g.total} 空`;
+    record = {
+      id: nextId(data.answerRecords),
+      qId: question.id,
+      userAnswer,
+      isCorrect,
+      score,
+      createTime: now(),
+    };
+    data.answerRecords.push(record);
   } else {
     isCorrect = normalizeAnswer(userAnswer) === normalizeAnswer(question.answer);
     score = isCorrect ? "100" : "0";

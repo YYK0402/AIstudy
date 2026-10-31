@@ -7,6 +7,7 @@ import {
   normalizeCourseData,
   splitAppData,
 } from "../../../core/src/utils/courseSplit";
+import { migratePassageQuestions } from "../../../core/src/utils/passageMigration";
 
 /**
  * 数据布局（与思源端同一套 courseSplit 拆写规则）：
@@ -69,7 +70,12 @@ export function loadUserData(uid: string): AppData {
       const m = f.match(/^course-(\d+)\.json$/);
       if (!m) continue;
       const raw = readJson<unknown>(join(dir, f));
-      if (raw !== null) courses.set(Number(m[1]), normalizeCourseData(raw));
+      if (raw !== null) {
+        const cd = normalizeCourseData(raw);
+        const { cd: migrated, changed } = migratePassageQuestions(cd);
+        if (changed) writeJsonAtomic(join(dir, f), migrated);
+        courses.set(Number(m[1]), migrated);
+      }
     }
     return mergeAppData(global, courses);
   }

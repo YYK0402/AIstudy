@@ -60,10 +60,18 @@
         </select>
       </div>
 
-      <!-- 简答：参考答案 -->
+      <!-- 简答 / 翻译 / 文章题：参考答案（自由文本） -->
       <div v-else class="field">
-        <label>参考答案要点 <span class="req">*</span></label>
-        <textarea v-model="essayAnswer" rows="4" aria-label="参考答案" placeholder="输入参考答案要点（AI 阅卷依据）" :disabled="saving" />
+        <label>参考答案 <span class="req">*</span></label>
+        <textarea
+          v-model="essayAnswer"
+          rows="4"
+          aria-label="参考答案"
+          :placeholder="form.qType === 'essay' ? '输入参考答案要点（AI 阅卷依据）' : form.qType === 'translation' ? '输入参考译文' : '输入各空答案（多空用 编号:值|编号:值 分隔）'"
+          :disabled="saving"
+        />
+        <div v-if="form.qType === 'banked'" class="s" style="margin-top:6px">选项词池以题干导入/AI 生成为准，此处不可编辑。</div>
+        <div v-if="form.qType === 'cloze'" class="s" style="margin-top:6px">每空 4 选项以题干导入/AI 生成为准，此处不可编辑；答案字母对应选项位置（A-D）。</div>
       </div>
 
       <div class="field">
@@ -105,8 +113,24 @@ import {
   parseQuestionOptions,
   QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
+  isPassageType,
 } from "../api";
 import type { KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
+import { parsePassageBlanks } from "../utils/passage";
+
+/** 解析题目选项 JSON（一维选项文本或完形二维数组），失败返回 null */
+function safeParseOptions(raw: string | undefined): string[] | string[][] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (!Array.isArray(v)) return null;
+    if (v.every((o) => typeof o === "string")) return v as string[];
+    if (v.every((o) => Array.isArray(o) && o.every((x) => typeof x === "string"))) return v as string[][];
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const props = defineProps<{
   open: boolean;
@@ -146,7 +170,7 @@ function initFrom(q: Question) {
   if (q.qType === "judge") {
     form.options = [...JUDGE_OPTIONS];
     singleAnswerIdx.value = JUDGE_OPTIONS.indexOf(q.answer) >= 0 ? JUDGE_OPTIONS.indexOf(q.answer) : 0;
-  } else if (q.qType === "essay") {
+  } else if (q.qType === "essay" || isPassageType(q.qType)) {
     form.options = [];
     essayAnswer.value = q.answer;
   } else {
@@ -179,7 +203,7 @@ function onTypeChange() {
     form.options = [...JUDGE_OPTIONS];
     singleAnswerIdx.value = 0;
     multiAnswerIdxs.value = [];
-  } else if (t === "essay") {
+  } else if (t === "essay" || isPassageType(t)) {
     form.options = [];
     essayAnswer.value = "";
     singleAnswerIdx.value = 0;
@@ -237,7 +261,19 @@ function validate(): string {
     if (new Set(trimmed).size !== trimmed.length) return "选项内容不能重复";
   }
   if (form.qType === "multiple" && multiAnswerIdxs.value.length === 0) return "请至少勾选一个正确答案";
-  if (form.qType === "essay" && !essayAnswer.value.trim()) return "参考答案不能为空";
+  if ((form.qType === "essay" || isPassageType(form.qType)) && !essayAnswer.value.trim()) return "参考答案不能为空";
+  if (isPassageType(form.qType)) {
+    const parsed = parsePassageBlanks(form.title);
+    if ((form.qType === "banked" || form.qType === "cloze") && parsed.length === 0) {
+      return "题干需包含空位标记（__41__ / ____ / __ (word)）";
+    }
+    if (form.qType === "cloze" && parsed.length > 0) {
+      const rows = safeParseOptions(props.question?.options);
+      if (Array.isArray(rows) && rows.length > 0 && rows.length !== parsed.length) {
+        return `题干空位数（${parsed.length}）与选项行数（${rows.length}）不一致，请调整题干标记`;
+      }
+    }
+  }
   return "";
 }
 
@@ -251,23 +287,34 @@ async function save() {
   saving.value = true;
   error.value = "";
   try {
+    const isPassage = isPassageType(form.qType);
+    // 文章题：选填词池/完形选项行原样保留，不在此编辑器内修改
+    const passageOptions: string[] | string[][] = isPassage
+      ? form.qType === "fill"
+        ? []
+        : safeParseOptions(props.question.options) ?? []
+      : [];
     const trimmedOpts =
       form.qType === "single" || form.qType === "multiple"
         ? form.options.map((o) => o.trim())
         : form.qType === "judge"
           ? [...form.options]
-          : [];
+          : isPassage
+            ? passageOptions
+            : [];
     let answer = "";
-    if (form.qType === "essay") {
+    if (form.qType === "essay" || isPassage) {
       answer = essayAnswer.value.trim();
     } else if (form.qType === "multiple") {
       answer = [...multiAnswerIdxs.value]
         .sort((a, b) => a - b)
-        .map((i) => trimmedOpts[i])
+        .map((i) => trimmedOpts[i] as string)
         .join(",");
     } else {
-      answer = trimmedOpts[singleAnswerIdx.value] ?? "";
+      // 此分支仅单选/判断（一维选项）
+      answer = (trimmedOpts as string[])[singleAnswerIdx.value] ?? "";
     }
+    const parsedBlanks = isPassage ? parsePassageBlanks(form.title.trim()) : [];
     const updated = await updateQuestion(props.question.id, {
       title: form.title.trim(),
       options: trimmedOpts,
@@ -276,6 +323,7 @@ async function save() {
       qType: form.qType,
       difficulty: form.difficulty,
       kpIds: form.kpIds,
+      blanks: isPassage && parsedBlanks.length > 0 ? JSON.stringify(parsedBlanks) : null,
     });
     emit("saved", updated);
     close();

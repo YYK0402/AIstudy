@@ -77,4 +77,35 @@ describe("parseQuestionsMarkdown", () => {
     expect(r.drafts[0].answer).toBe("乙");
     expect(r.warnings.some((w) => w.reason.includes("重复"))).toBe(true);
   });
+
+  it("词形填空（__ (word) 标记）导入为 fill 并解析 blanks", () => {
+    const { drafts, errors } = parseQuestionsMarkdown(
+      "needs __ (require) no perfection.\n答案: requires\n题型: 词形填空",
+      [],
+    );
+    expect(errors).toHaveLength(0);
+    expect(drafts[0].qType).toBe("fill");
+    expect(JSON.parse(drafts[0].blanks!)).toEqual([{ no: 1, hint: "require" }]);
+    expect(drafts[0].answer).toBe("requires");
+  });
+
+  it("选择填空（编号空 + 选项行）导入为 banked", () => {
+    const { drafts, errors } = parseQuestionsMarkdown(
+      "He __41__ a student.\nA. is\nB. are\nC. was\n答案: 41:is\n题型: 选择填空",
+      [],
+    );
+    expect(errors).toHaveLength(0);
+    expect(drafts[0].qType).toBe("banked");
+    expect(drafts[0].options).toEqual(["is", "are", "was"]);
+    expect(JSON.parse(drafts[0].blanks!)).toEqual([{ no: 41 }]);
+  });
+
+  it("完形填空导入为 cloze 且空位标记必填", () => {
+    const ok = parseQuestionsMarkdown("It __41__ sunny.\n答案: 41:is\n题型: 完形", []);
+    expect(ok.errors).toHaveLength(0);
+    expect(ok.drafts[0].qType).toBe("cloze");
+    const bad = parseQuestionsMarkdown("没有空位的题干\n答案: 41:is\n题型: 完形", []);
+    expect(bad.drafts).toHaveLength(0);
+    expect(bad.errors[0].reason).toContain("空位标记");
+  });
 });

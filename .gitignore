@@ -10,3 +10,6 @@ seeds/
 .fnos-build/
 packages/tools/
 *.fpk
+
+# brainstorming 视觉协作 mockup
+.superpowers/

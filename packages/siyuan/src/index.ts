@@ -14,6 +14,7 @@ import {
 } from "../../core/src/utils/courseSplit";
 import { runWithRetry } from "../../core/src/aiRetry";
 import type { AiRetryFailInfo } from "../../core/src/aiRetry";
+import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
 
 const DATA_STORAGE = "data";
@@ -1085,7 +1086,19 @@ export default class AiStudyPlugin extends Plugin {
       throw new Error(`课程数据文件 ${courseStorageName(courseId)} 损坏（内容不是有效对象），请从备份恢复`);
     }
     try {
-      return normalizeCourseData(raw);
+      const cd = normalizeCourseData(raw);
+      const { cd: migrated, changed } = migratePassageQuestions(cd);
+      if (changed) {
+        try {
+          // 文章题一次性迁移（旧词形填空合并成篇）：写盘并登记基线
+          await this.writeStorageIfChanged(courseStorageName(courseId), migrated);
+        } catch (e2) {
+          // 迁移写盘失败：内存保留迁移前结构，下次加载幂等重试
+          console.error(`[siyuan-ai-study] 课程 ${courseId} 文章题迁移写盘失败，本次保留旧结构:`, e2);
+          return cd;
+        }
+      }
+      return migrated;
     } catch (e) {
       console.error(`[siyuan-ai-study] 解析课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
       return null;

@@ -1,6 +1,15 @@
 import type { Material } from "../types/appData";
 
-export const QUESTION_TYPES = ["single", "multiple", "judge", "essay", "cloze", "translation"] as const;
+export const QUESTION_TYPES = [
+  "single",
+  "multiple",
+  "judge",
+  "essay",
+  "fill",
+  "banked",
+  "cloze",
+  "translation",
+] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
@@ -8,9 +17,16 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   multiple: "多选",
   judge: "判断",
   essay: "简答",
-  cloze: "填空",
+  fill: "填空",
+  banked: "选择填空",
+  cloze: "完形",
   translation: "翻译",
 };
+
+/** 文章题：题干是一篇带空位标记的文章，按空位逐个作答（fill 词形/单空、banked 选词、cloze 四选） */
+export function isPassageType(qType: string): boolean {
+  return qType === "fill" || qType === "banked" || qType === "cloze";
+}
 
 export const QUESTION_DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type QuestionDifficulty = (typeof QUESTION_DIFFICULTIES)[number];

@@ -85,3 +85,72 @@ describe("generateQuestions 并发守卫", () => {
     await expect(generateQuestions(1, { kpIds: [1], count: 1, qType: "single", difficulty: "easy" })).resolves.toHaveLength(1);
   });
 });
+
+describe("generateQuestions 文章题", () => {
+  it("选择填空：词池选项 + 编号空位 → blanks 落库", async () => {
+    const bridge = getBridge();
+    const origCallAi = bridge.callAi;
+    bridge.callAi = async () => ({
+      code: 0,
+      tokenIn: 0,
+      tokenOut: 0,
+      content: JSON.stringify([
+        {
+          qType: "banked",
+          kpIds: [1],
+          title: "He __41__ a student and __42__ fast.",
+          options: ["is", "run", "walks"],
+          answer: "41:is|42:run",
+          analysis: "",
+          difficulty: "easy",
+        },
+      ]),
+    });
+    const created = await generateQuestions(1, { kpIds: [1], count: 1, qType: "banked", difficulty: "easy" });
+    expect(created).toHaveLength(1);
+    expect(created[0].qType).toBe("banked");
+    expect(JSON.parse(created[0].options)).toEqual(["is", "run", "walks"]);
+    expect(JSON.parse(created[0].blanks!)).toEqual([
+      { no: 41 },
+      { no: 42 },
+    ]);
+    expect(created[0].answer).toBe("41:is|42:run");
+    bridge.callAi = origCallAi;
+  });
+
+  it("完形：二维选项数组原样落库，无空位标记的选填被剔除", async () => {
+    const bridge = getBridge();
+    const origCallAi = bridge.callAi;
+    bridge.callAi = async () => ({
+      code: 0,
+      tokenIn: 0,
+      tokenOut: 0,
+      content: JSON.stringify([
+        {
+          qType: "cloze",
+          kpIds: [1],
+          title: "It __41__ sunny today.",
+          options: [["is", "are", "was", "be"]],
+          answer: "41:A",
+          analysis: "",
+          difficulty: "medium",
+        },
+        {
+          qType: "banked",
+          kpIds: [1],
+          title: "没有空位标记的题干",
+          options: ["a", "b"],
+          answer: "a",
+          analysis: "",
+          difficulty: "easy",
+        },
+      ]),
+    });
+    const created = await generateQuestions(1, { kpIds: [1], count: 2, qType: "cloze", difficulty: "medium" });
+    expect(created).toHaveLength(1);
+    expect(created[0].qType).toBe("cloze");
+    expect(JSON.parse(created[0].options)).toEqual([["is", "are", "was", "be"]]);
+    expect(created[0].blanks).toBe(JSON.stringify([{ no: 41 }]));
+    bridge.callAi = origCallAi;
+  });
+});

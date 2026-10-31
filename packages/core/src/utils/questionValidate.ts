@@ -39,7 +39,7 @@ function matchOption(options: string[], part: string): string | null {
  * - single：选项非空，答案须命中一个选项
  * - multiple：选项非空，答案各元素（逗号分隔，或 2-8 位连续字母拆分）须命中互不重复的选项
  * - judge：答案须可识别为对/错；存在同义选项时归一化为该选项文本
- * - essay/translation/cloze：不校验（自由作答）
+ * - essay/translation/fill/banked/cloze：不校验（自由作答）
  */
 export function validateQuestionAnswer(
   qType: QuestionType,

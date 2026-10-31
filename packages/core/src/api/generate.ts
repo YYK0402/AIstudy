@@ -1,8 +1,9 @@
 import type { AppData, Question } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now, truncateText } from "./format";
-import { QUESTION_DIFFICULTY_LABELS, QUESTION_TYPES, QUESTION_TYPE_LABELS } from "./constants";
+import { isPassageType, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPES, QUESTION_TYPE_LABELS } from "./constants";
 import type { QuestionDifficulty, QuestionType } from "./constants";
+import { parsePassageBlanks } from "../utils/passage";
 import { findTaskBinding, callAi } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
@@ -14,10 +15,13 @@ interface AiQuestionItem {
   qType: QuestionType;
   kpIds: number[];
   title: string;
-  options: string[];
+  /** 选择/判断/多选=选项文本；完形=每空 4 选项的二维数组 */
+  options: string[] | string[][];
   answer: string;
   analysis: string;
   difficulty: string;
+  /** 文章题空位列表 JSON（由题干空位标记解析） */
+  blanks?: string;
 }
 
 /** 从对象里按别名顺序取第一个非空字符串字段 */
@@ -82,7 +86,23 @@ function normalizeAiQuestionItem(raw: unknown, fallbackQType: QuestionType): AiQ
     if (Number.isFinite(n) && n > 0) kpIds = [n];
   }
   const optionsRaw = it.options ?? it["选项"];
-  const options = Array.isArray(optionsRaw) ? optionsRaw.filter((o): o is string => typeof o === "string") : [];
+  let options: string[] | string[][] = [];
+  if (Array.isArray(optionsRaw)) {
+    if (optionsRaw.every((o) => typeof o === "string")) options = optionsRaw as string[];
+    else if (optionsRaw.every((o) => Array.isArray(o) && o.every((x) => typeof x === "string"))) {
+      options = optionsRaw as string[][];
+    }
+  }
+  // 文章题：空位列表由题干标记解析；选填/完形没有空位标记视为格式不合格
+  let blanks: string | undefined;
+  if (isPassageType(qType)) {
+    const parsed = parsePassageBlanks(title);
+    if (parsed.length === 0) {
+      if (qType === "banked" || qType === "cloze") return null;
+    } else {
+      blanks = JSON.stringify(parsed);
+    }
+  }
   return {
     qType,
     kpIds,
@@ -91,6 +111,7 @@ function normalizeAiQuestionItem(raw: unknown, fallbackQType: QuestionType): AiQ
     answer,
     analysis: pickString(it, ["analysis", "解析", "explanation"]) ?? "",
     difficulty: it.difficulty === "easy" || it.difficulty === "hard" ? it.difficulty : "medium",
+    blanks,
   };
 }
 
@@ -228,7 +249,9 @@ export async function generateQuestions(
     let answerInvalid = 0;
     const validItems: AiQuestionItem[] = [];
     for (const item of items) {
-      const v = validateQuestionAnswer(item.qType, item.options, item.answer);
+      const opts = item.options;
+      const flatOptions: string[] = opts.length > 0 && Array.isArray(opts[0]) ? [] : (opts as string[]);
+      const v = validateQuestionAnswer(item.qType, flatOptions, item.answer);
       if (!v.ok) {
         answerInvalid++;
         console.warn(`[siyuan-ai-study] 剔除答案异常题目：${item.title.slice(0, 40)}…（${v.reason}）`);
@@ -251,7 +274,7 @@ export async function generateQuestions(
     for (const item of validItems) {
       // 模型漏给 kpIds 时回退绑定全部所选知识点，避免产生无归属题
       const bound = item.kpIds.filter((n) => kpIdSet.has(n));
-      questions.push({
+      const q: Question = {
         id: nextQuestionId++,
         courseId,
         kpIds: (bound.length > 0 ? bound : input.kpIds).join(","),
@@ -264,7 +287,9 @@ export async function generateQuestions(
         source: "ai",
         paperId: null,
         createTime: now(),
-      });
+      };
+      if (item.blanks) q.blanks = item.blanks;
+      questions.push(q);
     }
     data.questions.push(...questions);
     await saveData(data);

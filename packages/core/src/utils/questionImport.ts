@@ -9,6 +9,8 @@
 //   题型: 单选             （可选，单选/多选/判断/简答，缺省自动推断）
 //   知识点: 知识点甲, 知识点乙  （可选，按名称匹配本课程知识点）
 import type { KnowledgePoint, QuestionType, QuestionDifficulty } from "../api";
+import { isPassageType } from "../api/constants";
+import { parsePassageBlanks } from "./passage";
 
 export interface ImportedQuestionDraft {
   title: string;
@@ -18,6 +20,8 @@ export interface ImportedQuestionDraft {
   qType: QuestionType;
   difficulty: QuestionDifficulty;
   kpIds: number[];
+  /** 文章题空位列表 JSON（解析题干空位标记得到；非文章题省略） */
+  blanks?: string;
   /** 未能匹配到课程知识点的名称（仅提示，不阻断导入） */
   unmatchedKpNames: string[];
 }
@@ -50,7 +54,9 @@ const QTYPE_MAP: Record<string, QuestionType> = {
   multiple: "multiple", 多选: "multiple",
   judge: "judge", 判断: "judge",
   essay: "essay", 简答: "essay", 问答: "essay",
-  cloze: "cloze", 填空: "cloze",
+  fill: "fill", 填空: "fill", 词形填空: "fill",
+  banked: "banked", 选择填空: "banked",
+  cloze: "cloze", 完形: "cloze", 完形填空: "cloze",
   translation: "translation", 翻译: "translation",
 };
 
@@ -65,7 +71,9 @@ const JUDGE_WRONG = new Set(["错误", "错", "×", "✗", "wrong", "false"]);
 
 const QTYPE_LABELS: Record<string, string> = {
   essay: "简答",
-  cloze: "填空",
+  fill: "填空",
+  banked: "选择填空",
+  cloze: "完形",
   translation: "翻译",
 };
 function getQuestionTypeName(qt: string): string {
@@ -181,19 +189,19 @@ function parseBlock(
     }
   }
 
-  // 选项规整
+  // 选项规整（banked 的 A-H 行即词池，保留；fill/cloze 无行选项）
   let finalOptions = options;
   if (qType === "judge") {
     finalOptions = options.length === 2 ? options : ["正确", "错误"];
-  } else if (qType === "essay" || qType === "cloze" || qType === "translation") {
+  } else if (qType === "essay" || qType === "fill" || qType === "cloze" || qType === "translation") {
     finalOptions = [];
   } else if (options.length < 2) {
-    return { error: qType === "single" ? "单选题至少需要 2 个选项" : "多选题至少需要 2 个选项" };
+    return { error: qType === "single" ? "单选题至少需要 2 个选项" : qType === "multiple" ? "多选题至少需要 2 个选项" : "至少需要 2 个选项" };
   }
 
   // 答案解析
   let answer = "";
-  if (qType === "essay" || qType === "cloze" || qType === "translation") {
+  if (qType === "essay" || isPassageType(qType) || qType === "translation") {
     if (!hasAnswer || !answerRaw) return { error: getQuestionTypeName(qType) + "题缺少参考答案" };
     answer = answerRaw;
   } else if (qType === "judge") {
@@ -231,6 +239,16 @@ function parseBlock(
     }
   }
 
+  // 文章题：解析题干空位标记；选填/完形必须有空位
+  let blanks: string | undefined;
+  if (isPassageType(qType)) {
+    const parsed = parsePassageBlanks(title);
+    if (parsed.length === 0 && (qType === "banked" || qType === "cloze")) {
+      return { error: `${getQuestionTypeName(qType)}题题干缺少空位标记（__1__ / ____ / __ (word)）` };
+    }
+    if (parsed.length > 0) blanks = JSON.stringify(parsed);
+  }
+
   return {
     draft: {
       title,
@@ -240,6 +258,7 @@ function parseBlock(
       qType,
       difficulty,
       kpIds,
+      blanks,
       unmatchedKpNames,
     },
     warning: warning || undefined,

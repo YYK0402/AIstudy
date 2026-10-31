@@ -130,6 +130,13 @@ export interface Question {
   /** 所属试卷 id（可空） */
   paperId: number | null;
   createTime: string;
+  /**
+   * 文章题（fill 词形/单空、banked 选择填空、cloze 完形）的空位列表 JSON：
+   * `[{no: 41, hint?: "learner"}, ...]`——no=空位编号（未编号空位按出现顺序 1、2、…），
+   * hint=括号内所给原形词（词形填空）。
+   * 非文章题省略。空位标记形态：`__41__`、`__41__ (learner)`、`____`、`__ (word)`、裸 `__`。
+   */
+  blanks?: string;
 }
 
 export interface ExamPaper {

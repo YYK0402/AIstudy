@@ -1,139 +1,119 @@
 <template>
   <Teleport to=".ai-study-app">
-    <div class="modal-mask" :class="{ open }" @click.self="close">
-      <div ref="modalRef" class="modal ask-modal" :style="dragStyle">
-        <!-- 标题栏即拖动把手 -->
-        <div ref="headerRef" class="ask-header" @pointerdown="onDragStart" @pointermove="onDragMove" @pointerup="onDragEnd" @pointercancel="onDragEnd">
-          <span class="ask-drag-ico" aria-hidden="true">⋮⋮</span>
-          <div class="ask-head-main">
-            <div class="ask-title">AI 问答</div>
-            <div v-if="question" class="ask-sub">{{ questionTitle }}</div>
-          </div>
-          <button class="ask-close" aria-label="关闭" @click.stop="close">
-            <AppIcon name="x" :size="14" />
-          </button>
+    <!-- 无遮罩悬浮窗：与页面共存，不抢焦点，标题栏可拖，Esc 关闭 -->
+    <div v-if="open" ref="winRef" class="ask-float" :style="winStyle">
+      <!-- 标题栏即拖动把手 -->
+      <div
+        ref="headerRef"
+        class="ask-header"
+        @pointerdown="onDragStart"
+        @pointermove="onDragMove"
+        @pointerup="onDragEnd"
+        @pointercancel="onDragEnd"
+      >
+        <span class="ask-drag-ico" aria-hidden="true">⋮⋮</span>
+        <div class="ask-head-main">
+          <div class="ask-title">AI 问答</div>
+          <div v-if="question" class="ask-sub">{{ questionTitle }}</div>
         </div>
+        <button class="ask-close" aria-label="关闭" @click.stop="close">
+          <AppIcon name="x" :size="14" />
+        </button>
+      </div>
 
-        <!-- 本题上下文（可折叠） -->
-        <div v-if="question" class="ask-ctx">
-          <button class="ask-ctx-toggle" @click="ctxOpen = !ctxOpen">
-            本题上下文
-            <span class="chev" aria-hidden="true">{{ ctxOpen ? "▾" : "▸" }}</span>
-          </button>
-          <div v-if="ctxOpen" class="ask-ctx-body">
-            <div class="ctx-title">{{ question.title }}</div>
-            <div v-if="options.length > 0" class="ctx-opts">
-              <div v-for="(o, i) in options" :key="o" class="ctx-opt" :class="{ right: isRightOpt(o) }">
-                {{ String.fromCharCode(65 + i) }}. {{ o }}
-              </div>
-            </div>
-            <div v-if="result" class="ctx-line">
-              我的作答：{{ result.userAnswer || "（未作答）" }}
-              <span :class="result.isCorrect ? 't-success' : 't-danger'">{{ result.isCorrect ? " ✓" : " ✗" }}</span>
-            </div>
-            <div v-if="result && question.qType === 'essay'" class="ctx-essay">
-              <span class="score" :class="{ pass: result.isCorrect, fail: !result.isCorrect }">{{ result.score }} 分</span>
-              <span v-if="result.feedback" class="fb">{{ result.feedback }}</span>
-            </div>
-            <div class="ctx-line">{{ getAnswerLabel() }}：{{ question.answer }}</div>
-            <div v-if="question.analysis" class="ctx-line ctx-analysis">{{ question.analysis }}</div>
+      <!-- 对话区 -->
+      <div ref="chatRef" class="ask-chat">
+        <div v-if="turns.length === 0 && !loading" class="s t-faint ask-empty">
+          围绕题干、答案或关联知识点问点什么吧。
+        </div>
+        <div v-else class="ask-list">
+          <div v-for="(t, i) in turns" :key="i" class="ask-msg" :class="t.role">
+            <div class="who">{{ t.role === "user" ? "我" : "AI" }}</div>
+            <div class="txt">{{ t.content }}</div>
+          </div>
+          <div v-if="loading" class="ask-msg assistant">
+            <div class="who">AI</div>
+            <div class="txt">思考中…</div>
           </div>
         </div>
+      </div>
 
-        <!-- 对话区 -->
-        <div ref="chatRef" class="ask-chat">
-          <div v-if="turns.length === 0 && !loading" class="s t-faint ask-empty">
-            围绕题干、选项、答案或关联知识点问点什么吧。
-          </div>
-          <div v-else class="ask-list">
-            <div v-for="(t, i) in turns" :key="i" class="ask-msg" :class="t.role">
-              <div class="who">{{ t.role === "user" ? "我" : "AI" }}</div>
-              <div class="txt">{{ t.content }}</div>
-            </div>
-            <div v-if="loading" class="ask-msg assistant">
-              <div class="who">AI</div>
-              <div class="txt">思考中…</div>
-            </div>
-          </div>
-        </div>
+      <div v-if="askError" class="s t-danger ask-error">✗ {{ askError }}</div>
 
-        <div v-if="askError" class="s t-danger ask-error">✗ {{ askError }}</div>
-
-        <div class="ask-input-row">
-          <input
-            v-model="input"
-            class="ask-input"
-            :disabled="loading || !question"
-            placeholder="就这道题/知识点问点什么…"
-            aria-label="向 AI 提问"
-            @keydown.enter.prevent="send"
-          />
-          <button class="btn sm primary" :disabled="!input.trim() || loading || !question" @click="send">
-            {{ loading ? "回答中…" : "发送" }}
-          </button>
-        </div>
+      <div class="ask-input-row">
+        <input
+          v-model="input"
+          class="ask-input"
+          :disabled="loading || !question"
+          placeholder="就这道题/知识点问点什么…"
+          aria-label="向 AI 提问"
+          @keydown.enter.prevent="send"
+        />
+        <button class="btn sm primary" :disabled="!input.trim() || loading || !question" @click="send">
+          {{ loading ? "回答中…" : "发送" }}
+        </button>
       </div>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
-import { queryQuestionAsk, sendQuizAsk, parseQuestionOptions } from "../api";
+import { queryQuestionAsk, sendQuizAsk } from "../api";
 import type { Question, AskTurn } from "../api";
 import { clampDragOffset } from "../utils/modalDrag";
-
-interface AskResult {
-  userAnswer: string;
-  isCorrect: boolean;
-  score: string;
-  feedback: string;
-}
 
 const props = defineProps<{
   open: boolean;
   question: Question | null;
-  /** 当前题的判分结果（回看模式传入；未作答为 null） */
-  result: AskResult | null;
 }>();
 
 const emit = defineEmits<{
   (e: "close"): void;
 }>();
 
+const POS_KEY = "ai-study.ask-pos";
+
 const turns = ref<AskTurn[]>([]);
 const loading = ref(false);
 const askError = ref("");
 const input = ref("");
-const ctxOpen = ref(true);
 
 const chatRef = ref<HTMLElement | null>(null);
-const modalRef = ref<HTMLElement | null>(null);
+const winRef = ref<HTMLElement | null>(null);
 const headerRef = ref<HTMLElement | null>(null);
-const dragPos = ref({ dx: 0, dy: 0 });
 let dragStart: { x: number; y: number; dx: number; dy: number } | null = null;
 
-const options = computed(() => (props.question ? parseQuestionOptions(props.question) : []));
+function loadPos(): { dx: number; dy: number } {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return { dx: 0, dy: 0 };
+    const p = JSON.parse(raw) as { dx?: number; dy?: number };
+    return { dx: Number(p.dx) || 0, dy: Number(p.dy) || 0 };
+  } catch {
+    return { dx: 0, dy: 0 };
+  }
+}
+
+const dragPos = ref(loadPos());
+
+function savePos() {
+  try {
+    localStorage.setItem(POS_KEY, JSON.stringify(dragPos.value));
+  } catch {
+    /* 存储不可用时忽略 */
+  }
+}
+
 const questionTitle = computed(() => {
   const t = props.question?.title ?? "";
   const oneLine = t.replace(/\s+/g, " ").trim();
   return oneLine.length > 40 ? oneLine.slice(0, 40) + "…" : oneLine;
 });
-const dragStyle = computed(() => ({
+const winStyle = computed(() => ({
   transform: `translate(${dragPos.value.dx}px, ${dragPos.value.dy}px)`,
 }));
-
-function isRightOpt(opt: string): boolean {
-  const q = props.question;
-  if (!q) return false;
-  return q.answer.split(/[,，]/).map((s) => s.trim()).includes(opt);
-}
-
-function getAnswerLabel(): string {
-  const t = props.question?.qType;
-  return t === "essay" ? "参考答案" : "正确答案";
-}
 
 /** 打开 / 切换题目时载入该题的既有会话（续聊） */
 watch(
@@ -185,7 +165,42 @@ function close() {
   emit("close");
 }
 
-// ===== 标题栏拖动（位移存组件内，关闭重开保持位置） =====
+// ===== Esc 关闭（悬浮窗不抢焦点，用捕获阶段监听，关闭时移除） =====
+function onEsc(e: KeyboardEvent) {
+  if (e.key === "Escape") close();
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (v) window.addEventListener("keydown", onEsc, true);
+    else window.removeEventListener("keydown", onEsc, true);
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => window.removeEventListener("keydown", onEsc, true));
+
+// ===== 标题栏拖动（位置记 localStorage，重开保持；打开时按当前容器夹回可视区） =====
+function clampToContainer() {
+  const el = winRef.value;
+  if (!el) return;
+  const root = el.parentElement;
+  if (!root) return;
+  const wr = el.getBoundingClientRect();
+  const rr = root.getBoundingClientRect();
+  dragPos.value = clampDragOffset(
+    dragPos.value.dx,
+    dragPos.value.dy,
+    { w: wr.width, h: wr.height },
+    { w: rr.width, h: rr.height },
+  );
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (v) requestAnimationFrame(clampToContainer);
+  },
+);
+
 function onDragStart(e: PointerEvent) {
   if (e.button !== 0) return;
   if ((e.target as HTMLElement).closest("button")) return;
@@ -194,20 +209,21 @@ function onDragStart(e: PointerEvent) {
 }
 
 function onDragMove(e: PointerEvent) {
-  if (!dragStart || !modalRef.value) return;
-  const mask = modalRef.value.parentElement;
-  if (!mask) return;
-  const mr = modalRef.value.getBoundingClientRect();
-  const cr = mask.getBoundingClientRect();
+  if (!dragStart || !winRef.value) return;
+  const root = winRef.value.parentElement;
+  if (!root) return;
+  const wr = winRef.value.getBoundingClientRect();
+  const rr = root.getBoundingClientRect();
   dragPos.value = clampDragOffset(
     dragStart.dx + (e.clientX - dragStart.x),
     dragStart.dy + (e.clientY - dragStart.y),
-    { w: mr.width, h: mr.height },
-    { w: cr.width, h: cr.height },
+    { w: wr.width, h: wr.height },
+    { w: rr.width, h: rr.height },
   );
 }
 
 function onDragEnd() {
+  if (dragStart) savePos();
   dragStart = null;
 }
 </script>

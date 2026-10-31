@@ -121,10 +121,10 @@ export const SAMPLE_COURSE: CoursePackageData = {
     { id: 115, courseId: 1, kpIds: "12", title: "《中华民国临时约法》确立的是君主立宪制。", options: JSON.stringify(["正确", "错误"]), answer: "错误", analysis: "《临时约法》确立民主共和政体，采用三权分立。", qType: "judge", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
     { id: 116, courseId: 1, kpIds: "1", title: "鸦片战争是中国近代史的开端。", options: JSON.stringify(["正确", "错误"]), answer: "正确", analysis: "鸦片战争是中国近代史的开端。", qType: "judge", difficulty: "easy", source: "manual", paperId: 301, createTime: T },
     // 填空（4）
-    { id: 117, courseId: 1, kpIds: "2", title: "《南京条约》规定，中国向英国赔款____万银元。", options: "[]", answer: "2100", analysis: "赔款 2100 万银元，包括鸦片烟价、商款、军费。", qType: "cloze", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
-    { id: 118, courseId: 1, kpIds: "8", title: "洋务运动前期以「____」为口号创办军事工业，后期以「求富」为口号创办民用工业。", options: "[]", answer: "自强", analysis: "洋务运动前期口号为「自强」。", qType: "cloze", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
-    { id: 119, courseId: 1, kpIds: "11", title: "1911 年 10 月 10 日，____起义爆发，成为辛亥革命的首义。", options: "[]", answer: "武昌", analysis: "1911 年 10 月 10 日武昌起义爆发。", qType: "cloze", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
-    { id: 120, courseId: 1, kpIds: "12", title: "1912 年 3 月颁布的《____》，是中国历史上第一部资产阶级共和国宪法性文件。", options: "[]", answer: "中华民国临时约法", analysis: "《中华民国临时约法》是中国历史上第一部资产阶级共和国宪法性文件。", qType: "cloze", difficulty: "hard", source: "manual", paperId: 301, createTime: T },
+    { id: 117, courseId: 1, kpIds: "2", title: "《南京条约》规定，中国向英国赔款____万银元。", options: "[]", answer: "1:2100", analysis: "赔款 2100 万银元，包括鸦片烟价、商款、军费。", qType: "fill", blanks: "[{\"no\":1}]", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
+    { id: 118, courseId: 1, kpIds: "8", title: "洋务运动前期以「____」为口号创办军事工业，后期以「求富」为口号创办民用工业。", options: "[]", answer: "1:自强", analysis: "洋务运动前期口号为「自强」。", qType: "fill", blanks: "[{\"no\":1}]", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
+    { id: 119, courseId: 1, kpIds: "11", title: "1911 年 10 月 10 日，____起义爆发，成为辛亥革命的首义。", options: "[]", answer: "1:武昌", analysis: "1911 年 10 月 10 日武昌起义爆发。", qType: "fill", blanks: "[{\"no\":1}]", difficulty: "medium", source: "manual", paperId: 301, createTime: T },
+    { id: 120, courseId: 1, kpIds: "12", title: "1912 年 3 月颁布的《____》，是中国历史上第一部资产阶级共和国宪法性文件。", options: "[]", answer: "1:中华民国临时约法", analysis: "《中华民国临时约法》是中国历史上第一部资产阶级共和国宪法性文件。", qType: "fill", blanks: "[{\"no\":1}]", difficulty: "hard", source: "manual", paperId: 301, createTime: T },
   ],
   examPapers: [
     { id: 301, courseId: 1, name: "近代史结业模考", year: 0, createTime: T },

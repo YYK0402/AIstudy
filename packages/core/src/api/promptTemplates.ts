@@ -75,7 +75,7 @@ export const PROMPT_TASKS: PromptTaskMeta[] = [
     name: "AI 习题生成",
     desc: "围绕选中知识点按题型/难度生成习题",
     vars: [
-      { name: "qType", desc: "题型键：single / multiple / judge / essay / cloze / translation" },
+      { name: "qType", desc: "题型键：single / multiple / judge / essay / fill / banked / cloze / translation" },
       { name: "difficulty", desc: "难度键：easy / medium / hard" },
       { name: "courseName", desc: "课程名称" },
       { name: "count", desc: "生成题数" },
@@ -92,7 +92,9 @@ export const PROMPT_TASKS: PromptTaskMeta[] = [
         "multiple：options 恰好 4-5 项，answer 为多个正确选项文本以逗号分隔；" +
         'judge：options 固定为 ["正确","错误"]，answer 为「正确」或「错误」；' +
         "essay：options 为空数组 []，answer 为参考答案要点；" +
-        "cloze：options 为空数组 []，题干中包含 ____ 表示填空位置，answer 为填空的正确答案文本；" +
+        "fill：options 为空数组 []，题干为含空位标记的单句或短文——词形填空用 `__ (原形词)`（如 needs __ (require)），自由填空用 `____`；单空 answer 直接填值，一空多题用 `编号:值` 管道分隔（编号即空位序号）；" +
+        "banked：options 为词池数组（N 个空给 N+2~N+5 个候选词），题干为含 N 个编号空 `__41__`、`__42__`…（从 41 起连续编号）的短文，answer 为 `编号:词` 管道分隔（词必须来自 options 词池）；" +
+        "cloze：options 为二维数组、每空恰好 4 个选项文本（行数=空数），题干为含 N 个编号空 `__41__`…（从 41 起连续编号）的短文，answer 为 `编号:字母` 管道分隔（字母 A-D 对应该行选项位置）；" +
         "translation：options 为空数组 []，题干为待翻译原文，answer 为参考译文。" +
         "只返回 JSON 数组，不要任何其他文字。",
       user:

@@ -54,12 +54,14 @@ export async function updateQuestion(
   id: number,
   patch: {
     title: string;
-    options: string[];
+    options: string[] | string[][];
     answer: string;
     analysis: string;
     qType: QuestionType;
     difficulty: QuestionDifficulty;
     kpIds: number[];
+    /** 文章题空位列表 JSON；传 null 清除（非文章题/题干无空位标记） */
+    blanks?: string | null;
   },
 ): Promise<Question> {
   const data = await getData();
@@ -74,6 +76,8 @@ export async function updateQuestion(
   q.qType = patch.qType;
   q.difficulty = patch.difficulty;
   q.kpIds = patch.kpIds.join(",");
+  if (patch.blanks) q.blanks = patch.blanks;
+  else delete q.blanks;
   await saveData(data);
   return q;
 }
@@ -132,6 +136,7 @@ export async function importQuestions(
     qType: QuestionType;
     difficulty: QuestionDifficulty;
     kpIds: number[];
+    blanks?: string;
   }>,
   options?: {
     paperId?: number | null;
@@ -145,20 +150,24 @@ export async function importQuestions(
   const source = options?.source ?? "import";
   const paperId = options?.paperId ?? null;
   let nid = nextId(data.questions);
-  const created: Question[] = drafts.map((d) => ({
-    id: nid++,
-    courseId,
-    kpIds: d.kpIds.join(","),
-    title: d.title,
-    options: JSON.stringify(d.options),
-    answer: d.answer,
-    analysis: d.analysis,
-    qType: d.qType,
-    difficulty: d.difficulty,
-    source,
-    paperId,
-    createTime: now(),
-  }));
+  const created: Question[] = drafts.map((d) => {
+    const q: Question = {
+      id: nid++,
+      courseId,
+      kpIds: d.kpIds.join(","),
+      title: d.title,
+      options: JSON.stringify(d.options),
+      answer: d.answer,
+      analysis: d.analysis,
+      qType: d.qType,
+      difficulty: d.difficulty,
+      source,
+      paperId,
+      createTime: now(),
+    };
+    if (d.blanks) q.blanks = d.blanks;
+    return q;
+  });
   data.questions.push(...created);
   await saveData(data);
   return created;
