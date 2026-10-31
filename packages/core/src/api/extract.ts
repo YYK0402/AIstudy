@@ -18,7 +18,7 @@ import {
   markMaterialExtracting,
   unmarkMaterialExtracting,
 } from "./extractState";
-import { isSiyuanDocId } from "./siyuanDoc";
+import { getBridge } from "@/bridge";
 
 export interface ExtractKpResult {
   newCount: number;
@@ -249,11 +249,11 @@ const extractAbortFlags = new Map<number, { aborted: boolean }>();
 export function startExtractTask(materialId: number, courseId: number): void {
   if (isExtractingMaterial(materialId)) return;
   if (isFullExtracting()) {
-    window.siyuanAiStudy.showMessage("全量重抽中，请稍候", 3000, "error");
+    getBridge().showMessage("全量重抽中，请稍候", 3000, "error");
     return;
   }
   if (isBatchExtracting()) {
-    window.siyuanAiStudy.showMessage("批量抽取进行中，请稍候", 3000, "error");
+    getBridge().showMessage("批量抽取进行中，请稍候", 3000, "error");
     return;
   }
   const flag = { aborted: false };
@@ -280,7 +280,7 @@ export async function listUnextractedMaterials(courseId: number): Promise<Materi
 export function startBatchExtractTask(materialIds: number[], courseId: number): void {
   if (materialIds.length === 0) return;
   if (isFullExtracting() || isBatchExtracting()) {
-    window.siyuanAiStudy.showMessage("已有抽取任务进行中，请稍候", 3000, "error");
+    getBridge().showMessage("已有抽取任务进行中，请稍候", 3000, "error");
     return;
   }
   if (!beginBatchExtract()) return;

@@ -3,14 +3,20 @@ import { createPinia, disposePinia, type Pinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
 import { useThemeStore } from "./stores/theme";
+import { setBridge } from "./bridge";
 import { installModalGlobals, uninstallModalGlobals } from "./utils/modals";
 import cssText from "./style.css?inline";
 
 let app: VueApp | null = null;
 let pinia: Pinia | null = null;
 
-// 前端入口：由插件主入口动态加载后，调用 mount 挂载到页签元素
+// 前端入口：由宿主动态加载后，调用 mount 挂载到目标元素
 export function mount(el: Element): void {
+  // 解析宿主桥接（宿主须在加载 bundle 后、mount 前设置 window.__AI_STUDY_BRIDGE__）
+  if (!window.__AI_STUDY_BRIDGE__) {
+    throw new Error("宿主桥接未设置：挂载前须赋值 window.__AI_STUDY_BRIDGE__");
+  }
+  setBridge(window.__AI_STUDY_BRIDGE__);
   // 幂等：该元素已挂载过应用内容则跳过（防内核重放页签 init / 插件重载导致双重 mount，跨 bundle 实例也生效）
   if (el.querySelector(":scope > .ai-study-app")) return;
   if (!document.getElementById("ai-study-style")) {

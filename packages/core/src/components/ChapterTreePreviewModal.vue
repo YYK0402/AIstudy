@@ -39,6 +39,7 @@ import { ref, watch, computed } from "vue";
 import { useModalStore } from "../stores/modal";
 import { importChapterTree, listUnextractedMaterials, startBatchExtractTask } from "../api";
 import type { ChapterTreeNode } from "../api";
+import { getBridge } from "@/bridge";
 
 const modalStore = useModalStore();
 const saving = ref(false);
@@ -118,7 +119,7 @@ async function confirm() {
     }
   }
   if (nodes.length === 0) {
-    window.siyuanAiStudy.showMessage("请至少填写一个章节名称", 4000, "error");
+    getBridge().showMessage("请至少填写一个章节名称", 4000, "error");
     return;
   }
     saving.value = true;
@@ -135,13 +136,13 @@ async function confirm() {
           ? `；${unextracted.length} 份未抽资料知识点抽取已后台启动（进度见右上铃铛）`
           : "；知识点抽取已后台启动（进度见右上铃铛）";
       }
-      window.siyuanAiStudy.showMessage(msg);
+      getBridge().showMessage(msg);
       modalStore.notifyChapterImported();
       close();
       if (unextracted.length > 0) startBatchExtractTask(unextracted.map((m) => m.id), courseId);
     } catch (e) {
     console.error("生成目录失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "生成目录失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "生成目录失败", 4000, "error");
   } finally {
     saving.value = false;
   }

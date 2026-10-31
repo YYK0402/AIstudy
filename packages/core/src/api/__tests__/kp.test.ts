@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 const dataRef: { data: AppData } = {
   data: {
@@ -20,14 +22,15 @@ const dataRef: { data: AppData } = {
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => {},
   dispatchEvent: () => true,
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => dataRef.data,
     saveData: async (next: AppData) => {
       dataRef.data = next;
       return { code: 0 };
     },
-  },
-};
+  } as unknown as StudyBridge);
 
 const { createChapter } = await import("../kp");
 

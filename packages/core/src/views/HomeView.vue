@@ -170,6 +170,7 @@ import type { StudyTrendDay } from "../utils/studyTrend";
 import { studyStreak, reviewForecast, wrongSnapshot } from "../utils/studyStats";
 import type { ReviewForecastDay, WrongSnapshot } from "../utils/studyStats";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const router = useRouter();
 const courseStore = useCourseStore();
@@ -187,13 +188,13 @@ async function addSampleCourse() {
   try {
     const res = await createSampleCourse();
     const c = res.counts;
-    window.siyuanAiStudy.showMessage(
+    getBridge().showMessage(
       `已添加示例课「${res.courseName}」：${c.chapters} 章 / ${c.kps} 知识点 / ${c.questions} 题 / ${c.cards} 闪卡，已生成两周学习计划`,
     );
     await courseStore.refresh().catch(() => undefined);
   } catch (e) {
     console.error("添加示例课失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "添加示例课失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "添加示例课失败", 4000, "error");
   } finally {
     addingSample.value = false;
   }
@@ -214,16 +215,16 @@ async function onImportFile(e: Event) {
   input.value = ""; // 允许重选同一文件
   if (!file || importing.value) return;
   importing.value = true;
-  window.siyuanAiStudy.showMessage("正在导入课程包…");
+  getBridge().showMessage("正在导入课程包…");
   try {
     const res = await importCourseZip(file);
     const c = res.counts;
     const asset = res.assetFiles > 0 ? ` / ${res.assetFiles} 原始文件` : "";
-    window.siyuanAiStudy.showMessage(`已导入「${res.courseName}」：${c.chapters} 章 / ${c.kps} 知识点 / ${c.materials} 资料 / ${c.questions} 题${asset}`);
+    getBridge().showMessage(`已导入「${res.courseName}」：${c.chapters} 章 / ${c.kps} 知识点 / ${c.materials} 资料 / ${c.questions} 题${asset}`);
     await courseStore.refresh().catch(() => undefined);
   } catch (err) {
     console.error("导入课程包失败:", err);
-    window.siyuanAiStudy.showMessage(err instanceof Error ? err.message : "导入课程包失败", 4000, "error");
+    getBridge().showMessage(err instanceof Error ? err.message : "导入课程包失败", 4000, "error");
   } finally {
     importing.value = false;
   }
@@ -255,11 +256,11 @@ async function toggleArchive(course: Course) {
   }
   try {
     await setCourseStatus(course.id, next);
-    window.siyuanAiStudy.showMessage(next === "archived" ? "课程已归档" : "已取消归档");
+    getBridge().showMessage(next === "archived" ? "课程已归档" : "已取消归档");
     await courseStore.refresh().catch(() => undefined);
   } catch (e) {
     console.error("归档操作失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "归档操作失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "归档操作失败", 4000, "error");
   }
 }
 
@@ -499,7 +500,7 @@ function openTask(task: TodayTaskItem) {
     return;
   }
   router.push("/plan");
-  window.siyuanAiStudy.showMessage("该任务无绑定知识点，请在学习计划页处理");
+  getBridge().showMessage("该任务无绑定知识点，请在学习计划页处理");
 }
 
 async function toggleTask(task: TodayTaskItem) {
@@ -520,7 +521,7 @@ async function toggleTask(task: TodayTaskItem) {
     task.done = !task.done;
   } catch (e) {
     console.error("更新任务状态失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
   } finally {
     const next = new Set(pendingTaskIds.value);
     next.delete(task.id);

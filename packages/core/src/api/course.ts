@@ -1,8 +1,9 @@
 import type { Course } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now } from "./format";
-import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc, removeSiyuanDocIfExists } from "./siyuanDoc";
+import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { removeAssetIfUnused } from "./material";
+import { getBridge } from "@/bridge";
 
 export async function queryCourses(): Promise<Course[]> {
   const data = await getData();
@@ -55,9 +56,9 @@ export async function updateCourse(id: number, input: {
   course.modelId = input.modelId ?? null;
   await saveData(data);
   // 落库思源：改名时同步课程顶层文档名（失败不阻塞主流程）
-  if (nameChanged && course.siyuanDocId && isSiyuanDocId(course.siyuanDocId)) {
+  if (nameChanged && course.siyuanDocId && getBridge().isValidDocRef(course.siyuanDocId)) {
     try {
-      await window.siyuanAiStudy.renameSiyuanDoc(course.siyuanDocId, input.name);
+      await getBridge().renameDoc(course.siyuanDocId, input.name);
     } catch (e) {
       console.error("同步课程名到思源失败:", e);
     }
@@ -91,10 +92,10 @@ export async function deleteCourse(id: number): Promise<void> {
   const planIds = new Set(data.studyPlans.filter((p) => p.courseId === id).map((p) => p.id));
   const flashCardIds = new Set(data.flashCards.filter((c) => c.courseId === id).map((c) => c.id));
   const siyuanCleanupErrors: string[] = [];
-  if (course.siyuanDocId && isSiyuanDocId(course.siyuanDocId)) {
+  if (course.siyuanDocId && getBridge().isValidDocRef(course.siyuanDocId)) {
     // 课程文档是顶层文档，章节/资料是其子文档，删顶层即整体删除
     try {
-      await removeSiyuanDoc(course.siyuanDocId);
+      await removeDoc(course.siyuanDocId);
     } catch (e) {
       siyuanCleanupErrors.push(`课程文档「${course.name}」删除失败`);
     }
@@ -106,7 +107,7 @@ export async function deleteCourse(id: number): Promise<void> {
     for (const ch of data.chapters.filter((c) => c.courseId === id)) {
       if (!ch.siyuanBlockId) continue;
       try {
-        await removeSiyuanDoc(ch.siyuanBlockId);
+        await removeDoc(ch.siyuanBlockId);
       } catch (e) {
         siyuanCleanupErrors.push(`章节「${ch.name}」删除失败`);
       }
@@ -114,7 +115,7 @@ export async function deleteCourse(id: number): Promise<void> {
     for (const m of data.materials.filter((x) => x.courseId === id)) {
       if (!m.siyuanDocId) continue;
       try {
-        await removeSiyuanDoc(m.siyuanDocId);
+        await removeDoc(m.siyuanDocId);
       } catch (e) {
         siyuanCleanupErrors.push(`资料「${m.name}」删除失败`);
       }
@@ -129,7 +130,7 @@ export async function deleteCourse(id: number): Promise<void> {
     if (!entry) continue;
     delete data.conversationsDocs![key];
     try {
-      await removeSiyuanDocIfExists(entry.docId);
+      await removeDocIfExists(entry.docId);
     } catch (e) {
       siyuanCleanupErrors.push(`学习对话文档删除失败（${key}）`);
     }
@@ -159,7 +160,7 @@ export async function deleteCourse(id: number): Promise<void> {
     await removeAssetIfUnused(m.assetPath, data.materials);
   }
   if (siyuanCleanupErrors.length) {
-    window.siyuanAiStudy.showMessage(
+    getBridge().showMessage(
       `课程数据已删除，但思源文档清理不完整：${siyuanCleanupErrors.join("；")}`,
       6000,
       "error",

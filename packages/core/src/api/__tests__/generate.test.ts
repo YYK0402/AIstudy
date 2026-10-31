@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
+import { getBridge, setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 setActivePinia(createPinia());
 
@@ -34,7 +36,9 @@ const dataRef: { data: AppData } = {
   dispatchEvent: () => true,
   setInterval: () => 0,
   clearInterval: () => {},
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => dataRef.data,
     saveData: async (next: AppData) => {
       dataRef.data = next;
@@ -49,8 +53,7 @@ const dataRef: { data: AppData } = {
         ]),
       };
     },
-  },
-};
+  } as unknown as StudyBridge);
 
 const { generateQuestions } = await import("../generate");
 
@@ -70,14 +73,15 @@ describe("generateQuestions 并发守卫", () => {
   });
 
   it("失败后守卫释放，可再次出题", async () => {
-    const origCallAi = (window as unknown as { siyuanAiStudy: Record<string, unknown> }).siyuanAiStudy.callAi;
-    (window as unknown as { siyuanAiStudy: Record<string, unknown> }).siyuanAiStudy.callAi = async () => {
+    const bridge = getBridge();
+    const origCallAi = bridge.callAi;
+    bridge.callAi = async () => {
       throw new Error("AI 调用失败");
     };
     await expect(
       generateQuestions(1, { kpIds: [1], count: 1, qType: "single", difficulty: "easy" }),
     ).rejects.toThrow("AI 调用失败");
-    (window as unknown as { siyuanAiStudy: Record<string, unknown> }).siyuanAiStudy.callAi = origCallAi;
+    bridge.callAi = origCallAi;
     await expect(generateQuestions(1, { kpIds: [1], count: 1, qType: "single", difficulty: "easy" })).resolves.toHaveLength(1);
   });
 });

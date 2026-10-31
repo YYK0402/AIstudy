@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 const baseData: AppData = createEmptyData();
 let getDataCalls = 0;
@@ -9,14 +11,15 @@ const dispatchSpy = vi.fn((_e: Event) => true);
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => {},
   dispatchEvent: dispatchSpy,
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => {
       getDataCalls++;
       return baseData;
     },
     saveData: async () => saveRes,
-  },
-};
+  } as unknown as StudyBridge);
 
 const { DATA_SAVED_EVENT, getData, getDataSnapshot, invalidateSnapshot, saveData } = await import("../storage");
 

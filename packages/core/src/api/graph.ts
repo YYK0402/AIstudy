@@ -4,7 +4,7 @@ import { findTaskBinding, callAi } from "./ai";
 import { formatLocalDate, parseKpPrevIds, truncateText } from "./format";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { getSettings } from "./settings";
-import { ensureNotebook, createSiyuanDoc } from "./siyuanDoc";
+import { ensureFolder, createDoc } from "./docStore";
 
 const GRAPH_BATCH_SIZE = 30;
 
@@ -125,17 +125,17 @@ export async function writeGraphToSiyuan(courseId: number): Promise<string> {
   });
   const markdown =
     `# 知识图谱\n\n课程：${course.name}\n\n## 前置关系\n\n${lines.join("\n") || "（暂无知识点）"}`;
-  const notebook = await ensureNotebook(settings.notebookName);
+  const notebook = await ensureFolder(settings.notebookName);
   const baseName = "知识图谱";
   // 直接父文档 id（课程文档）：消除 3.8.9 新标题模式下同名祖先的路径歧义
   const parentID = course.siyuanDocId;
   try {
-    await createSiyuanDoc(markdown, `/${course.name}/${baseName}`, notebook, parentID);
+    await createDoc(markdown, `/${course.name}/${baseName}`, notebook, parentID);
     return baseName;
   } catch {
     // 同名文档已存在时回退为带日期的文档名
     const stamped = `${baseName} ${formatLocalDate()}`;
-    await createSiyuanDoc(markdown, `/${course.name}/${stamped}`, notebook, parentID);
+    await createDoc(markdown, `/${course.name}/${stamped}`, notebook, parentID);
     return stamped;
   }
 }

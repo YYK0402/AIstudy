@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 import { exportCourseZip } from "../api";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{ courseId: number; open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -56,11 +57,11 @@ async function doExport() {
     const res = await exportCourseZip(props.courseId, { ...opts });
     const c = res.counts;
     const asset = res.assetFiles > 0 ? ` / ${res.assetFiles} 原始文件` : "";
-    window.siyuanAiStudy.showMessage(`已导出课程包：${c.chapters} 章 / ${c.kps} 知识点 / ${c.materials} 资料 / ${c.questions} 题${asset}`);
+    getBridge().showMessage(`已导出课程包：${c.chapters} 章 / ${c.kps} 知识点 / ${c.materials} 资料 / ${c.questions} 题${asset}`);
     emit("close");
   } catch (e) {
     console.error("导出课程包失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "导出课程包失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "导出课程包失败", 4000, "error");
   } finally {
     busy.value = false;
   }

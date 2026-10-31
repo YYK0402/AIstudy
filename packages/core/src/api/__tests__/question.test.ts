@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 // 桥 mock：storage.ts 顶层会注册事件监听，必须在导入 api 模块前建立 window
 const dataRef: { data: AppData } = {
@@ -43,14 +45,15 @@ const dataRef: { data: AppData } = {
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => {},
   dispatchEvent: () => true,
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => dataRef.data,
     saveData: async (next: AppData) => {
       dataRef.data = next;
       return { code: 0 };
     },
-  },
-};
+  } as unknown as StudyBridge);
 
 const { deleteExamPaper } = await import("../question");
 

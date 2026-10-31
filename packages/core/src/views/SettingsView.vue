@@ -276,6 +276,7 @@ import {
 } from "../api";
 import type { AiProvider, AiModel, PromptTemplateView } from "../api";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
@@ -370,7 +371,7 @@ async function loadPromptTemplates() {
     }
   } catch (error) {
     console.error("加载提示词模板失败:", error);
-    window.siyuanAiStudy.showMessage("加载提示词模板失败", 4000, "error");
+    getBridge().showMessage("加载提示词模板失败", 4000, "error");
   } finally {
     promptLoading.value = false;
   }
@@ -385,17 +386,17 @@ async function savePrompt(t: PromptTemplateView) {
   const e = promptEdits[t.key];
   if (!e) return;
   if (!e.system.trim()) {
-    window.siyuanAiStudy.showMessage("系统提示词不能为空", 4000, "error");
+    getBridge().showMessage("系统提示词不能为空", 4000, "error");
     return;
   }
   promptSavingKey.value = t.key;
   try {
     await savePromptTemplateApi(t.key, { system: e.system, user: e.user });
     promptViews.value = await getPromptTemplateViews();
-    window.siyuanAiStudy.showMessage("提示词模板已保存");
+    getBridge().showMessage("提示词模板已保存");
   } catch (error) {
     console.error("保存提示词模板失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存提示词模板失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "保存提示词模板失败", 4000, "error");
   } finally {
     promptSavingKey.value = null;
   }
@@ -408,10 +409,10 @@ async function resetPrompt(t: PromptTemplateView) {
     await resetPromptTemplateApi(t.key);
     promptEdits[t.key] = { system: t.def.system, user: t.def.user };
     promptViews.value = await getPromptTemplateViews();
-    window.siyuanAiStudy.showMessage("已恢复默认模板");
+    getBridge().showMessage("已恢复默认模板");
   } catch (error) {
     console.error("恢复默认模板失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "恢复默认模板失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "恢复默认模板失败", 4000, "error");
   } finally {
     promptSavingKey.value = null;
   }
@@ -434,7 +435,7 @@ async function toggleProvider(provider: AiProvider) {
     // 失败时不还原会出现"UI 显示已切换但磁盘未变"，必须回滚
     provider.enabled = !provider.enabled;
     console.error("更新服务商状态失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新服务商状态失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "更新服务商状态失败", 4000, "error");
   }
 }
 
@@ -464,7 +465,7 @@ async function handleDelete(provider: AiProvider) {
     await providerStore.load();
   } catch (error) {
     console.error("删除服务商失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除服务商失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "删除服务商失败", 4000, "error");
   }
 }
 
@@ -540,7 +541,7 @@ async function addModel(providerId: number) {
     await providerStore.load();
   } catch (error) {
     console.error("添加模型失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "添加模型失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "添加模型失败", 4000, "error");
   }
 }
 
@@ -591,7 +592,7 @@ async function saveEditModel(m: AiModel) {
     await providerStore.load();
   } catch (error) {
     console.error("更新模型失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "更新模型失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "更新模型失败", 4000, "error");
   }
 }
 
@@ -602,7 +603,7 @@ async function removeModel(model: AiModel) {
     await providerStore.load();
   } catch (error) {
     console.error("删除模型失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除模型失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "删除模型失败", 4000, "error");
   }
 }
 
@@ -613,7 +614,7 @@ function onTaskModelChange(taskKey: string, event: Event) {
     .then(() => providerStore.load())
     .catch((error) => {
       console.error("保存任务分配失败:", error);
-      window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存任务分配失败", 4000, "error");
+      getBridge().showMessage(error instanceof Error ? error.message : "保存任务分配失败", 4000, "error");
     });
 }
 
@@ -630,10 +631,10 @@ async function saveSettings() {
     });
     settings.notebookName = settings.notebookName.trim() || "AI 研习";
     settingsDirty.value = false;
-    window.siyuanAiStudy.showMessage("设置已保存");
+    getBridge().showMessage("设置已保存");
   } catch (error) {
     console.error("保存应用设置失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存应用设置失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "保存应用设置失败", 4000, "error");
   } finally {
     settingsSaving.value = false;
   }

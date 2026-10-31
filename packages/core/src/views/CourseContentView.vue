@@ -329,6 +329,7 @@ import ChapterEditModal from "../components/ChapterEditModal.vue";
 import ChapterReviewModal from "../components/ChapterReviewModal.vue";
 import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
@@ -541,13 +542,13 @@ async function onRowDrop(e: DragEvent, kind: "chapter" | "unit" | "kp", id: numb
       await updateKnowledgePoint({ ...kp, chapterId: id });
       await loadKnowledgePoints();
       const node = chapters.value.find((c) => c.id === id);
-      window.siyuanAiStudy.showMessage(`已归入「${node?.name ?? "章节"}」`);
+      getBridge().showMessage(`已归入「${node?.name ?? "章节"}」`);
     } else {
       await applyChapterDrop(p.id, id, hint.pos);
     }
   } catch (err) {
     console.error("拖拽操作失败:", err);
-    window.siyuanAiStudy.showMessage(err instanceof Error ? err.message : "拖拽操作失败", 4000, "error");
+    getBridge().showMessage(err instanceof Error ? err.message : "拖拽操作失败", 4000, "error");
   }
 }
 
@@ -639,7 +640,7 @@ async function autoRelink() {
   relinking.value = true;
   try {
     const res = await relinkUnassignedKps(id);
-    window.siyuanAiStudy.showMessage(
+    getBridge().showMessage(
       res.linked > 0
         ? res.stuck > 0
           ? `已自动归位 ${res.linked} 个知识点；${res.stuck} 个无法自动挂钩（无标题或与章节名差异过大），可逐个「编辑」指定章节`
@@ -651,7 +652,7 @@ async function autoRelink() {
     await loadKnowledgePoints();
   } catch (e) {
     console.error("自动归位失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "自动归位失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "自动归位失败", 4000, "error");
   } finally {
     relinking.value = false;
   }
@@ -747,14 +748,14 @@ async function reidentifyChapters() {
   try {
     const agg = await aggregateCourseToc(currentCourseId());
     if (agg.headings.length === 0) {
-      window.siyuanAiStudy.showMessage("未识别到标题结构，请先上传资料", 4000, "error");
+      getBridge().showMessage("未识别到标题结构，请先上传资料", 4000, "error");
       return;
     }
     // AI 矫正提示（aggregateCourseToc 内已完成矫正）
     if (agg.corrected) {
-      window.siyuanAiStudy.showMessage("已用 AI 矫正目录，请在预览中核对后确认");
+      getBridge().showMessage("已用 AI 矫正目录，请在预览中核对后确认");
     } else if (agg.failed) {
-      window.siyuanAiStudy.showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
+      getBridge().showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
     }
     modalStore.openChapterPreview(currentCourseId(), agg.headings, null, agg.materialCount);
   } finally {
@@ -779,7 +780,7 @@ async function delChapter(ch: Chapter) {
     await Promise.all([loadChapters(), loadKnowledgePoints()]);
   } catch (e) {
     console.error("删除章节失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除章节失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除章节失败", 4000, "error");
   }
 }
 
@@ -820,10 +821,10 @@ async function batchDelete() {
     await deleteChapters(ids);
     exitBatchMode();
     await Promise.all([loadChapters(), loadKnowledgePoints()]);
-    window.siyuanAiStudy.showMessage(`已删除 ${ids.length} 个章节`);
+    getBridge().showMessage(`已删除 ${ids.length} 个章节`);
   } catch (e) {
     console.error("批量删除章节失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "批量删除章节失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "批量删除章节失败", 4000, "error");
   }
 }
 
@@ -875,10 +876,10 @@ async function batchDeleteKps() {
     await deleteKnowledgePoints(ids);
     exitKpBatchMode();
     await loadKnowledgePoints();
-    window.siyuanAiStudy.showMessage(`已删除 ${ids.length} 个知识点`);
+    getBridge().showMessage(`已删除 ${ids.length} 个知识点`);
   } catch (e) {
     console.error("批量删除知识点失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "批量删除知识点失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "批量删除知识点失败", 4000, "error");
   } finally {
     deletingKps.value = false;
   }
@@ -896,7 +897,7 @@ async function del(m: Material) {
     await load();
   } catch (e) {
     console.error("删除资料失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除资料失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除资料失败", 4000, "error");
   }
 }
 
@@ -949,10 +950,10 @@ async function fullReExtract() {
       }
     }
     await loadKnowledgePoints();
-    window.siyuanAiStudy.showMessage(skipped > 0 ? `全量重新抽取完成，${skipped} 个资料冲突已跳过` : "全量重新抽取完成");
+    getBridge().showMessage(skipped > 0 ? `全量重新抽取完成，${skipped} 个资料冲突已跳过` : "全量重新抽取完成");
   } catch (e) {
     console.error("全量重新抽取失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "全量重新抽取失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "全量重新抽取失败", 4000, "error");
   } finally {
     endFullExtract();
     fullExtracting.value = false;
@@ -979,7 +980,7 @@ async function removeDetailKp() {
     await loadKnowledgePoints();
   } catch (e) {
     console.error("删除知识点失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除知识点失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除知识点失败", 4000, "error");
   }
 }
 

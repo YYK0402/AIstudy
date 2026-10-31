@@ -79,6 +79,7 @@ import { useCourseStore } from "../stores/course";
 import { useProviderStore } from "../stores/provider";
 import { createCourse, updateCourse, queryCourses, deleteCourse } from "../api";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
@@ -165,7 +166,7 @@ async function save() {
     form.mode = "manual";
   } catch (error) {
     console.error("保存课程失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存课程失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "保存课程失败", 4000, "error");
   } finally {
     creating.value = false;
   }
@@ -183,10 +184,10 @@ async function remove() {
     const courses = await queryCourses();
     courseStore.setCourses(courses);
     close();
-    window.siyuanAiStudy.showMessage(`课程「${editing.name}」已删除`);
+    getBridge().showMessage(`课程「${editing.name}」已删除`);
   } catch (error) {
     console.error("删除课程失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "删除课程失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "删除课程失败", 4000, "error");
   } finally {
     creating.value = false;
   }

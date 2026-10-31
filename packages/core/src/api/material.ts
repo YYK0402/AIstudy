@@ -10,7 +10,8 @@ import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
-import { createSiyuanDoc, ensureNotebook, removeSiyuanDoc, persistDocIfEnabled, isSiyuanDocId } from "./siyuanDoc";
+import { createDoc, ensureFolder, removeDoc, persistDocIfEnabled } from "./docStore";
+import { getBridge } from "@/bridge";
 
 // 删除资料的源文件（思源资源目录）：其他资料仍引用同一文件时跳过；
 // 内核仅允许删除未被任何文档引用的资源，被引用（如用户手动拖入笔记）时仅记录日志不阻塞
@@ -18,7 +19,7 @@ export async function removeAssetIfUnused(assetPath: string, remainingMaterials:
   if (!assetPath) return;
   if (remainingMaterials.some((m) => m.assetPath === assetPath)) return;
   try {
-    await window.siyuanAiStudy.removeAsset(assetPath);
+    await getBridge().removeAsset(assetPath);
   } catch (e) {
     console.error("删除思源资源文件失败:", e);
   }
@@ -249,9 +250,9 @@ async function runOrganizeTask(
     mat.headings = JSON.stringify(headings);
     await saveData(latest);
     let siyuanSyncFailed = false;
-    if (mat.siyuanDocId && isSiyuanDocId(mat.siyuanDocId)) {
+    if (mat.siyuanDocId && getBridge().isValidDocRef(mat.siyuanDocId)) {
       try {
-        await window.siyuanAiStudy.updateSiyuanDoc(mat.siyuanDocId, `# ${mat.name}\n\n${res.content}`);
+        await getBridge().updateDoc(mat.siyuanDocId, `# ${mat.name}\n\n${res.content}`);
       } catch (e) {
         siyuanSyncFailed = true;
         console.error("同步梳理结果到思源失败:", e);
@@ -270,9 +271,9 @@ async function runOrganizeTask(
       const agg = await aggregateCourseToc(courseId);
       if (agg.headings.length === 0) return;
       if (agg.corrected) {
-        window.siyuanAiStudy.showMessage("已用 AI 矫正目录，请在预览中核对后确认");
+        getBridge().showMessage("已用 AI 矫正目录，请在预览中核对后确认");
       } else if (agg.failed) {
-        window.siyuanAiStudy.showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
+        getBridge().showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
       }
       useModalStore().openChapterPreview(courseId, agg.headings, materialId, agg.materialCount);
     }
@@ -312,7 +313,7 @@ export async function listSiyuanDocs(notebookId: string, path: string): Promise<
   return data.files ?? [];
 }
 
-export async function getSiyuanDocMarkdown(docId: string): Promise<{ hPath: string; content: string }> {
+export async function getDocMarkdown(docId: string): Promise<{ hPath: string; content: string }> {
   return await siyuanApi<{ hPath: string; content: string }>("export/exportMdContent", { id: docId });
 }
 
@@ -471,7 +472,7 @@ export async function deleteMaterial(id: number): Promise<void> {
   }
   await saveData(data);
   if (material?.siyuanDocId) {
-    removeSiyuanDoc(material.siyuanDocId).catch((e) => console.error("删除思源文档失败:", e));
+    removeDoc(material.siyuanDocId).catch((e) => console.error("删除思源文档失败:", e));
   }
   if (material?.assetPath) {
     await removeAssetIfUnused(material.assetPath, data.materials);

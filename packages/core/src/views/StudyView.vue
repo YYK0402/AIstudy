@@ -222,6 +222,7 @@ import KpSelectModal from "../components/KpSelectModal.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -422,7 +423,7 @@ async function openOriginal() {
     await openSiyuanDoc(id);
   } catch (e) {
     console.error("打开原文失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "打开原文失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "打开原文失败", 4000, "error");
   } finally {
     openingOriginal.value = false;
   }

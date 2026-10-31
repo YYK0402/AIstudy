@@ -62,7 +62,7 @@ import {
   listSiyuanNotebooks,
   listSiyuanDocs,
   listSiyuanBlocks,
-  getSiyuanDocMarkdown,
+  getDocMarkdown,
   type SiyuanDocEntry,
   type SiyuanBlockEntry,
   type SiyuanDocSelection,
@@ -162,7 +162,7 @@ async function pick(f: SiyuanDocEntry) {
   loading.value = true;
   error.value = "";
   try {
-    const { content } = await getSiyuanDocMarkdown(f.id);
+    const { content } = await getDocMarkdown(f.id);
     const md = stripFrontMatter(content);
     if (props.showBlocks) {
       pendingDoc.value = { id: f.id, name: f.name, markdown: md };

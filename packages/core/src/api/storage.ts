@@ -1,5 +1,6 @@
 // 底层数据读写：直接调用主窗口暴露的 Plugin 实例 API
 import type { AppData } from "../types/appData";
+import { getBridge } from "@/bridge";
 
 /** 数据持久化成功后派发的全局信号，携带本次保存的脏集，供订阅方选择性刷新 */
 export const DATA_SAVED_EVENT = "siyuan-ai-study:data-saved";
@@ -39,7 +40,7 @@ export async function getDataSnapshot(): Promise<AppData> {
 }
 
 export async function getData(): Promise<AppData> {
-  return window.siyuanAiStudy.getData();
+  return getBridge().getData();
 }
 
 // 模块级串行队列：并发写盘按调用顺序执行，避免互相覆盖；
@@ -49,7 +50,7 @@ let saveChain: Promise<unknown> = Promise.resolve();
 export function saveData(data: AppData): Promise<void> {
   let payload: DataSavedPayload = FULL_REFRESH;
   const run = saveChain.then(async () => {
-    const res = await window.siyuanAiStudy.saveData(data);
+    const res = await getBridge().saveData(data);
     if (res.code !== 0) {
       throw new Error(`数据保存失败${res.msg ? `：${res.msg}` : ""}`);
     }

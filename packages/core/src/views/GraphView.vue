@@ -194,6 +194,7 @@ import {
   parseKpPrevIds,
 } from "../api";
 import type { KnowledgePoint, Mastery } from "../api";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -418,7 +419,7 @@ async function focusSearch() {
   if (!q) return;
   const hit = knowledgePoints.value.find((k) => k.name.includes(q));
   if (!hit) {
-    window.siyuanAiStudy.showMessage("未找到匹配的知识点", 3000);
+    getBridge().showMessage("未找到匹配的知识点", 3000);
     return;
   }
   if (viewMode.value === "relation" && !relationInfo.value.visibleIds.has(hit.id)) {
@@ -444,9 +445,9 @@ async function writeDoc() {
   writingDoc.value = true;
   try {
     const name = await writeGraphToSiyuan(id);
-    window.siyuanAiStudy.showMessage(`知识图谱已写入思源文档「${name}」`);
+    getBridge().showMessage(`知识图谱已写入思源文档「${name}」`);
   } catch (e) {
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "写入思源文档失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "写入思源文档失败", 4000, "error");
   } finally {
     writingDoc.value = false;
   }

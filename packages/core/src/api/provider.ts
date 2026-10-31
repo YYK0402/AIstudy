@@ -1,6 +1,7 @@
 import type { AiModel, AiProvider } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now } from "./format";
+import { getBridge } from "@/bridge";
 
 export async function queryProviders(): Promise<AiProvider[]> {
   const data = await getData();
@@ -71,11 +72,11 @@ export async function deleteProvider(id: number): Promise<void> {
 }
 
 export async function testProvider(providerId: number): Promise<{ ok: boolean; message: string }> {
-  return window.siyuanAiStudy.testProvider(providerId);
+  return getBridge().testProvider(providerId);
 }
 
 export async function fetchProviderModels(providerId: number): Promise<{ ok: boolean; message: string; models: string[] }> {
-  return window.siyuanAiStudy.listModels(providerId);
+  return getBridge().listModels(providerId);
 }
 
 export const PROVIDER_PRESETS = [

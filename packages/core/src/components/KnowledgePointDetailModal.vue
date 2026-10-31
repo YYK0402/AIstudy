@@ -50,6 +50,7 @@
 import { computed, ref } from "vue";
 import { openSiyuanDoc } from "../api";
 import type { KnowledgePoint } from "../api";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -82,7 +83,7 @@ async function openOriginal() {
     await openSiyuanDoc(id);
   } catch (e) {
     console.error("打开原文失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "打开原文失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "打开原文失败", 4000, "error");
   } finally {
     opening.value = false;
   }

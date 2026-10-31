@@ -32,6 +32,7 @@
 import { computed, ref, watch } from "vue";
 import { createFlashCard, updateFlashCard } from "../api";
 import type { FlashCard, KnowledgePoint } from "../api";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -77,7 +78,7 @@ async function save() {
     close();
   } catch (e) {
     console.error("保存闪卡失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "保存闪卡失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "保存闪卡失败", 4000, "error");
   } finally {
     saving.value = false;
   }

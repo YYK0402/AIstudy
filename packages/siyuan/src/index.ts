@@ -2,6 +2,7 @@ import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan
 import type { TPluginDataChangeReason } from "siyuan";
 import { createEmptyData } from "../../core/src/types/appData";
 import type { AppData, CallLog, CourseData } from "../../core/src/types/appData";
+import type { CallAiResult, ListModelsResult, StudyBridge, TestProviderResult } from "../../core/src/bridge/types";
 import { decryptApiKey, migrateProviderKeys } from "./crypto";
 import {
   courseStorageName,
@@ -21,11 +22,6 @@ const TAB_TYPE = "study_tab";
 const DATA_EXTERNAL_EVENT = "siyuan-ai-study:data-external";
 // 每次插件加载（含构建触发的热重载）模块重新求值生成新 id，前端用它检测进行中的调用是否已被旧实例杀死
 const PLUGIN_INSTANCE_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-
-interface CallAiMessage {
-  role: string;
-  content: string;
-}
 
 /**
  * 构造 chat/completions 请求体：温度/最大输出 token 仅在显式设置时透传（null/缺失 = 不传）。
@@ -62,56 +58,13 @@ export function nextRateSlotWaitMs(timestamps: number[], limitPerMin: number, no
   return 60_000 - (now - oldest) + 100;
 }
 
-interface CallAiInput {
-  providerId: number;
-  modelId: string;
-  messages: CallAiMessage[];
-  taskKey: string;
-  /** 取消作用域（如 course-1 / material-2）：与 taskKey 组成在途表键，cancelAiCall 精确命中 */
-  scope?: string;
-}
-
-interface CallAiResult {
-  content: string;
-  tokenIn: number;
-  tokenOut: number;
-}
-
-interface TestProviderResult {
-  ok: boolean;
-  message: string;
-}
-
-interface ListModelsResult extends TestProviderResult {
-  models: string[];
-}
-
-// 暴露给前端（同渲染进程直接挂载）的数据/内核 API
-interface StudyApi {
-  /** 本次插件加载实例 id：热重载/重启插件后变化，前端据此检测僵尸任务 */
-  pluginInstanceId: string;
-  getData(): AppData;
-  saveData(data: AppData): Promise<{ code: number; msg?: string; dirty?: { global: boolean; courseIds: number[] } }>;
-  callAi(input: CallAiInput): Promise<CallAiResult>;
-  cancelAiCall(taskKey: string, scope?: string): void;
-  testProvider(providerId: number): Promise<TestProviderResult>;
-  listModels(providerId: number): Promise<ListModelsResult>;
-  showMessage(message: string, timeout?: number, type?: "info" | "error"): void;
-  ensureNotebook(name: string): Promise<string>;
-  createSiyuanDoc(markdown: string, path: string, notebook: string, parentID?: string | null): Promise<{ id: string }>;
-  removeSiyuanDoc(id: string): Promise<void>;
-  updateSiyuanDoc(id: string, markdown: string): Promise<void>;
-  getSiyuanDocMarkdown(id: string): Promise<string | null>;
-  siyuanDocExists(id: string): Promise<boolean>;
-  moveSiyuanDoc(id: string, targetId: string): Promise<void>;
-  renameSiyuanDoc(id: string, name: string): Promise<void>;
-  removeAsset(assetPath: string): Promise<void>;
-  ocrAsset(assetPath: string): Promise<string>;
-}
+// callAi 入参类型直接取桥接契约定义，避免双写
+type CallAiInput = Parameters<StudyBridge["callAi"]>[0];
 
 declare global {
   interface Window {
-    siyuanAiStudy: StudyApi;
+    /** 宿主桥接实现：mount.ts 挂载时解析（契约见 core/src/bridge/types.ts） */
+    __AI_STUDY_BRIDGE__?: StudyBridge;
     AiStudyApp: {
       mount(el: Element): void;
       unmount(): void;
@@ -390,11 +343,12 @@ export default class AiStudyPlugin extends Plugin {
     window.AiStudyApp?.unmount();
   }
 
-  // 暴露数据与内核 API 到全局，供直接挂载的前端调用
-  private exposeApi() {
-    window.siyuanAiStudy = {
+  // 实现桥接契约并暴露到全局，供直接挂载的前端调用（core 经 getBridge() 访问）
+  private exposeApi(): void {
+    window.__AI_STUDY_BRIDGE__ = {
       /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
       pluginInstanceId: PLUGIN_INSTANCE_ID,
+      capabilities: { ocr: "kernel", nasFiles: false },
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         try {
@@ -419,29 +373,32 @@ export default class AiStudyPlugin extends Plugin {
       showMessage: (message: string, timeout = 4000, type: "info" | "error" = "info") => {
         showMessage(message, timeout, type);
       },
-      ensureNotebook: async (name: string) => {
+      ensureFolder: async (name: string) => {
         return await this.handleEnsureNotebook(name);
       },
-      createSiyuanDoc: async (markdown: string, path: string, notebook: string, parentID?: string | null) => {
-        return await this.handleCreateSiyuanDoc(markdown, path, notebook, parentID);
+      createDoc: async (markdown: string, path: string, folder: string, parentRef?: string | null) => {
+        return await this.handleCreateSiyuanDoc(markdown, path, folder, parentRef);
       },
-      removeSiyuanDoc: async (id: string) => {
+      removeDoc: async (id: string) => {
         await this.handleRemoveSiyuanDoc(id);
       },
-      updateSiyuanDoc: async (id: string, markdown: string) => {
+      updateDoc: async (id: string, markdown: string) => {
         await this.handleUpdateSiyuanDoc(id, markdown);
       },
-      getSiyuanDocMarkdown: async (id: string) => {
+      getDocMarkdown: async (id: string) => {
         return await this.handleGetSiyuanDocMarkdown(id);
       },
-      siyuanDocExists: async (id: string) => {
+      docExists: async (id: string) => {
         return await this.handleSiyuanDocExists(id);
       },
-      moveSiyuanDoc: async (id: string, targetId: string) => {
+      moveDoc: async (id: string, targetId: string) => {
         await this.handleMoveSiyuanDoc(id, targetId);
       },
-      renameSiyuanDoc: async (id: string, name: string) => {
+      renameDoc: async (id: string, name: string) => {
         await this.handleRenameSiyuanDoc(id, name);
+      },
+      isValidDocRef: (ref: string) => {
+        return /^\d{14}-[0-9a-z]{7}$/.test(ref);
       },
       removeAsset: async (assetPath: string) => {
         await this.handleRemoveAsset(assetPath);

@@ -113,6 +113,7 @@ import {
   WRONG_ERROR_TYPE_LABELS,
 } from "../api";
 import type { WrongQuestion, Question, QuestionType, KnowledgePoint, WrongErrorType } from "../api";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -178,7 +179,7 @@ async function del(w: { wrong: WrongQuestion }) {
     if (currentCourseId()) graduatedCount.value = await countGraduatedWrongQuestions(currentCourseId());
   } catch (e) {
     console.error("移出错题失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "移出错题失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "移出错题失败", 4000, "error");
   }
 }
 
@@ -191,7 +192,7 @@ async function toggleErr(w: { wrong: WrongQuestion; question: Question }, type: 
     if (currentCourseId()) graduatedCount.value = await countGraduatedWrongQuestions(currentCourseId());
   } catch (e) {
     console.error("标记错误类型失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "标记失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "标记失败", 4000, "error");
   }
 }
 
@@ -209,10 +210,10 @@ async function exportMarkdown() {
     a.download = `错题-${courseStore.currentCourse?.name ?? "导出"}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    window.siyuanAiStudy.showMessage(`已导出 ${list.length} 道错题`);
+    getBridge().showMessage(`已导出 ${list.length} 道错题`);
   } catch (e) {
     console.error("导出错题失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "导出错题失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "导出错题失败", 4000, "error");
   }
 }
 

@@ -74,6 +74,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
 import type { Chapter, KnowledgePoint, SiyuanDocSelection } from "../api";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -186,7 +187,7 @@ async function save() {
     close();
   } catch (e) {
     console.error("保存知识点失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "保存知识点失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "保存知识点失败", 4000, "error");
   } finally {
     saving.value = false;
   }

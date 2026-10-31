@@ -88,6 +88,7 @@ import {
   type ImportParseResult,
 } from "../utils/questionImport";
 import type { KnowledgePoint, ExamPaperWithQuestions } from "../api";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -116,7 +117,7 @@ watch(
     try {
       existingPapers.value = await getExamPapers(props.courseId);
     } catch (e) {
-      window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "加载试卷列表失败", 4000, "error");
+      getBridge().showMessage(e instanceof Error ? e.message : "加载试卷列表失败", 4000, "error");
       existingPapers.value = [];
     }
     report.value = null;
@@ -156,7 +157,7 @@ async function createPaper() {
     paperId.value = paper.id;
     showCreatePaper.value = false;
   } catch (e) {
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "创建试卷失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "创建试卷失败", 4000, "error");
   } finally {
     creatingPaper.value = false;
   }
@@ -173,7 +174,7 @@ async function doImport() {
     emit("imported", created.length);
   } catch (e) {
     console.error("导入题库失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "导入题库失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "导入题库失败", 4000, "error");
   } finally {
     importing.value = false;
   }

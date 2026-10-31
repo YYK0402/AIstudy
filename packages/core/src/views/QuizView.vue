@@ -379,6 +379,7 @@ import QuestionImportModal from "../components/QuestionImportModal.vue";
 import KpSelectModal from "../components/KpSelectModal.vue";
 import ExamPaperModal from "../components/ExamPaperModal.vue";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const { confirm } = useConfirm();
@@ -455,7 +456,7 @@ async function generateSelfTest() {
       return;
     }
     questions.value = [...created, ...questions.value];
-    window.siyuanAiStudy.showMessage(`已为「${kp.name}」生成 ${created.length} 题，开始刷题`);
+    getBridge().showMessage(`已为「${kp.name}」生成 ${created.length} 题，开始刷题`);
     beginQuiz(shuffleList(created));
   } catch (e) {
     console.error("生成自测题失败:", e);
@@ -591,7 +592,7 @@ async function enterPresetSet() {
     if (examRaw != null && examRaw !== "") {
       // 结业模考覆盖全课程题目（含未绑定知识点的题），故不按知识点过滤
       if (questions.value.length === 0) {
-        window.siyuanAiStudy.showMessage("课程暂无题目，无法进行结业模考", 4000, "error");
+        getBridge().showMessage("课程暂无题目，无法进行结业模考", 4000, "error");
         return;
       }
       currentTestContext.value = { kind: "exam" };
@@ -604,12 +605,12 @@ async function enterPresetSet() {
     const allChapters = await queryChapters(currentCourseId());
     const ch = allChapters.find((c) => c.id === chId);
     if (!ch) {
-      window.siyuanAiStudy.showMessage("章节不存在，可能已被删除", 4000, "error");
+      getBridge().showMessage("章节不存在，可能已被删除", 4000, "error");
       return;
     }
     const kpIds = kpsOfChapter(knowledgePoints.value, allChapters, ch.id).map((k) => k.id);
     if (kpIds.length === 0) {
-      window.siyuanAiStudy.showMessage("本章暂无知识点，无法组卷", 4000, "error");
+      getBridge().showMessage("本章暂无知识点，无法组卷", 4000, "error");
       return;
     }
     currentTestContext.value = { kind: "chapter-test", chapterId: chId };
@@ -617,7 +618,7 @@ async function enterPresetSet() {
     setModalOpen.value = true;
   } catch (e) {
     console.error("组卷预填失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "组卷预填失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "组卷预填失败", 4000, "error");
   } finally {
     clearQuery();
   }
@@ -796,7 +797,7 @@ async function finishTestTasks() {
     testDoneTitles.value = await completeTestTasks(courseId, ctx);
   } catch (e) {
     console.error("测评任务自动勾选失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "测评任务自动勾选失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "测评任务自动勾选失败", 4000, "error");
   }
 }
 
@@ -856,7 +857,7 @@ async function onQuestionSaved() {
   } catch (e) {
     console.error("刷新题库失败:", e);
   }
-  window.siyuanAiStudy.showMessage("题目已保存");
+  getBridge().showMessage("题目已保存");
 }
 
 // ===== 批量操作 =====
@@ -891,10 +892,10 @@ async function batchDelete() {
     const removed = await deleteQuestions(ids);
     questions.value = questions.value.filter((q) => !new Set(ids).has(q.id));
     selectedIds.value = new Set();
-    window.siyuanAiStudy.showMessage(`已删除 ${removed} 道题`);
+    getBridge().showMessage(`已删除 ${removed} 道题`);
   } catch (e) {
     console.error("批量删除失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "批量删除失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "批量删除失败", 4000, "error");
   }
 }
 
@@ -911,7 +912,7 @@ function exportMarkdown() {
   a.download = `题库-${courseStore.currentCourse?.name ?? "导出"}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.md`;
   a.click();
   URL.revokeObjectURL(url);
-  window.siyuanAiStudy.showMessage(`已导出 ${list.length} 题 Markdown`);
+  getBridge().showMessage(`已导出 ${list.length} 题 Markdown`);
 }
 
 // ===== 真题导入 =====
@@ -926,7 +927,7 @@ async function onQuestionsImported(count: number) {
   importOpen.value = false;
   try {
     questions.value = await queryQuestions(currentCourseId());
-    window.siyuanAiStudy.showMessage(`已导入 ${count} 道真题，可用批量绑定补充知识点`);
+    getBridge().showMessage(`已导入 ${count} 道真题，可用批量绑定补充知识点`);
   } catch (e) {
     console.error("刷新题库失败:", e);
   }
@@ -938,7 +939,7 @@ async function onBatchKpSaved(count: number) {
   } catch (e) {
     console.error("刷新题库失败:", e);
   }
-  window.siyuanAiStudy.showMessage(`已更新 ${count} 道题的知识点绑定`);
+  getBridge().showMessage(`已更新 ${count} 道题的知识点绑定`);
 }
 
 async function delQ(q: Question) {
@@ -948,7 +949,7 @@ async function delQ(q: Question) {
     questions.value = questions.value.filter((x) => x.id !== q.id);
   } catch (e) {
     console.error("删除题目失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除题目失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除题目失败", 4000, "error");
   }
 }
 
@@ -958,7 +959,7 @@ watch(
     // 切课程视为中断当前练习，避免继续答旧课程的题
     if (practicing.value) {
       endPractice();
-      window.siyuanAiStudy.showMessage("已切换课程，本次练习已结束");
+      getBridge().showMessage("已切换课程，本次练习已结束");
     }
     genError.value = "";
     genCreated.value = [];

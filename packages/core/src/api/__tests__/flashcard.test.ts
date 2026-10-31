@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 setActivePinia(createPinia());
 
@@ -40,7 +42,9 @@ const calls: { ai: number; flag: { aborted: boolean }; abortAfterFirst: boolean 
   dispatchEvent: () => true,
   setInterval: () => 0,
   clearInterval: () => {},
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => dataRef.data,
     saveData: async (next: AppData) => {
       dataRef.data = next;
@@ -57,8 +61,7 @@ const calls: { ai: number; flag: { aborted: boolean }; abortAfterFirst: boolean 
         tokenOut: 1,
       };
     },
-  },
-};
+  } as unknown as StudyBridge);
 
 const { generateFlashcards } = await import("../flashcard");
 const { useNotifyStore, courseTaskId } = await import("../../stores/notify");

@@ -38,6 +38,7 @@ import { ref, watch } from "vue";
 import { getExamPapers, createExamPaper, deleteExamPaper, getPaperQuestions } from "../api";
 import type { ExamPaperWithQuestions, Question } from "../api";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -64,7 +65,7 @@ watch(
     try {
       papers.value = await getExamPapers(props.courseId);
     } catch (e) {
-      window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "加载试卷列表失败", 4000, "error");
+      getBridge().showMessage(e instanceof Error ? e.message : "加载试卷列表失败", 4000, "error");
       return;
     }
     showCreate.value = false;
@@ -81,7 +82,7 @@ async function doCreate() {
     papers.value = await getExamPapers(props.courseId);
     showCreate.value = false;
   } catch (e) {
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "创建试卷失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "创建试卷失败", 4000, "error");
   } finally {
     creating.value = false;
   }
@@ -95,7 +96,7 @@ async function doDelete(p: ExamPaperWithQuestions) {
     await deleteExamPaper(p.id);
     papers.value = await getExamPapers(props.courseId);
   } catch (e) {
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除试卷失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除试卷失败", 4000, "error");
   } finally {
     deleting.value = false;
   }
@@ -107,13 +108,13 @@ async function startPractice(p: ExamPaperWithQuestions) {
   try {
     const questions = await getPaperQuestions(p.id);
     if (questions.length === 0) {
-      window.siyuanAiStudy.showMessage("该试卷暂无题目", 3000, "error");
+      getBridge().showMessage("该试卷暂无题目", 3000, "error");
       return;
     }
     emit("close");
     props.onQuizStart(questions);
   } catch (e) {
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "加载试卷题目失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "加载试卷题目失败", 4000, "error");
   } finally {
     practicing.value = false;
   }

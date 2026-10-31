@@ -6,9 +6,10 @@ import { nextId, now } from "./format";
 import { findTaskBinding, callAi } from "./ai";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
-import { persistDocIfEnabled, isSiyuanDocId, removeSiyuanDoc, removeSiyuanDocIfExists } from "./siyuanDoc";
+import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { findChapterByTitle, normalizeChapterRef, normalizeKpName } from "./kpMatch";
 import { removeCsvIds } from "../utils/csvIds";
+import { getBridge } from "@/bridge";
 
 export async function queryKnowledgePoints(courseId: number): Promise<KnowledgePoint[]> {
   const data = await getData();
@@ -159,7 +160,7 @@ export async function importChapterTree(
   // 已有章节一律不动，避免分册合并时打乱全书顺序、覆盖用户手动拖拽的顺序
   // 批量导入不逐条弹窗，聚合提示一次（章节数据本身已落库，仅思源文档缺失）
   if (docFailed > 0) {
-    window.siyuanAiStudy.showMessage(`章节树导入：${docFailed} 个章节文档未落库到思源（章节数据不受影响）`, 5000, "error");
+    getBridge().showMessage(`章节树导入：${docFailed} 个章节文档未落库到思源（章节数据不受影响）`, 5000, "error");
   }
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
@@ -308,9 +309,9 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
     data.chapters[idx] = chapter;
     await saveData(data);
     // 落库思源：改名时同步章节文档名（失败不阻塞主流程）
-    if (chapter.name !== old.name && old.siyuanBlockId && isSiyuanDocId(old.siyuanBlockId)) {
+    if (chapter.name !== old.name && old.siyuanBlockId && getBridge().isValidDocRef(old.siyuanBlockId)) {
       try {
-        await window.siyuanAiStudy.renameSiyuanDoc(old.siyuanBlockId, chapter.name);
+        await getBridge().renameDoc(old.siyuanBlockId, chapter.name);
       } catch (e) {
         console.error("同步章节名到思源失败:", e);
       }
@@ -335,7 +336,7 @@ export async function applyChapterMoves(moves: Array<{ id: number; parentId: num
           : data.courses.find((c) => c.id === cur.courseId)?.siyuanDocId;
         if (targetDocId) {
           try {
-            await window.siyuanAiStudy.moveSiyuanDoc(docId, targetDocId);
+            await getBridge().moveDoc(docId, targetDocId);
           } catch (e) {
             console.error("同步章节移动失败:", e);
             moveErrors.push(`章节「${cur.name}」文档移动失败`);
@@ -347,7 +348,7 @@ export async function applyChapterMoves(moves: Array<{ id: number; parentId: num
   }
   await saveData(data);
   if (moveErrors.length) {
-    window.siyuanAiStudy.showMessage(
+    getBridge().showMessage(
       `章节数据已调整，但思源文档树未完全同步：${moveErrors.join("；")}`,
       5000,
       "error",
@@ -393,7 +394,7 @@ export async function deleteChapters(ids: number[]): Promise<void> {
     if (!removed.has(c.id)) continue;
     if (c.siyuanBlockId) {
       try {
-        await removeSiyuanDocIfExists(c.siyuanBlockId);
+        await removeDocIfExists(c.siyuanBlockId);
       } catch (e) {
         console.error("删除思源章节文档失败:", e);
         siyuanErrors.push(`章节「${c.name}」文档删除失败`);
@@ -404,7 +405,7 @@ export async function deleteChapters(ids: number[]): Promise<void> {
     if (convEntry) {
       delete data.conversationsDocs![String(c.id)];
       try {
-        await removeSiyuanDocIfExists(convEntry.docId);
+        await removeDocIfExists(convEntry.docId);
       } catch (e) {
         console.error("删除学习对话文档失败:", e);
         siyuanErrors.push(`「${c.name}」学习对话文档删除失败`);
@@ -430,7 +431,7 @@ export async function deleteChapters(ids: number[]): Promise<void> {
   }
   await saveData(data);
   if (siyuanErrors.length) {
-    window.siyuanAiStudy.showMessage(
+    getBridge().showMessage(
       `章节数据已删除，但思源文档清理不完整：${siyuanErrors.join("；")}`,
       5000,
       "error",

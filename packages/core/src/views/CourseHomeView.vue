@@ -95,6 +95,7 @@ import { taskAction } from "../constants/tasks";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
@@ -147,7 +148,7 @@ async function toggleTask(t: StudyTask) {
     t.status = t.status === "done" ? "todo" : "done";
   } catch (e) {
     console.error("更新任务状态失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
   } finally {
     const next = new Set(pendingTaskIds.value);
     next.delete(t.id);
@@ -180,10 +181,10 @@ async function unarchive() {
   try {
     await setCourseStatus(course.id, "active");
     await courseStore.refresh().catch(() => undefined);
-    window.siyuanAiStudy.showMessage("已取消归档");
+    getBridge().showMessage("已取消归档");
   } catch (e) {
     console.error("取消归档失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "取消归档失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "取消归档失败", 4000, "error");
   }
 }
 

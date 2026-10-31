@@ -39,6 +39,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
 import { createProvider, updateProvider, PROVIDER_PRESETS } from "../api";
+import { getBridge } from "@/bridge";
 
 const modalStore = useModalStore();
 const providerStore = useProviderStore();
@@ -146,7 +147,7 @@ async function save() {
     await providerStore.load();
   } catch (error) {
     console.error("保存服务商失败:", error);
-    window.siyuanAiStudy.showMessage(error instanceof Error ? error.message : "保存服务商失败", 4000, "error");
+    getBridge().showMessage(error instanceof Error ? error.message : "保存服务商失败", 4000, "error");
   } finally {
     saving.value = false;
   }

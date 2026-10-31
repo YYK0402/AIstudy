@@ -129,6 +129,7 @@ import KpSelectModal from "../components/KpSelectModal.vue";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import FlashcardEditModal from "../components/FlashcardEditModal.vue";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const { confirm } = useConfirm();
@@ -228,7 +229,7 @@ async function generate() {
       genError.value = result.errors.join("；");
     }
     if (result.created + result.updated > 0) {
-      window.siyuanAiStudy.showMessage(`已生成 ${result.created + result.updated} 张闪卡`);
+      getBridge().showMessage(`已生成 ${result.created + result.updated} 张闪卡`);
     }
     await load();
   } catch (e) {
@@ -246,13 +247,13 @@ async function delCard(c: FlashCard) {
     await load();
   } catch (e) {
     console.error("删除闪卡失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "删除闪卡失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "删除闪卡失败", 4000, "error");
   }
 }
 
 function reviewNow(c: FlashCard) {
   if (dueCardCount.value === 0) {
-    window.siyuanAiStudy.showMessage("该闪卡尚未到期，到期后会出现在「复习计划」与今日任务中");
+    getBridge().showMessage("该闪卡尚未到期，到期后会出现在「复习计划」与今日任务中");
     return;
   }
   void c;

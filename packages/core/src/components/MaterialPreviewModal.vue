@@ -39,6 +39,7 @@ import EmptyState from "./EmptyState.vue";
 import { materialSourceLabel, openSiyuanDoc } from "../api";
 import type { Material } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -57,7 +58,7 @@ async function openInSiyuan() {
     await openSiyuanDoc(id);
   } catch (e) {
     console.error("打开思源文档失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "打开思源文档失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "打开思源文档失败", 4000, "error");
   } finally {
     opening.value = false;
   }

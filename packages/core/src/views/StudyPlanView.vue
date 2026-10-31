@@ -324,6 +324,7 @@ import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { taskTypeLabel } from "../constants/tasks";
 import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, Mastery, ReviewDueItem } from "../api";
 import { useConfirm } from "../composables/useConfirm";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const { confirm } = useConfirm();
@@ -532,7 +533,7 @@ async function postponeAll() {
   try {
     const { moved } = await postponeOverdueTasks(plan.value.id);
     await load();
-    window.siyuanAiStudy.showMessage(`已将 ${moved} 条过期任务顺延到今天`);
+    getBridge().showMessage(`已将 ${moved} 条过期任务顺延到今天`);
   } catch (e) {
     failMsg(e, "顺延过期任务失败");
   } finally {
@@ -857,7 +858,7 @@ const { loading, error, load } = useLoad(async (ctx) => {
 async function generate() {
   if (!currentCourseId()) return;
   if (!startDate.value || !targetDate.value) {
-    window.siyuanAiStudy.showMessage("请先选择开始与目标日期", 4000, "error");
+    getBridge().showMessage("请先选择开始与目标日期", 4000, "error");
     return;
   }
   // 覆盖式生成会清除旧计划任务，有任务时先确认
@@ -907,7 +908,7 @@ function openDaysOp(op: "shift" | "extend") {
 
 function failMsg(e: unknown, fallback: string) {
   console.error(fallback + ":", e);
-  window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : fallback, 4000, "error");
+  getBridge().showMessage(e instanceof Error ? e.message : fallback, 4000, "error");
 }
 
 async function togglePause() {
@@ -917,7 +918,7 @@ async function togglePause() {
     const r = await setPlanStatus(plan.value.id, next);
     plan.value = r.plan;
     if (next === "active" && r.shiftedDays > 0) {
-      window.siyuanAiStudy.showMessage(`已恢复计划，${r.movedTasks} 条未完成任务顺延 ${r.shiftedDays} 天`);
+      getBridge().showMessage(`已恢复计划，${r.movedTasks} 条未完成任务顺延 ${r.shiftedDays} 天`);
     }
   } catch (e) {
     failMsg(e, "更新计划状态失败");
@@ -939,7 +940,7 @@ async function applyDaysOp() {
     }
     daysOp.value = null;
     await load();
-    window.siyuanAiStudy.showMessage(msg);
+    getBridge().showMessage(msg);
   } catch (e) {
     failMsg(e, op === "shift" ? "延期失败" : "延长失败");
   }
@@ -950,11 +951,11 @@ async function doSync() {
   try {
     const { added } = await syncPlanKps(plan.value.id);
     if (added === 0) {
-      window.siyuanAiStudy.showMessage("没有需要同步的新知识点");
+      getBridge().showMessage("没有需要同步的新知识点");
       return;
     }
     await load();
-    window.siyuanAiStudy.showMessage(`已同步 ${added} 个新知识点到计划`);
+    getBridge().showMessage(`已同步 ${added} 个新知识点到计划`);
   } catch (e) {
     failMsg(e, "同步新知识点失败");
   }
@@ -976,7 +977,7 @@ async function toggleTasks(list: StudyTask[]) {
   } catch (e) {
     for (const { task, status } of snapshot) task.status = status;
     console.error("更新任务状态失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
   } finally {
     const nextPending = new Set(pendingTaskIds.value);
     for (const t of list) nextPending.delete(t.id);
@@ -995,7 +996,7 @@ async function postponeTasks(list: StudyTask[]) {
       }
     }
     await load();
-    window.siyuanAiStudy.showMessage("已顺延到今天");
+    getBridge().showMessage("已顺延到今天");
   } catch (e) {
     failMsg(e, "顺延失败");
   } finally {

@@ -5,7 +5,7 @@ export * from "./storage";
 export * from "./ai";
 export * from "./taskModel";
 export * from "./settings";
-export * from "./siyuanDoc";
+export * from "./docStore";
 export * from "./graph";
 export * from "./report";
 export * from "./studyData";

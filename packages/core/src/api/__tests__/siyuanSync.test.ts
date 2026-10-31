@@ -40,25 +40,26 @@ const calls: { create: Array<{ md: string; path: string; nb: string }>; update: 
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => {},
   dispatchEvent: () => true,
-  siyuanAiStudy: {
+
+};
+setBridge({
     getData: async () => dataRef.data,
     saveData: async (next: AppData) => {
       dataRef.data = next;
       return { code: 0 };
     },
-    ensureNotebook: async () => "nb1",
-    createSiyuanDoc: async (md: string, path: string, nb: string) => {
+    ensureFolder: async () => "nb1",
+    createDoc: async (md: string, path: string, nb: string) => {
       calls.create.push({ md, path, nb });
       return { id: "doc-new" };
     },
-    updateSiyuanDoc: async (id: string) => {
+    updateDoc: async (id: string) => {
       calls.update.push({ id });
     },
-    getSiyuanDocMarkdown: async () => (calls.readFails ? null : "现有内容"),
-    siyuanDocExists: async () => calls.exists,
+    getDocMarkdown: async () => (calls.readFails ? null : "现有内容"),
+    docExists: async () => calls.exists,
     showMessage: () => {},
-  },
-};
+  } as unknown as StudyBridge);
 
 const { syncExplainConversations } = await import("../siyuanSync");
 
@@ -103,6 +104,8 @@ describe("syncExplainConversations 文档缺失处理", () => {
 });
 
 import { CONV_MAX_ROUNDS, buildConvMarkdown } from "../siyuanSync";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 
 describe("buildConvMarkdown 轮数上限", () => {
   const kp = {

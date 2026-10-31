@@ -1,5 +1,6 @@
 import type { AppData } from "../types/appData";
 import { GLOBAL_DEFAULT_KEY } from "./constants";
+import { getBridge } from "@/bridge";
 
 /** 模型选择三级回退：课程指定（courseId 给定且已设置）→ 任务级绑定 → 全局默认 */
 export function findTaskBinding(
@@ -55,7 +56,7 @@ const CANCELED_MSG = "AI 调用已取消";
 
 export async function callAi(input: CallAiInput): Promise<{ content: string; tokenIn: number; tokenOut: number }> {
   try {
-    return await window.siyuanAiStudy.callAi(input);
+    return await getBridge().callAi(input);
   } catch (e) {
     if (e instanceof Error && e.message === CANCELED_MSG) throw new AiCanceledError();
     throw e;
@@ -63,5 +64,5 @@ export async function callAi(input: CallAiInput): Promise<{ content: string; tok
 }
 
 export function cancelAiCall(taskKey: string, scope?: string): void {
-  window.siyuanAiStudy.cancelAiCall(taskKey, scope);
+  getBridge().cancelAiCall(taskKey, scope);
 }

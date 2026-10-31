@@ -44,6 +44,7 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { queryWrongQuestions, parseQuestionKpIds, exportWrongQuestionsMarkdown } from "../api";
 import type { Chapter, KnowledgePoint, Mastery, WrongQuestion, Question } from "../api";
+import { getBridge } from "@/bridge";
 
 const props = defineProps<{
   open: boolean;
@@ -119,10 +120,10 @@ async function exportMd() {
     a.download = `错题-${props.chapter.name}-${stamp}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    window.siyuanAiStudy.showMessage("本章错题 Markdown 已导出");
+    getBridge().showMessage("本章错题 Markdown 已导出");
   } catch (e) {
     console.error("导出本章错题失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "导出本章错题失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "导出本章错题失败", 4000, "error");
   } finally {
     exporting.value = false;
   }

@@ -63,6 +63,7 @@ import {
 import { parseDocument, parseTextInput, type ParsedDocument } from "../utils/documentParser";
 import { ocrPdfText } from "../utils/pdfOcr";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
+import { getBridge } from "@/bridge";
 
 interface FileItem {
   file: File;
@@ -242,7 +243,7 @@ async function save() {
     if (created.some((c) => c.organized)) {
       // 第三步目录预览等全部梳理完成后再自动弹出（由 runOrganizeTask 聚合课程全部资料后弹出），见 runOrganizeTask
       const waitToc = settings.chapterMode === "auto" ? "，完成后自动弹目录预览" : "";
-      window.siyuanAiStudy.showMessage(
+      getBridge().showMessage(
         n > 1 ? `已保存 ${n} 份资料，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）` : `已保存，AI 梳理任务已后台启动（进度见右上铃铛${waitToc}）`,
         4000,
       );

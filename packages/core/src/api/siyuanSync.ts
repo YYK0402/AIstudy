@@ -1,7 +1,8 @@
 import type { Chapter, Course, ExplainRecord, KnowledgePoint } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
-import { ensureNotebook } from "./siyuanDoc";
+import { ensureFolder } from "./docStore";
+import { getBridge } from "@/bridge";
 
 const CONV_BEGIN = "<!-- ai-study:conversations:begin -->";
 const CONV_END = "<!-- ai-study:conversations:end -->";
@@ -140,30 +141,30 @@ async function syncConvDocSerial(
     if (!data.conversationsDocs) data.conversationsDocs = {};
     const entry = data.conversationsDocs[target.key];
     if (entry?.docId) {
-      const current = await window.siyuanAiStudy.getSiyuanDocMarkdown(entry.docId);
+      const current = await getBridge().getDocMarkdown(entry.docId);
       if (current != null) {
         const merged = mergeConvMarkdown(current, newMd);
-        await window.siyuanAiStudy.updateSiyuanDoc(entry.docId, merged);
+        await getBridge().updateDoc(entry.docId, merged);
         data.conversationsDocs[target.key] = { docId: entry.docId, lastMarkdown: merged };
-      } else if (await window.siyuanAiStudy.siyuanDocExists(entry.docId)) {
+      } else if (await getBridge().docExists(entry.docId)) {
         // 文档存在但读取失败（瞬时错误）→ 跳过，避免用旧副本覆盖用户在思源里的改动
-        window.siyuanAiStudy.showMessage("学习对话文档读取失败，本次跳过同步", 4000, "error");
+        getBridge().showMessage("学习对话文档读取失败，本次跳过同步", 4000, "error");
       } else {
         // 文档已被删除 → 重建（轮次数据都在库里，重建不丢内容）
-        const notebook = await ensureNotebook(settings.notebookName);
-        const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook, target.parentID);
+        const notebook = await ensureFolder(settings.notebookName);
+        const { id } = await getBridge().createDoc(newMd, target.path, notebook, target.parentID);
         data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
-        window.siyuanAiStudy.showMessage("学习对话文档曾被删除，已自动重建", 3000);
+        getBridge().showMessage("学习对话文档曾被删除，已自动重建", 3000);
       }
     } else {
-      const notebook = await ensureNotebook(settings.notebookName);
-      const { id } = await window.siyuanAiStudy.createSiyuanDoc(newMd, target.path, notebook, target.parentID);
+      const notebook = await ensureFolder(settings.notebookName);
+      const { id } = await getBridge().createDoc(newMd, target.path, notebook, target.parentID);
       data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
     }
     await saveData(data);
   } catch (e) {
     console.error("学习对话落库失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "学习对话落库失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "学习对话落库失败", 4000, "error");
   }
 }
 

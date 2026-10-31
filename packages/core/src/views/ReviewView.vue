@@ -146,6 +146,7 @@ import { useCourseStore } from "../stores/course";
 import { queryDueReviews, queryKnowledgePoints, submitReview, submitKpReview, submitAnswer, QUESTION_TYPE_LABELS } from "../api";
 import type { ReviewDueItem, QuestionType, KnowledgePoint } from "../api";
 import { capStudySec } from "../constants/study";
+import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -181,11 +182,11 @@ async function gradeTarget(g: "forgotten" | "vague" | "solid") {
   try {
     const durationSec = targetStartAt.value ? capStudySec((Date.now() - targetStartAt.value) / 1000) : 0;
     await submitKpReview(targetKp.value.id, g, durationSec);
-    window.siyuanAiStudy.showMessage(g === "solid" ? "复习完成，间隔已推后（当天复习任务若有则已勾掉）" : "复习完成，已按记忆强度重排间隔");
+    getBridge().showMessage(g === "solid" ? "复习完成，间隔已推后（当天复习任务若有则已勾掉）" : "复习完成，已按记忆强度重排间隔");
     router.replace({ path: "/review" });
   } catch (e) {
     console.error("定向复习评分失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "定向复习评分失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "定向复习评分失败", 4000, "error");
   } finally {
     targetBusy.value = false;
   }
@@ -226,7 +227,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
         await submitAnswer(item.question, answer.trim(), 0, { fromReview: true });
       } catch (e) {
         console.error("复习中提交作答失败:", e);
-        window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "作答提交失败", 4000, "error");
+        getBridge().showMessage(e instanceof Error ? e.message : "作答提交失败", 4000, "error");
       }
     }
     const startAt = itemStartAt[id];
@@ -239,7 +240,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
     delete itemStartAt[id];
   } catch (e) {
     console.error("提交复习评分失败:", e);
-    window.siyuanAiStudy.showMessage(e instanceof Error ? e.message : "提交复习评分失败", 4000, "error");
+    getBridge().showMessage(e instanceof Error ? e.message : "提交复习评分失败", 4000, "error");
   } finally {
     busy[id] = false;
   }
