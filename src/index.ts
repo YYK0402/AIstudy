@@ -963,12 +963,14 @@ export default class AiStudyPlugin extends Plugin {
           return;
         }
         const frontend = getFrontend();
-        const isBrowser = frontend === "browser-desktop" || frontend === "browser-mobile";
+        // 仅原生桌面（Electron）走 file://（无缓存问题）；浏览器与原生移动端（mobile /
+        // browser-mobile）一律走内核 HTTP——/plugins/... 由内核提供服务（已验证），
+        // 加时间戳避免构建后刷新仍命中旧 bundle 缓存
+        const isNativeDesktop = frontend === "desktop" || frontend === "desktop-window";
         const dataDir = window.siyuan.config?.system?.dataDir;
-        const src = isBrowser
-          ? // 浏览器端加时间戳，避免构建后刷新仍命中旧 bundle 缓存
-            `/plugins/${pluginName}/web/index.js?v=${Date.now()}`
-          : `file://${dataDir}/plugins/${pluginName}/web/index.js`;
+        const src = isNativeDesktop
+          ? `file://${dataDir}/plugins/${pluginName}/web/index.js`
+          : `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
         const script = document.createElement("script");
         script.src = src;
         script.onload = () => {
