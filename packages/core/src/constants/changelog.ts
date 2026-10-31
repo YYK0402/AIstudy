@@ -21,6 +21,14 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.2",
+    date: "2026-10-31",
+    intro: "修复：矮视口下弹窗底部按钮（如「创建课程」）被裁切无法操作",
+    items: [
+      { text: "修复「新建课程」等字段较多的弹窗在窗口高度不足时，底部按钮被弹窗最大高度裁掉、无法滚动到达，导致无法完成新建课程的问题；弹窗内容超高时现可滚动，底部按钮始终可达" },
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-10-31",
     intro: "移动端支持（iOS / Android）",

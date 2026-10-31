@@ -1,6 +1,6 @@
 {
   "name": "ai-study",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "description": "AI 智能学习三端 monorepo（思源 / Obsidian / 飞牛 NAS）：共享核心 + 平台适配器",
