@@ -1,6 +1,6 @@
-// API Key 本地加密（WebCrypto AES-GCM）
+// API Key 本地加密（WebCrypto AES-GCM，浏览器与 Node 22 通用）
 // 密文格式：enc1:<iv base64>.<ciphertext base64>；不以 enc1: 开头视为旧明文，原样使用并触发迁移
-// 密钥材料（32 字节随机 hex）存于插件数据 cryptoKeyMaterial 字段
+// 密钥材料（32 字节随机 hex）存于数据 cryptoKeyMaterial 字段
 // WebCrypto 不可用时（极老内核）降级为明文存储，不阻断功能
 
 const ENC_PREFIX = "enc1:";
@@ -59,7 +59,7 @@ export async function ensureKeyMaterial(
       return "ok";
     }
     console.error(
-      "[siyuan-ai-study] 密钥材料异常（长度/格式不符），已重新生成；所有已加密 API Key 需到设置页重新填写",
+      "[ai-study] 密钥材料异常（长度/格式不符），已重新生成；所有已加密 API Key 需到设置页重新填写",
     );
   }
   data.cryptoKeyMaterial = bytesToHex(crypto.getRandomValues(new Uint8Array(KEY_BYTES)));
@@ -77,7 +77,7 @@ export async function encryptApiKey(data: { cryptoKeyMaterial?: string }, plaint
   }
   const sub = subtle();
   if (!sub) {
-    console.warn("[siyuan-ai-study] WebCrypto 不可用，API Key 保持明文存储");
+    console.warn("[ai-study] WebCrypto 不可用，API Key 保持明文存储");
     return plaintext;
   }
   await ensureKeyMaterial(data);
@@ -116,7 +116,7 @@ export async function decryptApiKey(data: { cryptoKeyMaterial?: string }, stored
     );
     return new TextDecoder().decode(pt);
   } catch (error) {
-    console.error("[siyuan-ai-study] API Key 解密失败:", error);
+    console.error("[ai-study] API Key 解密失败:", error);
     throw new Error("API Key 解密失败（密钥材料损坏或数据文件被改动），请到设置页重新填写 API Key");
   }
 }

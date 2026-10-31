@@ -1,0 +1,163 @@
+{
+  "manifest_version": "v1",
+  "format": "ndjson",
+  "base_token": "MIKSbv8ixaVntasVTsFc97GVn7g",
+  "table_id": "tblpS1Hcazh1IAt5",
+  "rev": 6,
+  "timezone": "Asia/Shanghai",
+  "query_context": {
+    "record_scope": "selected_record_ids",
+    "requested_record_count": 1
+  },
+  "records_count": 1,
+  "page_count": 1,
+  "has_more": false,
+  "record_file": "/Users/yyk/work/Code/AIstudy/tblpS1Hcazh1IAt5_20261031_131457_259.ndjson",
+  "record_file_size_bytes": 467,
+  "manifest_file": "/Users/yyk/work/Code/AIstudy/tblpS1Hcazh1IAt5_20261031_131457_259.manifest.json",
+  "columns": {
+    "record_id": {
+      "physical_type": "string",
+      "stats": {
+        "max_length": 16
+      },
+      "example": "reczz28TdrO8NzlA"
+    },
+    "严重程度": {
+      "field_id": "fldszdyKz9",
+      "field_type": "select",
+      "physical_type": "array<string>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        "高"
+      ]
+    },
+    "创建人": {
+      "field_id": "fldDyaU5gr",
+      "field_type": "created_by",
+      "physical_type": "array<struct<id string, name string>>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        {
+          "id": "ou_5645855d959ad64d3276c0f0bac744a8",
+          "name": "访客 66188"
+        }
+      ]
+    },
+    "创建时间": {
+      "field_id": "fldX34rAGi",
+      "field_type": "created_at",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 0,
+        "min": "2026-10-30T21:41:04.000+08:00",
+        "max": "2026-10-30T21:41:04.000+08:00"
+      },
+      "example": "2026-10-30T21:41:04.000+08:00"
+    },
+    "截图": {
+      "field_id": "fldMzjWtWH",
+      "field_type": "attachment",
+      "physical_type": "array<struct<file_token string, size number, name string>>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        {
+          "file_token": "Zks8bfC3wojAYMxgcOWcQUA8nOe",
+          "name": "capture_20261030213803533.bmp",
+          "size": 1805302
+        }
+      ]
+    },
+    "描述 / 复现步骤": {
+      "field_id": "fldmbMYLCx",
+      "field_type": "text",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 1,
+        "max_length": 0
+      },
+      "hint": "All values are empty; type inference may be ambiguous. Avoid analyzing this column unless required."
+    },
+    "插件版本": {
+      "field_id": "fld8hFjjkR",
+      "field_type": "text",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 0,
+        "max_length": 3
+      },
+      "example": "最新的"
+    },
+    "操作系统": {
+      "field_id": "fldHLJgyT2",
+      "field_type": "select",
+      "physical_type": "array<string>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        "Windows"
+      ]
+    },
+    "标题": {
+      "field_id": "fldXPOhyso",
+      "field_type": "text",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 0,
+        "max_length": 6
+      },
+      "example": "无法新建课程"
+    },
+    "状态": {
+      "field_id": "fldIQPd1P3",
+      "field_type": "select",
+      "physical_type": "array<string>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        "已解决"
+      ]
+    },
+    "类型": {
+      "field_id": "fldKUi3MdX",
+      "field_type": "select",
+      "physical_type": "array<string>",
+      "stats": {
+        "empty_count": 0,
+        "max_length": 1,
+        "avg_length": 1
+      },
+      "example": [
+        "Bug"
+      ]
+    },
+    "联系方式": {
+      "field_id": "fldfCxKVvo",
+      "field_type": "text",
+      "physical_type": "string|null",
+      "stats": {
+        "null_count": 1,
+        "max_length": 0
+      },
+      "hint": "All values are empty; type inference may be ambiguous. Avoid analyzing this column unless required."
+    }
+  }
+}

@@ -3,7 +3,8 @@ import type { TPluginDataChangeReason } from "siyuan";
 import { createEmptyData } from "../../core/src/types/appData";
 import type { AppData, CallLog, CourseData } from "../../core/src/types/appData";
 import type { CallAiResult, ListModelsResult, StudyBridge, TestProviderResult } from "../../core/src/bridge/types";
-import { decryptApiKey, migrateProviderKeys } from "./crypto";
+import { decryptApiKey, migrateProviderKeys } from "../../core/src/crypto";
+import { buildChatPayload, nextRateSlotWaitMs } from "../../core/src/aiPayload";
 import {
   courseStorageName,
   hasCourseEntities,
@@ -11,8 +12,8 @@ import {
   normalizeCourseData,
   splitAppData,
 } from "./courseSplit";
-import { runWithRetry } from "./aiRetry";
-import type { AiRetryFailInfo } from "./aiRetry";
+import { runWithRetry } from "../../core/src/aiRetry";
+import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { applyRetention } from "./retention";
 
 const DATA_STORAGE = "data";
@@ -22,41 +23,6 @@ const TAB_TYPE = "study_tab";
 const DATA_EXTERNAL_EVENT = "siyuan-ai-study:data-external";
 // 每次插件加载（含构建触发的热重载）模块重新求值生成新 id，前端用它检测进行中的调用是否已被旧实例杀死
 const PLUGIN_INSTANCE_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-
-/**
- * 构造 chat/completions 请求体：温度/最大输出 token 仅在显式设置时透传（null/缺失 = 不传）。
- * 抽为纯函数便于单测。
- */
-export function buildChatPayload(
-  modelId: string,
-  messages: Array<{ role: string; content: string }>,
-  modelRow: { temperature?: number | null; maxTokens?: number | null } | null | undefined,
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = { model: modelId, messages };
-  if (modelRow?.temperature != null) {
-    payload.temperature = modelRow.temperature;
-  }
-  if (modelRow?.maxTokens != null) {
-    payload.max_tokens = modelRow.maxTokens;
-  }
-  return payload;
-}
-
-/**
- * 滑动窗口速率限制：返回需等待的毫秒数（0 = 立即可发）。
- * timestamps = 窗口内各次调用发起时间；limitPerMin 0/缺失 = 不限。
- */
-export function nextRateSlotWaitMs(timestamps: number[], limitPerMin: number, now: number): number {
-  if (!limitPerMin || limitPerMin <= 0) {
-    return 0;
-  }
-  const recent = timestamps.filter((t) => now - t < 60_000);
-  if (recent.length < limitPerMin) {
-    return 0;
-  }
-  const oldest = Math.min(...recent);
-  return 60_000 - (now - oldest) + 100;
-}
 
 // callAi 入参类型直接取桥接契约定义，避免双写
 type CallAiInput = Parameters<StudyBridge["callAi"]>[0];

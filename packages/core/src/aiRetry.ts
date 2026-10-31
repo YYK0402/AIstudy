@@ -1,4 +1,4 @@
-// AI 调用的重试判定与退避执行（纯函数，供 src/index.ts 使用，便于单测）
+// AI 调用的重试判定与退避执行（纯函数，各宿主适配器共用，便于单测）
 
 /**
  * 判断 AI 调用错误是否值得自动重试：超时 / 5xx / 429 速率限制 / 网络层错误。
@@ -15,6 +15,10 @@ export function isRetryableAiError(error: unknown): boolean {
     return code >= 500 || code === 429;
   }
   if (/forwardProxy 失败/.test(message) && /(connection|refused|reset|EOF|unreachable|no such host|timed out|network)/i.test(message)) {
+    return true;
+  }
+  // Node fetch（飞牛服务端代理）网络层错误
+  if (/fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|UND_ERR/i.test(message)) {
     return true;
   }
   return false;
