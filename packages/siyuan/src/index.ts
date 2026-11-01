@@ -975,14 +975,23 @@ export default class AiStudyPlugin extends Plugin {
     });
   }
 
-  /** 定位本插件页签的前端挂载面板（页签栏项与内容面板共享同一 data-id） */
+  /** 定位本插件页签的前端挂载面板（页签栏项与内容面板共享同一 data-id）。
+   *  多页签并存时优先返回可见面板：隐藏页签面板宽度为 0，向其 mount 会把活实例 adopt 过去，
+   *  用户正在看的可见页签反而空白 */
   private findTabPanel(): Element | null {
     const uses = Array.from(document.querySelectorAll("li.item use"));
-    const use = uses.find((u) => (u.getAttribute("href") ?? u.getAttribute("xlink:href")) === "#iconAiStudy");
-    const li = use?.closest("li.item") as HTMLElement | null;
-    const id = li?.dataset.id;
-    if (!id) return null;
-    return Array.from(document.querySelectorAll(`[data-id="${id}"]`)).find((el) => el.classList.contains("fn__flex-1")) ?? null;
+    const candidates = uses
+      .filter((u) => (u.getAttribute("href") ?? u.getAttribute("xlink:href")) === "#iconAiStudy")
+      .map((u) => u.closest("li.item"))
+      .filter((li): li is HTMLElement => Boolean(li instanceof HTMLElement && li.dataset.id))
+      .map((li) =>
+        Array.from(document.querySelectorAll(`[data-id="${li.dataset.id}"]`)).find(
+          (el) => el.classList.contains("fn__flex-1"),
+        ) ?? null,
+      )
+      .filter((p): p is Element => Boolean(p));
+    if (candidates.length === 0) return null;
+    return candidates.find((p) => p.getBoundingClientRect().width > 0) ?? candidates[0];
   }
 
   /**
