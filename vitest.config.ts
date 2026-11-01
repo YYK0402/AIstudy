@@ -25,5 +25,24 @@ export default defineConfig({
     ],
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
+    coverage: {
+      provider: "v8",
+      // 基线范围：core 纯逻辑层（utils + api）；视图/组件层未配 jsdom，不纳入
+      include: ["packages/core/src/utils/**/*.ts", "packages/core/src/api/**/*.ts"],
+      exclude: [
+        "**/__tests__/**",
+        "**/*.d.ts",
+        // 依赖 DOM/canvas 或纯 barrel 的文件，node 环境不可测
+        "packages/core/src/utils/modals.ts",
+        "packages/core/src/utils/pdfOcr.ts",
+        "packages/core/src/utils/index.ts",
+      ],
+      reporter: ["text", "lcov"],
+      reportsDirectory: "docs/audit/coverage",
+      // 基线阈值（2026-11-01 实测：utils 85.35%）；api 层大量桥调用依赖真机，不设阈值防假性回归
+      thresholds: {
+        "packages/core/src/utils/**": { lines: 80 },
+      },
+    },
   },
 });
