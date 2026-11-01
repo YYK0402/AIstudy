@@ -63,6 +63,43 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("a | b")).toBe("<p>a | b</p>");
   });
 
+  it("连续 | 行但无分隔行：不是表格，按段落处理（CommonMark 对齐）", () => {
+    expect(renderMarkdown("| a | b |\n| 1 | 2 |")).toBe("<p>| a | b |</p>\n<p>| 1 | 2 |</p>");
+  });
+
+  it("分隔行列数与表头不一致不构成表格", () => {
+    expect(renderMarkdown("| a | b |\n| --- |\n| 1 | 2 |")).toBe("<p>| a | b |</p>\n<p>| --- |</p>\n<p>| 1 | 2 |</p>");
+  });
+
+  it("单元格内转义管道 \\|：不切列，还原为字面 |（htmlTablesToMarkdown 产物）", () => {
+    const html = renderMarkdown("| 词性 | 示例 |\n| --- | --- |\n| 名词 | book \\| a > b |");
+    expect(html).toContain("<td>book | a &gt; b</td>");
+    // 仍为 2 列（1 数据行 = 2 个 td），不被 \| 切成 3 列
+    expect(html.match(/<td>/g)?.length).toBe(2);
+  });
+
+  it("源文本含旧占位符字面量（\\u0001N\\u0001）：原样显示不渲染 undefined", () => {
+    const html = renderMarkdown("原文里有 \u00010\u0001 和 \u000199\u0001");
+    expect(html).not.toContain("undefined");
+    expect(html).toContain("\u00010\u0001");
+  });
+
+  it("多个行内代码共存：各自还原不串位", () => {
+    const html = renderMarkdown("`a` 与 `b` 与 `c`");
+    expect(html).toBe("<p><code>a</code> 与 <code>b</code> 与 <code>c</code></p>");
+  });
+
+  it("行内代码内容里的加粗/链接语法不渲染（占位符保护）", () => {
+    const html = renderMarkdown("`**a**` 与 `[x](javascript:alert(1))`");
+    expect(html).toBe("<p><code>**a**</code> 与 <code>[x](javascript:alert(1))</code></p>");
+  });
+
+  it("URL 内嵌引号事件注入：不生成链接，危险串按文本显示（XSS 面收敛）", () => {
+    const html = renderMarkdown('[点击](https://example.com" onmouseover="alert(1))');
+    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("href=");
+  });
+
   it("用户示例形态：加粗+列表+引用+代码混排", () => {
     const src = [
       "这道题**不是用 `carried`**，而是用 **`affects`**。",

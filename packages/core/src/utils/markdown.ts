@@ -28,9 +28,12 @@ const isOrderedMarker = (marker: string): boolean => /^\d+[.)]/.test(marker);
 /** 行内渲染：转义后的文本 → 行内 HTML（代码/加粗/斜体/链接） */
 function inline(text: string): string {
   const codes: string[] = [];
+  // 占位符带随机盐：固定串（如 \u0001N\u0001）可能被源文本原样包含，
+  // 导致恢复阶段替换到不存在的槽位（渲染出 undefined）
+  const salt = Math.random().toString(36).slice(2, 8);
   let out = text.replace(/`([^`\n]+)`/g, (_m, code: string) => {
     codes.push(code);
-    return `\u0001${codes.length - 1}\u0001`;
+    return `@@ASCODE${salt}${codes.length - 1}@@`;
   });
   out = out.replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/__([\s\S]+?)__/g, "<strong>$1</strong>");
@@ -41,7 +44,7 @@ function inline(text: string): string {
       ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
       : raw;
   });
-  out = out.replace(/\u0001(\d+)\u0001/g, (_m, n: string) => `<code>${codes[Number(n)]}</code>`);
+  out = out.replace(new RegExp(`@@ASCODE${salt}(\\d+)@@`, "g"), (_m, n: string) => `<code>${codes[Number(n)]}</code>`);
   return out;
 }
 
@@ -86,17 +89,20 @@ function parseList(lines: string[], start: number, baseIndent: number, ordered: 
 /** 从 start 行起收集连续表格行（以 | 开头），返回 [html, 下一行下标]；首行非表格行时原样返回 */
 function parseTable(lines: string[], start: number): [string, number] {
   const isRow = (l: string) => /^[ \t]*\|.*\|[ \t]*$/.test(l);
-  if (!isRow(lines[start])) return ["", start];
+  // 先以占位符替换转义的 \|（htmlTablesToMarkdown 对单元格内字面 | 的转义），
+  // 按未转义的 | 切分后还原，避免转义管道被误认为列分隔
+  const cellsOf = (l: string): string[] =>
+    l.trim().replace(/\\\|/g, "\u0001").replace(/^\||\|$/g, "").split("|").map((c) => c.trim().replace(/\u0001/g, "|"));
+  // 与 CommonMark 对齐：第二行必须是分隔行且列数与表头一致，否则连续的 | 行只是普通段落
+  const headCells = cellsOf(lines[start]);
+  const next = lines[start + 1] ?? "";
+  if (!isRow(next) || cellsOf(next).length !== headCells.length || !cellsOf(next).every((c) => /^:?-{2,}:?$/.test(c))) {
+    return ["", start];
+  }
   const rows: string[][] = [];
   let j = start;
   while (j < lines.length && isRow(lines[j])) {
-    const cells = lines[j]
-      .trim()
-      .replace(/^\||\|$/g, "")
-      .split("|")
-      .map((c) => c.trim());
-    // 第二行分隔行（| --- | :--: |）不作为数据行
-    if (!(j === start + 1 && cells.every((c) => /^:?-{2,}:?$/.test(c)))) rows.push(cells);
+    if (j !== start + 1) rows.push(cellsOf(lines[j])); // 第二行分隔行不作为数据行
     j++;
   }
   if (rows.length < 2) return ["", start];
@@ -154,8 +160,9 @@ export function renderMarkdown(src: string): string {
       out.push(`<blockquote>${quote.join("<br>")}</blockquote>`);
       continue;
     }
-    if (LIST_ITEM_RE.test(line)) {
-      const [html, next] = parseList(lines, i, indentOf(line), isOrderedMarker(line.match(LIST_ITEM_RE)![2]));
+    const listItem = line.match(LIST_ITEM_RE);
+    if (listItem) {
+      const [html, next] = parseList(lines, i, indentOf(line), isOrderedMarker(listItem[2]));
       out.push(html);
       i = next;
       continue;
