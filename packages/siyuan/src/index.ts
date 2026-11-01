@@ -1,4 +1,4 @@
-import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend } from "siyuan";
+import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend, getAllModels } from "siyuan";
 import type { TPluginDataChangeReason } from "siyuan";
 import { createEmptyData } from "../../core/src/types/appData";
 import type { AppData, CallLog, CourseData } from "../../core/src/types/appData";
@@ -320,7 +320,7 @@ export default class AiStudyPlugin extends Plugin {
     window.__AI_STUDY_BRIDGE__ = {
       /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
       pluginInstanceId: PLUGIN_INSTANCE_ID,
-      capabilities: { ocr: "kernel", nasFiles: false, docs: "siyuan" },
+      capabilities: { host: "siyuan", ocr: "kernel", nasFiles: false, docs: "siyuan" },
       getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
       saveData: async (data: AppData) => {
         try {
@@ -903,12 +903,14 @@ export default class AiStudyPlugin extends Plugin {
   // 注册自定义页签：动态加载前端 bundle 并直接 mount 到页签元素
   private registerTab() {
     const pluginName = this.name;
+    // init/destroy 回调内 this 是 Custom 模型（见 siyuan 类型），插件能力须经闭包引用
+    const self = this;
     this.addTab({
       type: TAB_TYPE,
       init() {
         // 幂等：bundle 已加载过（内核重放页签 init / 插件重载后）直接挂载，不重复插入 script 二次执行
         if (window.AiStudyApp) {
-          window.AiStudyApp.mount(this.element);
+          self.mountApp(this.element);
           return;
         }
         const frontend = getFrontend();
@@ -923,10 +925,17 @@ export default class AiStudyPlugin extends Plugin {
         const script = document.createElement("script");
         script.src = src;
         script.onload = () => {
-          window.AiStudyApp?.mount(this.element);
+          if (!window.AiStudyApp) {
+            // bundle 下载成功但求值中途抛错（语法/运行时），AiStudyApp 未挂上
+            console.error("[AIstudy-diag] bundle 已下载但求值失败，window.AiStudyApp 未定义");
+            self.showTabError(this.element, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
+            return;
+          }
+          self.mountApp(this.element);
         };
         script.onerror = () => {
-          console.error("[siyuan-ai-study] 加载前端资源失败:", src);
+          console.error("[AIstudy-diag] 加载前端资源失败:", src);
+          self.showTabError(this.element, "前端资源加载失败", `script 请求未成功：${src}`);
         };
         document.head.appendChild(script);
       },
@@ -961,26 +970,77 @@ export default class AiStudyPlugin extends Plugin {
         window.setTimeout(() => {
           const panel = this.findTabPanel();
           if (!panel || panel.querySelector(".ai-study-app")) return;
-          if (window.AiStudyApp) window.AiStudyApp.mount(panel);
+          if (window.AiStudyApp) this.mountApp(panel);
         }, delay),
       );
     }
   }
 
-  private openStudyTab() {
+  /** 挂载前端（统一兜底：挂载失败渲染页签内可见错误，而非静默白屏） */
+  private mountApp(panel: Element) {
     try {
-      openTab({
-        app: this.app,
-        custom: {
-          id: this.name + TAB_TYPE,
-          icon: "iconAiStudy",
-          title: "AI 智能学习",
-        },
-      });
+      window.AiStudyApp.mount(panel);
     } catch (error) {
-      console.error("[siyuan-ai-study] 打开学习页签失败:", error);
-      showMessage("打开 AI 学习页签失败，请查看控制台日志", 4000, "error");
+      console.error("[AIstudy-diag] 前端挂载失败:", error);
+      const detail =
+        error instanceof Error ? `${error.message}\n${(error.stack ?? "").split("\n").slice(0, 4).join("\n")}` : String(error);
+      this.showTabError(panel, "前端挂载失败", detail);
     }
+  }
+
+  /** 页签内可见错误提示（此时前端 CSS 可能尚未加载，全部用内联样式） */
+  private showTabError(panel: Element, title: string, detail: string) {
+    if (panel.querySelector("[data-ai-study-error]")) return;
+    const env = `frontend=${getFrontend()} | url=${location.href}`;
+    const box = document.createElement("div");
+    box.setAttribute("data-ai-study-error", "1");
+    box.style.cssText = "box-sizing:border-box;min-height:100%;padding:24px;background:#141714;color:#e8e3d5;font-size:14px;font-family:inherit;";
+    const inner = document.createElement("div");
+    inner.style.cssText = "max-width:600px;width:100%;margin:0 auto;background:#1e231d;border:1px solid #3a4036;border-radius:10px;padding:16px 18px;";
+    const h = document.createElement("div");
+    h.style.cssText = "font-weight:600;font-size:15px;margin-bottom:10px;color:#e3b95e;";
+    h.textContent = `AI 学习：${title}`;
+    const d = document.createElement("pre");
+    d.style.cssText = "margin:0 0 10px;white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.6;color:#c8cfc2;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;";
+    d.textContent = detail;
+    const e = document.createElement("div");
+    e.style.cssText = "font-size:11px;color:#8a948b;";
+    e.textContent = env;
+    inner.append(h, d, e);
+    box.appendChild(inner);
+    panel.appendChild(box);
+  }
+
+  private openStudyTab() {
+    const report = (stage: string, error: unknown) => {
+      console.error(`[AIstudy-diag] 打开学习页签失败（${stage}）:`, error);
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+      showMessage(`AI 学习：打开页签失败（${stage}）${message ? "：" + message.slice(0, 60) : ""}，详情见控制台 [AIstudy-diag]`, 8000, "error");
+    };
+    try {
+      // openTab 可能同步 throw 或异步 reject，两种都要兜住（移动端曾出现点击无反应）
+      Promise.resolve(
+        openTab({
+          app: this.app,
+          custom: {
+            id: this.name + TAB_TYPE,
+            icon: "iconAiStudy",
+            title: "AI 智能学习",
+          },
+        }),
+      ).catch((error: unknown) => report("openTab 被拒绝", error));
+    } catch (error) {
+      report("openTab 同步异常", error);
+      return;
+    }
+    // 延迟自检：页签模型未创建说明 openTab 静默失败（DOM 结构因端而异，用内核模型状态判断而非 DOM）
+    // 用 type 而非 tab.id：3.8.9 中 tab 的 data-id 是 UUID，Custom 模型的 type 才是 name+TAB_TYPE
+    window.setTimeout(() => {
+      const opened = getAllModels().custom.some((m) => m.type === this.name + TAB_TYPE);
+      if (!opened) {
+        report("自检：页签未创建", new Error("1.5s 后仍未找到 AIstudy 自定义页签模型"));
+      }
+    }, 1500);
   }
 
   // 各数据文件的已写盘状态（序列化快照）；commitData 据此判断是否需要真实写盘

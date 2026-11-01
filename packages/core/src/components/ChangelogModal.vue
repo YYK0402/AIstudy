@@ -28,12 +28,22 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useModalStore } from "../stores/modal";
-import { CHANGELOG, changelogSince } from "../constants/changelog";
+import { getBridge } from "../bridge";
+import { CHANGELOG, changelogForHost, changelogSince } from "../constants/changelog";
 
 const modalStore = useModalStore();
 
 // seenVersion 为 null → 全部历史（常驻「更新日志」）；为版本号 → 只显示其后的增量（更新说明）
-const entries = computed(() => changelogSince(CHANGELOG, modalStore.changelogSeenVersion));
+// 再按宿主端过滤：思源端只看思源相关、飞牛端只看飞牛相关、未标注端归属的条目两端都有
+const entries = computed(() => {
+  let host: "siyuan" | "fnos" | undefined;
+  try {
+    host = getBridge().capabilities.host;
+  } catch {
+    host = undefined;
+  }
+  return changelogForHost(changelogSince(CHANGELOG, modalStore.changelogSeenVersion), host);
+});
 const title = computed(() => (modalStore.changelogSeenVersion == null ? "更新日志" : "更新说明"));
 
 function close(): void {

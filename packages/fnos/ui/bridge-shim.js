@@ -105,7 +105,7 @@
 
   window.__AI_STUDY_BRIDGE__ = {
     pluginInstanceId: instanceId,
-    capabilities: { ocr: "none", nasFiles: true, docs: "none" },
+    capabilities: { host: "fnos", ocr: "none", nasFiles: true, docs: "none" },
     getData: () => {
       if (!data) throw new Error("数据尚未加载完成");
       return data;

@@ -1,9 +1,14 @@
 import { isNewerVersion } from "../utils/version";
 
+/** 宿主端标识：条目可按端过滤，未标注 hosts 的条目所有端都显示（一致内容） */
+export type ChangelogHost = "siyuan" | "fnos";
+
 /** 单条更新内容：head 为分组标题（挂在该组首条上），text 为条目正文 */
 export interface ChangelogItem {
   head?: string;
   text: string;
+  /** 该条目适用的端；省略 = 所有端（共用内容） */
+  hosts?: ChangelogHost[];
 }
 
 export interface ChangelogEntry {
@@ -21,6 +26,15 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.3",
+    date: "2026-11-01",
+    intro: "更新说明按端显示 + 加载失败可见提示",
+    items: [
+      { text: "更新说明按端区分：思源端只显示思源相关更新，飞牛端只显示飞牛相关更新，两端一致的内容都有" },
+      { hosts: ["siyuan"], head: "可靠性", text: "插件页面加载 / 挂载失败时，页签内直接显示可见错误提示（此前静默白屏）；页签打开失败有明确报错，便于定位问题" },
+    ],
+  },
+  {
     version: "0.4.2",
     date: "2026-10-31",
     intro: "修复：矮视口下弹窗底部按钮（如「创建课程」）被裁切无法操作",
@@ -33,7 +47,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-10-31",
     intro: "移动端支持（iOS / Android）",
     items: [
-      { text: "插件现在可在 iPad / iPhone / Android 上使用：声明支持移动端平台，并修复原生移动端前端资源加载（改走内核 HTTP）" },
+      { hosts: ["siyuan"], text: "思源移动端（iPad / iPhone / Android）支持：声明支持移动端平台，并修复原生移动端前端资源加载（改走内核 HTTP）" },
       { text: "界面当前以桌面体验为主，移动端交互优化将在后续版本迭代" },
     ],
   },
@@ -73,8 +87,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       { text: "计划覆盖卡默认只列未排期知识点，全部排期可展开查看" },
       { head: "资料识别", text: "目录与知识点按课程全部资料聚合识别（聚合目录预览 / 确认后批量抽取未抽资料 / 多文件上传）" },
       { text: "修复分册合并目录时章节顺序错乱" },
-      { head: "兼容性", text: "文档创建传 parentID 消歧，兼容 3.8.9 新标题模式（同名祖先 / 斜杠标题错误提示）" },
-      { text: "修复 bazaar 校验：kernels 仅声明 all" },
+      { hosts: ["siyuan"], head: "兼容性", text: "文档创建传 parentID 消歧，兼容 3.8.9 新标题模式（同名祖先 / 斜杠标题错误提示）" },
+      { hosts: ["siyuan"], text: "修复 bazaar 校验：kernels 仅声明 all" },
       { head: "UI 与交互", text: "修复解析块不显示、报告堆叠条被压扁、填空翻译 tag 无色、闪卡列表无样式等 P0 缺陷" },
       { text: "16 处 window.confirm 替换为统一 ConfirmModal" },
       { text: "深色分层色值与浅色对比度优化、标题层级与间距节奏" },
@@ -108,7 +122,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       { text: "支持任意 OpenAI 兼容大模型服务商，按任务分配模型" },
       { text: "PDF / Word / PPT / TXT / Markdown 资料解析（扫描件 OCR）" },
       { text: "费曼式讲解 + SM2 间隔重复复习" },
-      { text: "课程 / 知识点 / 学习对话自动落库为笔记文档" },
+      { hosts: ["siyuan"], text: "课程 / 知识点 / 学习对话自动落库为思源笔记文档" },
     ],
   },
 ];
@@ -120,4 +134,32 @@ export const CHANGELOG: ChangelogEntry[] = [
 export function changelogSince(entries: ChangelogEntry[], seenVersion: string | null): ChangelogEntry[] {
   if (!seenVersion) return [...entries];
   return entries.filter((e) => isNewerVersion(e.version, seenVersion));
+}
+
+/**
+ * 按宿主端过滤条目：hosts 省略的条目所有端都显示；整条版本的条目全被滤掉时该版本隐藏。
+ * 分组标题（head）跟随组内第一条保留下来的条目（首条被滤掉时组标题不丢）。
+ * host 未知（未声明 / 新端）→ 不过滤，返回全部。
+ */
+export function changelogForHost(entries: ChangelogEntry[], host: ChangelogHost | null | undefined): ChangelogEntry[] {
+  if (!host) return [...entries];
+  const out: ChangelogEntry[] = [];
+  for (const entry of entries) {
+    let pendingHead: string | undefined;
+    const items: ChangelogItem[] = [];
+    for (const item of entry.items) {
+      if (item.head) pendingHead = item.head;
+      if (item.hosts && !item.hosts.includes(host)) continue;
+      const kept: ChangelogItem = { text: item.text };
+      if (pendingHead) {
+        kept.head = pendingHead;
+        pendingHead = undefined;
+      }
+      items.push(kept);
+    }
+    if (items.length > 0) {
+      out.push({ version: entry.version, date: entry.date, ...(entry.intro ? { intro: entry.intro } : {}), items });
+    }
+  }
+  return out;
 }

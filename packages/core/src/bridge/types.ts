@@ -32,6 +32,8 @@ export interface NasFileRef {
 
 /** 宿主能力声明：core 按此优雅降级功能入口（不认识的实现直接隐藏对应 UI） */
 export interface BridgeCapabilities {
+  /** 宿主端标识：更新说明按端过滤用（siyuan / fnos；未声明时不做端过滤） */
+  host?: "siyuan" | "fnos";
   /** OCR 实现：kernel = 宿主内核 OCR（走 ocrAsset）/ vision = AI 视觉模型（core 走 callAi）/ none = 不支持扫描版 */
   ocr: "kernel" | "vision" | "none";
   /** 资料来源是否支持「从 NAS 目录选择」 */
