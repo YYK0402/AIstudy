@@ -54,6 +54,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       },
       { head: "改进", text: "资料里的 HTML 表格自动转为 Markdown 表格渲染（含跨行跨列），讲义中的表格恢复可读；调用日志等宽表格窄屏下可横向滚动" },
       { head: "加固", text: "Markdown 渲染加固：表格内特殊符号（竖线等）不再截断内容；资源路径读取增加安全校验" },
+      { text: "API Key 失效（被撤销/填写错误）时给出明确的重填指引；错误日志不再可能携带 Key 片段" },
     ],
   },
   {
