@@ -37,6 +37,14 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.4",
+    date: "2026-11-01",
+    intro: "修复：原生移动端（iPad / Android）插件页空白",
+    items: [
+      { hosts: ["siyuan"], text: "修复原生移动端打开插件页空白：前端资源统一改由内核 HTTP 加载（此前移动端误走本地文件路径，iOS 安全策略禁止加载导致白屏）" },
+    ],
+  },
+  {
     version: "0.4.3",
     date: "2026-11-01",
     intro: { siyuan: "侧栏 logo 更新 + 加载失败可见提示", fnos: "侧栏 logo 更新" },

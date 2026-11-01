@@ -88,9 +88,9 @@ describe("changelogForHost", () => {
 });
 
 describe("CHANGELOG 数据形状", () => {
-  it("非空且最新在前（0.4.3）", () => {
+  it("非空且最新在前（0.4.4）", () => {
     expect(CHANGELOG.length).toBeGreaterThan(0);
-    expect(CHANGELOG[0].version).toBe("0.4.3");
+    expect(CHANGELOG[0].version).toBe("0.4.4");
   });
 
   it("每条都有非空 version/date 与 items", () => {
@@ -109,9 +109,14 @@ describe("CHANGELOG 数据形状", () => {
     }
   });
 
-  it("两端过滤后最新版本均可见（防止某端被标空）", () => {
-    expect(changelogForHost(CHANGELOG, "siyuan")[0]?.version).toBe(CHANGELOG[0].version);
-    expect(changelogForHost(CHANGELOG, "fnos")[0]?.version).toBe(CHANGELOG[0].version);
+  it("各端过滤结果非空，且最新版本在其目标端可见（防止某端被标空）", () => {
+    const s = changelogForHost(CHANGELOG, "siyuan");
+    const f = changelogForHost(CHANGELOG, "fnos");
+    expect(s.length).toBeGreaterThan(0);
+    expect(f.length).toBeGreaterThan(0);
+    expect(s[0].version).toBe(CHANGELOG[0].version);
+    // 0.4.4 为思源端专属修复，fnos 最新可见版本为 0.4.3
+    expect(f[0].version).toBe("0.4.3");
   });
 });
 

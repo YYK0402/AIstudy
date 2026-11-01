@@ -913,15 +913,11 @@ export default class AiStudyPlugin extends Plugin {
           self.mountApp(this.element);
           return;
         }
-        const frontend = getFrontend();
-        // 仅原生桌面（Electron）走 file://（无缓存问题）；浏览器与原生移动端（mobile /
-        // browser-mobile）一律走内核 HTTP——/plugins/... 由内核提供服务（已验证），
-        // 加时间戳避免构建后刷新仍命中旧 bundle 缓存
-        const isNativeDesktop = frontend === "desktop" || frontend === "desktop-window";
-        const dataDir = window.siyuan.config?.system?.dataDir;
-        const src = isNativeDesktop
-          ? `file://${dataDir}/plugins/${pluginName}/web/index.js`
-          : `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
+        // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载（3.8.9 移动端
+        // 也是 /stage/desktop/ 且 getFrontend() 返回 "desktop"，无法据此区分 Electron），
+        // 相对路径 /plugins/... 均解析到内核；加时间戳避免构建后刷新仍命中旧 bundle 缓存
+        // （曾按 file:// 区分原生桌面，iOS WKWebView 禁 http 页加载 file:// 导致白屏）
+        const src = `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
         const script = document.createElement("script");
         script.src = src;
         script.onload = () => {
