@@ -1,5 +1,6 @@
 import { getSettings } from "./settings";
 import { getBridge } from "@/bridge";
+import { validateDocPath } from "../utils/docPath";
 
 // 落库（经宿主桥接写入平台文档体系）
 /** 宿主是否有落库文档体系（docs=none 的宿主 core 已隐藏入口，此函数短路兜底） */
@@ -41,6 +42,7 @@ export async function createDoc(
   folder: string,
   parentRef?: string | null,
 ): Promise<{ id: string }> {
+  validateDocPath(path);
   return getBridge().createDoc(markdown, path, folder, parentRef);
 }
 

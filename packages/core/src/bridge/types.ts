@@ -44,8 +44,8 @@ export interface BridgeCapabilities {
 
 /**
  * 宿主适配器契约：core 只依赖本接口，不感知平台。
- * 宿主（思源插件 / 飞牛服务端 / Obsidian 插件）在调用 AiStudyApp.mount 前设置
- * window.__AI_STUDY_BRIDGE__；文档句柄（id）对 core 不透明，各端自行解释。
+ * 宿主（思源插件 / 飞牛服务端 / Obsidian 插件）调用 AiStudyApp.mount(el, bridge) 时直传实现；
+ * 文档句柄（id）对 core 不透明，各端自行解释。
  */
 export interface StudyBridge {
   /** 本次宿主加载实例 id：热重载/重启后变化，前端据此发现已被杀死的在途调用（僵尸任务） */

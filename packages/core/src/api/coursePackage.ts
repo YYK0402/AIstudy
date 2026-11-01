@@ -17,6 +17,7 @@ import type {
 import { nextId, now } from "./format";
 import { getData, saveData } from "./storage";
 import { uploadAsset } from "./material";
+import { getBridgeSafe } from "@/bridge";
 
 export const PACKAGE_FORMAT = "ai-study-course";
 export const PACKAGE_VERSION = 1;
@@ -275,7 +276,7 @@ export async function buildCoursePackageZip(
   };
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   // 生成方署名按宿主端：仅思源端提「思源插件」，避免其他端用户感知到思源的存在
-  const host = typeof window !== "undefined" ? window.__AI_STUDY_BRIDGE__?.capabilities?.host : undefined;
+  const host = getBridgeSafe()?.capabilities?.host;
   const generator = host === "siyuan" ? "由思源插件「AI 智能学习」生成" : "由「AI 智能学习」生成";
   zip.file(
     "README.txt",

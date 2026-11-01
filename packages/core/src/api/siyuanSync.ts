@@ -1,7 +1,7 @@
 import type { Chapter, Course, ExplainRecord, KnowledgePoint } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
-import { ensureFolder } from "./docStore";
+import { createDoc, ensureFolder } from "./docStore";
 import { getBridge } from "@/bridge";
 
 const CONV_BEGIN = "<!-- ai-study:conversations:begin -->";
@@ -152,13 +152,13 @@ async function syncConvDocSerial(
       } else {
         // 文档已被删除 → 重建（轮次数据都在库里，重建不丢内容）
         const notebook = await ensureFolder(settings.notebookName);
-        const { id } = await getBridge().createDoc(newMd, target.path, notebook, target.parentID);
+        const { id } = await createDoc(newMd, target.path, notebook, target.parentID);
         data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
         getBridge().showMessage("学习对话文档曾被删除，已自动重建", 3000);
       }
     } else {
       const notebook = await ensureFolder(settings.notebookName);
-      const { id } = await getBridge().createDoc(newMd, target.path, notebook, target.parentID);
+      const { id } = await createDoc(newMd, target.path, notebook, target.parentID);
       data.conversationsDocs[target.key] = { docId: id, lastMarkdown: newMd };
     }
     await saveData(data);

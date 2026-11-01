@@ -30,10 +30,9 @@ type CallAiInput = Parameters<StudyBridge["callAi"]>[0];
 
 declare global {
   interface Window {
-    /** 宿主桥接实现：mount.ts 挂载时解析（契约见 core/src/bridge/types.ts） */
-    __AI_STUDY_BRIDGE__?: StudyBridge;
     AiStudyApp: {
-      mount(el: Element): void;
+      /** bridge 由宿主直传（不挂 window 裸全局，防同窗口第三方脚本读取/劫持） */
+      mount(el: Element, bridge: StudyBridge): void;
       unmount(): void;
     };
   }
@@ -224,7 +223,6 @@ export default class AiStudyPlugin extends Plugin {
   private rateWaitNotified = false;
 
   async onload() {
-    this.exposeApi();
     await this.initData();
     this.registerTab();
     this.selfHealTab();
@@ -315,9 +313,9 @@ export default class AiStudyPlugin extends Plugin {
     window.AiStudyApp?.unmount();
   }
 
-  // 实现桥接契约并暴露到全局，供直接挂载的前端调用（core 经 getBridge() 访问）
-  private exposeApi(): void {
-    window.__AI_STUDY_BRIDGE__ = {
+  // 实现桥接契约，挂载时直传给前端（core 经 getBridge() 访问）
+  private buildBridge(): StudyBridge {
+    return {
       /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
       pluginInstanceId: PLUGIN_INSTANCE_ID,
       capabilities: { host: "siyuan", ocr: "kernel", nasFiles: false, docs: "siyuan" },
@@ -975,7 +973,7 @@ export default class AiStudyPlugin extends Plugin {
   /** 挂载前端（统一兜底：挂载失败渲染页签内可见错误，而非静默白屏） */
   private mountApp(panel: Element) {
     try {
-      window.AiStudyApp.mount(panel);
+      window.AiStudyApp.mount(panel, this.buildBridge());
     } catch (error) {
       console.error("[AIstudy-diag] 前端挂载失败:", error);
       const detail =
