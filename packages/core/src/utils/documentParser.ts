@@ -2,6 +2,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth/mammoth.browser";
 import JSZip from "jszip";
+import { htmlTablesToMarkdown } from "./htmlTable";
 
 // pdfjs-dist 需要设置 worker 路径；经 vite 构建后 worker 会被内联为 data URL
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -341,14 +342,16 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
         headings: [],
       };
   }
-  return { name: file.name, fileType, contentText: content.markdown, headings: content.headings };
+  // HTML 打印体 PDF 的文本层可能直接含 <table> 标记 → 转 markdown 表格（AI 抽取/预览同受益）
+  return { name: file.name, fileType, contentText: htmlTablesToMarkdown(content.markdown), headings: content.headings };
 }
 
 export async function parseTextInput(text: string): Promise<ParsedDocument> {
+  const clean = htmlTablesToMarkdown(text);
   return {
     name: `粘贴文本 ${new Date().toLocaleString("zh-CN")}`,
     fileType: "text",
-    contentText: text,
-    headings: extractHeadingsFromMarkdown(text),
+    contentText: clean,
+    headings: extractHeadingsFromMarkdown(clean),
   };
 }

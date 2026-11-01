@@ -20,7 +20,7 @@
             <button class="btn sm ghost" :disabled="!currentCourseId() || reidentifying" @click="reidentifyChapters">
               <AppIcon name="refresh" :size="14" /> {{ reidentifying ? "识别中…" : "重新识别目录" }}
             </button>
-            <button v-if="!batchMode" class="btn sm ghost" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /> 批量删除</button>
+            <button v-if="!batchMode" class="btn sm ghost" title="批量删除章节" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           </template>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
@@ -120,7 +120,7 @@
               <button v-if="unassignedCount > 0 && chapters.length > 0" class="btn sm ghost" :disabled="relinking" @click="autoRelink">
                 <AppIcon name="spark" :size="14" /> {{ relinking ? "归位中…" : "自动归位" }}
               </button>
-              <button v-if="!kpBatchMode" class="btn sm ghost" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode"><AppIcon name="check-square" :size="13" /> 批量删除</button>
+              <button v-if="!kpBatchMode" class="btn sm ghost" title="批量删除知识点" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
               <button v-else class="btn sm ghost" @click="exitKpBatchMode">取消</button>
             </template>
             <span class="kp-count">共 {{ filteredKnowledgePoints.length }} 个</span>

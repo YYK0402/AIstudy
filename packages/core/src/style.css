@@ -1,6 +1,8 @@
 .ai-study-app {
   user-select: text;
   -webkit-user-select: text;
+  /* 弹窗 teleport 到 app 根（.content 容器之外），以 app 根为容器才能覆盖弹窗内窄屏规则 */
+  container-type: inline-size;
   --as-bg: #0c100d;
   --as-bg-elev: #161e17;
   --as-bg-elev2: #1f2820;
@@ -292,7 +294,9 @@
 .sidebar-foot { border-top: 1px solid var(--as-border-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }
 
 /* ===== 主区域 ===== */
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* container-type 供 @container 窄屏规则使用：顶栏在 .content 容器之外，
+   须以 .main（顶栏+内容的共同父级）为容器才能覆盖顶栏 */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; container-type: inline-size; }
 /* 注意：.topbar 不能有 backdrop-filter —— 它会创建独立层叠上下文，
    把铃铛面板的 z-index 困在顶栏内部，导致面板被 content/modal 盖住（按钮点不到） */
 .topbar {
@@ -453,6 +457,8 @@
 .stat .v { font-family: var(--as-font-display); font-size: 32px; font-weight: 500; margin-top: 8px; line-height: 1; }
 .stat .v span { font-size: 14px; color: var(--as-text-faint); font-weight: 400; }
 .two-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+/* grid 子项默认 min-width:auto，内部长内容会撑破列宽 → 显式允许收缩 */
+.two-col > * { min-width: 0; }
 .settings-two-col { grid-template-columns: 1fr 1fr; }
 
 .today-list { display: flex; flex-direction: column; gap: 8px; }
@@ -603,9 +609,11 @@
 .model-item input:focus { outline: none; border-color: var(--as-accent-line); }
 .provider-wrap { display: flex; flex-direction: column; }
 .material-list { display: flex; flex-direction: column; gap: 6px; }
-.material-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--as-bg-elev2); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); }
-.material-item .m-name { font-weight: 500; font-size: 13px; }
-.material-item .m-meta { font-size: 11px; color: var(--as-text-faint); margin-top: 2px; font-family: var(--as-font-mono); }
+.material-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--as-bg-elev2); border: 1px solid var(--as-border-soft); border-radius: var(--as-radius-sm); min-width: 0; }
+/* 文本包裹层：flex 子项须 min-width:0 才能收缩，长文件名才走省略号而非撑破容器 */
+.material-item > div { min-width: 0; flex: 1; }
+.material-item .m-name { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-item .m-meta { font-size: 11px; color: var(--as-text-faint); margin-top: 2px; font-family: var(--as-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kp-name { font-weight: 500; font-size: 13.5px; }
 .kp-meta { font-size: 10.5px; color: var(--as-text-faint); margin-top: 4px; font-family: var(--as-font-mono); }
 .tag.chapter { color: var(--as-accent-strong); border-color: var(--as-accent-line); }
@@ -984,6 +992,9 @@
 }
 .ta-row input:focus { outline: none; border-color: var(--as-accent-line); }
 
+.table-scroll { overflow-x: auto; margin-bottom: 4px; }
+.table-scroll::-webkit-scrollbar { height: 8px; }
+.table-scroll::-webkit-scrollbar-thumb { background: var(--as-border); border-radius: 4px; }
 .log-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .log-table th { text-align: left; color: var(--as-text-faint); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--as-border); font-size: 11px; letter-spacing: .06em; }
 .log-table td { padding: 9px 10px; border-bottom: 1px solid var(--as-border-soft); color: var(--as-text-dim); }
@@ -1471,8 +1482,6 @@
   border-radius: var(--as-radius-sm);
   font-size: 13px;
   line-height: 1.8;
-  white-space: pre-wrap;
-  word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -1482,9 +1491,9 @@
 .ask-msg .txt.md-body { white-space: normal; }
 .md-body > :first-child { margin-top: 0; }
 .md-body > :last-child { margin-bottom: 0; }
-.md-body p { margin: 0 0 8px; }
+.md-body p { margin: 0 0 8px; overflow-wrap: break-word; }
 .md-body ul, .md-body ol { margin: 0 0 8px; padding-left: 20px; }
-.md-body li { margin: 2px 0; }
+.md-body li { margin: 2px 0; overflow-wrap: break-word; }
 .md-body li > ul, .md-body li > ol { margin: 2px 0; }
 .md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6 { margin: 14px 0 6px; line-height: 1.4; }
 .md-body h1 { font-size: 17px; }
@@ -1498,7 +1507,7 @@
 .md-body hr { border: none; border-top: 1px solid var(--as-border); margin: 10px 0; }
 .md-body a { color: var(--as-accent); text-decoration: none; }
 .md-body a:hover { text-decoration: underline; }
-.md-body table { border-collapse: collapse; margin: 0 0 8px; font-size: 12.5px; }
+.md-body table { border-collapse: collapse; margin: 0 0 8px; font-size: 12.5px; display: block; max-width: 100%; overflow-x: auto; }
 .md-body th, .md-body td { border: 1px solid var(--as-border); padding: 4px 10px; }
 .md-body th { background: var(--as-bg-elev2); }
 
@@ -1670,12 +1679,56 @@
 }
 
 
-/* 窄内容区（插件页签被挤窄时）回退为单栏，避免知识点名称竖排 */
+/* 窄内容区（插件页签被挤窄时）回退为单栏，避免知识点名称竖排。
+   container query 按容器 content-box 宽度匹配（.content 含 26px 内边距，
+   1127px 页签下 content-box ≈ 847px 已触发本块 —— 既有行为，保持断点不动）。
+   .content 容器覆盖页面内容；顶栏在 .content 外，另设 .main 容器规则 */
 @container (max-width: 860px) {
   .two-col,
   .settings-two-col { grid-template-columns: 1fr; }
   .course-grid { grid-template-columns: 1fr; }
   .study-layout { grid-template-columns: 1fr; }
+}
+/* 极端窄屏（页签 ≤ ~840px / 移动端）：元素固有宽会撑破容器时的降级。
+   弹窗内容 teleport 到 .ai-study-app 根（.content 外），经 app 级容器匹配 */
+@container (max-width: 560px) {
+  /* stat-grid 的 minmax(180px,1fr) 在窄容器仍保 180px 最小列宽 → 撑破，窄屏改单列 */
+  .stat-grid { grid-template-columns: 1fr; }
+  /* 首页看板：问候与统计竖排，统计横铺整行 */
+  .hero { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .hero-stats { width: 100%; justify-content: space-between; }
+  /* 区块头：标题行放不下时筛选 tabs 换行 */
+  .section-head { flex-wrap: wrap; row-gap: 8px; }
+  .section-head .filter-tabs { margin-left: 0; }
+  /* 组卷表单：min-width 280px 在窄容器撑破 → 两列自适应 */
+  .gen-form { min-width: 0; grid-template-columns: repeat(2, 1fr); }
+  /* 知识图谱：搜索框定宽 170px 撑破 → 弹性；图例换行 */
+  .graph-search { width: auto; flex: 1; min-width: 120px; max-width: 170px; }
+  .graph-legend { margin-left: 0; flex-wrap: wrap; }
+  /* 学习报告热力行：章节列 150px + 条形 min 60px 超出窄容器 → 收缩 */
+  .hm-head { width: 100px; }
+  /* 章节树节点：行内 tag+名称+进度+条形放不下 → 换行，条形整行显示 */
+  .mtree-node { flex-wrap: wrap; }
+  .mtree-node .mtree-name { flex: 1; max-width: none; min-width: 60px; }
+  .mtree-bar { flex-basis: 100%; min-width: 0; }
+  /* 知识点卡头操作区（批量删除+计数）：带图标的按钮文本收起（title 保留语义），避免固有宽撑破 */
+  .kp-head-actions { margin-left: 0; flex-wrap: wrap; row-gap: 6px; }
+  .kp-head-actions .btn svg + span { display: none; }
+  .kp-head-actions .btn { padding: 5px 8px; }
+  /* 模型配置：服务商 URL 长文本断行；表单控件不超容器（select 固有宽由 option 决定） */
+  .provider-item .info { min-width: 0; }
+  .provider-item .info .s { overflow-wrap: anywhere; }
+  .field input, .field textarea, .field select { max-width: 100%; }
+  .ta-row { min-width: 0; }
+  .ta-row select { flex: 1; min-width: 0; max-width: 100%; }
+  .ta-row input { min-width: 0; max-width: 100%; }
+  .model-item { min-width: 0; }
+  .model-item select { min-width: 0; max-width: 100%; }
+  .task-assign { min-width: 0; }
+}
+/* 顶栏窄屏：统计胶囊让位（侧栏角标已有同类信息），间距收紧 */
+@container (max-width: 640px) {
+  .topbar { padding: 0 14px; gap: 10px; }
   .topbar-today { display: none; }
 }
 

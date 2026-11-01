@@ -198,6 +198,7 @@
         暂无调用记录
       </div>
       <template v-else>
+        <div class="table-scroll">
         <table class="log-table">
           <tr><th>任务</th><th>模型</th><th>Token</th><th>状态</th><th>时间</th></tr>
           <template v-for="log in pagedLogs" :key="log.id">
@@ -218,6 +219,7 @@
             </tr>
           </template>
         </table>
+        </div>
         <div v-if="logTotalPages > 1" class="pagination">
           <button class="btn sm ghost" :disabled="logPage === 1" @click="logPage--">‹ 上一页</button>
           <span class="pg-info">{{ logPage }} / {{ logTotalPages }}</span>

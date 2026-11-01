@@ -40,6 +40,7 @@ import { materialSourceLabel, openSiyuanDoc } from "../api";
 import type { Material } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
 import { renderMarkdown } from "../utils/markdown";
+import { htmlTablesToMarkdown } from "../utils/htmlTable";
 import { getBridge } from "@/bridge";
 
 const props = defineProps<{
@@ -65,9 +66,10 @@ async function openInSiyuan() {
   }
 }
 
-/** 资料正文为 Markdown（文档解析产物），渲染成 HTML 展示 */
+/** 资料正文为 Markdown（文档解析产物），渲染成 HTML 展示；
+ *  存量资料 contentText 可能含 <table> 标记（解析管线加入转换前入库）→ 渲染前兜底转换 */
 const contentHtml = computed(() =>
-  props.material?.contentText ? renderMarkdown(props.material.contentText) : "",
+  props.material?.contentText ? renderMarkdown(htmlTablesToMarkdown(props.material.contentText)) : "",
 );
 
 const headings = computed<ParsedHeading[]>(() => {
