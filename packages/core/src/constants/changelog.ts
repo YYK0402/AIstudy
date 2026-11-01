@@ -37,6 +37,21 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.5",
+    date: "2026-11-01",
+    intro: "AI 问答/资料预览 markdown 渲染 + 修复弹窗不可见等可靠性问题",
+    items: [
+      { head: "新功能", text: "AI 问答回复与资料预览支持 markdown 渲染（标题/加粗/列表/表格/代码块等），资料里的排版恢复可读" },
+      { text: "AI 问答浮窗可拖动位置、右缘拖拽调整宽度，位置与大小自动记住" },
+      { head: "修复", text: "修复特定场景（内核恢复隐藏页签后再开新页签）下所有弹窗不可用、点击无反应的问题" },
+      { text: "修复 AI 问答请求失败时已输入的问题丢失（现在保留，重开弹窗可续聊）" },
+      { text: "修复整卷交卷阅卷中途出错时成绩单/回顾逐题错位" },
+      { text: "AI 限流排队等待期间可立即取消，不再傻等" },
+      { head: "安全", text: "宿主桥接接口不再暴露到页面全局，防止同页面其他脚本读取学习数据或操作笔记文档" },
+      { text: "落库笔记路径增加客户端校验，杜绝路径越界" },
+    ],
+  },
+  {
     version: "0.4.4",
     date: "2026-11-01",
     intro: "修复：移动端前端加载失败 + 多页签主题切换不生效",
