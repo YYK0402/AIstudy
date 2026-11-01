@@ -43,7 +43,7 @@ export function kpHasOpenWrong(data: AppData, kpId: number): boolean {
   });
 }
 
-function parseAiGradeResponse(content: string): { score: number; feedback: string } | null {
+export function parseAiGradeResponse(content: string): { score: number; feedback: string } | null {
   const trimmed = content.trim();
   const jsonMatch =
     trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) ||
