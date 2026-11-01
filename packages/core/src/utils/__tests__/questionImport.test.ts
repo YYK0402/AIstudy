@@ -108,4 +108,35 @@ describe("parseQuestionsMarkdown", () => {
     expect(bad.drafts).toHaveLength(0);
     expect(bad.errors[0].reason).toContain("空位标记");
   });
+
+  it("CRLF 换行与 LF 解析结果一致", () => {
+    const lf = "题干C\nA. 甲\nB. 乙\n答案: A";
+    const crlf = lf.replace(/\n/g, "\r\n");
+    const a = parseQuestionsMarkdown(lf, []);
+    const b = parseQuestionsMarkdown(crlf, []);
+    expect(b.errors).toHaveLength(0);
+    expect(b.drafts[0].title).toBe(a.drafts[0].title);
+    expect(b.drafts[0].options).toEqual(a.drafts[0].options);
+    expect(b.drafts[0].answer).toBe(a.drafts[0].answer);
+  });
+
+  it("第 9 选项（I.）不在 A-H 支持范围：不当选项，落入题干", () => {
+    const { drafts, errors } = parseQuestionsMarkdown("题干九\nA. 甲\nB. 乙\nI. 第九项\n答案: A", []);
+    expect(errors).toHaveLength(0);
+    expect(drafts[0].options).toEqual(["甲", "乙"]);
+    expect(drafts[0].title).toContain("第九项");
+  });
+
+  it("带「- 」前缀的选项行不识别为选项（选项正则无列表前缀分支），落入题干", () => {
+    const { drafts, errors } = parseQuestionsMarkdown("题干X\n- A. 甲\n- B. 乙\n答案: A", []);
+    expect(errors).toHaveLength(0);
+    expect(drafts[0].options).toEqual([]);
+    expect(drafts[0].qType).toBe("essay");
+  });
+
+  it("首行 markdown 标题提取为 paperName，并从标题提取年份", () => {
+    const { paperName, paperYear } = parseQuestionsMarkdown("# 2024考研政治真题\n1. 题干\nA. 甲\nB. 乙\n答案: A", []);
+    expect(paperName).toBe("2024考研政治真题");
+    expect(paperYear).toBe(2024);
+  });
 });

@@ -10,6 +10,10 @@ describe("countPlanDays", () => {
   it("目标日早于开始日时至少 1 天", () => {
     expect(countPlanDays("2026-10-03", "2026-10-01")).toBe(1);
   });
+
+  it("跨年：2026-12-30 → 2027-01-03 共 5 天", () => {
+    expect(countPlanDays("2026-12-30", "2027-01-03")).toBe(5);
+  });
 });
 
 describe("distributeKpsByDay", () => {
@@ -27,5 +31,10 @@ describe("distributeKpsByDay", () => {
     expect(out).toHaveLength(3);
     expect(out.map((d) => d.kps)).toEqual([[1], [], []]);
     expect(out.map((d) => d.date)).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+  });
+
+  it("跨年跨月日期推进正确（12-31 起 3 天）", () => {
+    const out = distributeKpsByDay([1, 2, 3], 3, "2026-12-31");
+    expect(out.map((d) => d.date)).toEqual(["2026-12-31", "2027-01-01", "2027-01-02"]);
   });
 });

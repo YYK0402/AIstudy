@@ -33,10 +33,12 @@ export function applySavedPositions<T extends { x: number; y: number }>(
   });
 }
 
-/** 拖动坐标限制在画布内，避免拖出 viewBox 后消失 */
+/** 拖动坐标限制在画布内，避免拖出 viewBox 后消失；NaN 坐标回落到 padding（Math.max/min 含 NaN 会传染） */
 export function clampPosition(p: PositionPoint, width: number, height: number, padding = 20): PositionPoint {
+  const x = Number.isFinite(p.x) ? p.x : padding;
+  const y = Number.isFinite(p.y) ? p.y : padding;
   return {
-    x: Math.max(padding, Math.min(width - padding, p.x)),
-    y: Math.max(padding, Math.min(height - padding, p.y)),
+    x: Math.max(padding, Math.min(width - padding, x)),
+    y: Math.max(padding, Math.min(height - padding, y)),
   };
 }

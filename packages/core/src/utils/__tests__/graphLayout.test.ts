@@ -36,7 +36,23 @@ describe("applySavedPositions", () => {
 });
 
 describe("clampPosition", () => {
-  it("限制在画布边界内", () => {
+  it("限制在画布边界内（左上/右下）", () => {
     expect(clampPosition({ x: -50, y: 999 }, 400, 300)).toEqual({ x: 20, y: 280 });
+  });
+
+  it("四方向：右下越界回拉、左上越界顶到 padding", () => {
+    expect(clampPosition({ x: 999, y: -50 }, 400, 300)).toEqual({ x: 380, y: 20 });
+    expect(clampPosition({ x: -50, y: -50 }, 400, 300)).toEqual({ x: 20, y: 20 });
+    expect(clampPosition({ x: 999, y: 999 }, 400, 300)).toEqual({ x: 380, y: 280 });
+  });
+
+  it("界内坐标原样返回", () => {
+    expect(clampPosition({ x: 100, y: 100 }, 400, 300)).toEqual({ x: 100, y: 100 });
+  });
+
+  it("NaN 坐标不产生 NaN 结果", () => {
+    const r = clampPosition({ x: NaN, y: NaN }, 400, 300);
+    expect(Number.isFinite(r.x)).toBe(true);
+    expect(Number.isFinite(r.y)).toBe(true);
   });
 });
