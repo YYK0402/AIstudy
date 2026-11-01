@@ -16,6 +16,7 @@ import { runWithRetry } from "../../core/src/aiRetry";
 import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
+import { isMobileFrontend } from "./frontend";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
@@ -932,8 +933,8 @@ export default class AiStudyPlugin extends Plugin {
           self.pendingPanels.push(this.element);
           return;
         }
-        // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载（3.8.9 移动端
-        // 也是 /stage/desktop/ 且 getFrontend() 返回 "desktop"，无法据此区分 Electron），
+        // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载
+        // （3.8.9 移动端是 /stage/build/mobile/，getFrontend() 返回 browser-mobile / mobile），
         // 相对路径 /plugins/... 均解析到内核；加时间戳避免构建后刷新仍命中旧 bundle 缓存
         // （曾按 file:// 区分原生桌面，iOS WKWebView 禁 http 页加载 file:// 导致白屏）
         const src = `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
@@ -1054,6 +1055,11 @@ export default class AiStudyPlugin extends Plugin {
       const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
       showMessage(`AI 学习：打开页签失败（${stage}）${message ? "：" + message.slice(0, 60) : ""}，详情见控制台 [AIstudy-diag]`, 8000, "error");
     };
+    if (isMobileFrontend(getFrontend())) {
+      // 内核移动端未实现 custom 页签（openTab 空实现，DOM 无 custom 渲染分支）→ 明确提示，不触发注定失败的 openTab
+      showMessage("AI 学习：当前内核版本的移动端暂不支持学习页签，请通过桌面端（桌面应用或电脑浏览器）使用", 10000, "info");
+      return;
+    }
     try {
       // openTab 可能同步 throw 或异步 reject，两种都要兜住（移动端曾出现点击无反应）
       Promise.resolve(
@@ -1070,12 +1076,15 @@ export default class AiStudyPlugin extends Plugin {
       report("openTab 同步异常", error);
       return;
     }
-    // 延迟自检：页签模型未创建说明 openTab 静默失败（DOM 结构因端而异，用内核模型状态判断而非 DOM）
-    // 用 type 而非 tab.id：3.8.9 中 tab 的 data-id 是 UUID，Custom 模型的 type 才是 name+TAB_TYPE
+    // 延迟自检：页签未创建说明 openTab 静默失败
+    // 3.x 内核移除了 getAllModels（类型声明来自旧版 siyuan 包）→ 不可用时回退页签栏 DOM 检测（findTabPanel 同款依据）
     window.setTimeout(() => {
-      const opened = getAllModels().custom.some((m) => m.type === this.name + TAB_TYPE);
+      // 3.x 内核模块未提供 getAllModels（旧版 API，类型声明残留）→ 回退 DOM 检测
+      const opened = typeof getAllModels === "function"
+        ? getAllModels().custom.some((m) => m.type === this.name + TAB_TYPE)
+        : Boolean(this.findTabPanel());
       if (!opened) {
-        report("自检：页签未创建", new Error("1.5s 后仍未找到 AIstudy 自定义页签模型"));
+        report("自检：页签未创建", new Error("1.5s 后仍未找到 AIstudy 自定义页签"));
       }
     }, 1500);
   }

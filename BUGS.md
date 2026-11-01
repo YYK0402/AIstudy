@@ -1,5 +1,33 @@
 # BUG 记录
 
+## BUG-002 内核 3.8.9 移动端 petal 不支持插件自定义页签；getAllModels API 被移除
+
+- **状态**：已缓解（2026-11-01，插件侧明确提示 + 自检回退 DOM 检测）；根因在内核，待内核支持
+- **发现**：2026-11-01（用户安卓端 + 桌面控制台报错）
+- **严重性**：高（移动端入口点击无反应 / 桌面控制台 uncaught TypeError）
+
+### 现象
+
+1. 桌面点顶栏入口后控制台：`Uncaught TypeError: siyuan.getAllModels is not a function`（openStudyTab 的 1.5s 延迟自检内）
+2. 安卓 / 移动端 petal 点入口：页签静默不创建，无提示
+
+### 根因（已实证，/Applications/SiYuan.app 3.8.9 内核源码 + 运行时探针）
+
+1. **`getAllModels` / `getAllTabs` 已从 3.x 内核插件模块移除**（`node_modules/siyuan@1.2.9` 类型声明残留旧 API）。运行时 `require("siyuan")` 模块键表实测无此二函数（桌面 / 移动一致）。
+2. **移动端 build 的 `openTab` 是空实现**（mobile main.js 内 `pe=()=>{}`，openWindow 同为空 stub）；mobile 的 tab 栏渲染模块无 `custom` 类型分支 → 插件自定义页签在移动端 petal 根本无法创建。桌面 build 的 openTab 走 `openFile(options)` 正常。
+3. 注意：`window.siyuan` 是内核全局状态对象（zIndex/notebooks/config...），**不含插件 API**；插件 API 只经 CJS `require("siyuan")` 注入，页面上下文无法直接访问。
+
+### 修复（插件侧缓解）
+
+- `openStudyTab`：`getFrontend()` 含 `mobile`（mobile / browser-mobile）时不调 openTab，直接提示「当前内核版本的移动端暂不支持学习页签，请通过桌面端使用」
+- 自检：`typeof getAllModels === "function"` 不可用时回退 `findTabPanel()` DOM 检测（与内核版本解耦）
+- 新增 `packages/siyuan/src/frontend.ts` `isMobileFrontend` 纯函数 + 测试
+
+### 后续
+
+- 内核若实现移动端 custom 页签（openTab 非 stub + tab 栏 custom 分支），移除 `isMobileFrontend` 分支即可
+- 可在 siyuan-note/siyuan 提 issue 询问移动端插件页签支持计划
+
 ## BUG-001 学习首页创建课程后「我的课程」卡片不刷新（生产构建）
 
 - **状态**：已修复（2026-10-20）
