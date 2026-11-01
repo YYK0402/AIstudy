@@ -87,5 +87,11 @@ export const MATERIAL_SOURCE_LABELS: Record<string, string> = {
 
 export function materialSourceLabel(m: Material): string {
   const source = m.source ?? (m.assetPath ? "upload" : "paste");
+  if (source === "siyuan") {
+    // 非思源端（导入思源导出的课程包后）显示中性词，避免感知到思源的存在
+    const host = typeof window !== "undefined" ? window.__AI_STUDY_BRIDGE__?.capabilities?.host : undefined;
+    if (host && host !== "siyuan") return "文档";
+    return "思源";
+  }
   return MATERIAL_SOURCE_LABELS[source] ?? source;
 }

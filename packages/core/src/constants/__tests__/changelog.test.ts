@@ -114,3 +114,44 @@ describe("CHANGELOG 数据形状", () => {
     expect(changelogForHost(CHANGELOG, "fnos")[0]?.version).toBe(CHANGELOG[0].version);
   });
 });
+
+describe("跨端信息隔离（任一端不得感知其他端的存在）", () => {
+  const renderText = (host: "siyuan" | "fnos") =>
+    changelogForHost(CHANGELOG, host)
+      .map((e) => [e.intro, ...e.items.map((i) => (i.head ? `${i.head} ${i.text}` : i.text))].join("\n"))
+      .join("\n");
+
+  it("fnos 端全文不含思源端标识（思源 / 3.8.9 / bazaar）", () => {
+    const text = renderText("fnos");
+    for (const token of ["思源", "3.8.9", "bazaar"]) {
+      expect(text).not.toContain(token);
+    }
+  });
+
+  it("siyuan 端全文不含飞牛端标识（飞牛 / fnOS）", () => {
+    const text = renderText("siyuan");
+    for (const token of ["飞牛", "fnOS", "fnos"]) {
+      expect(text).not.toContain(token);
+    }
+  });
+
+  it("任一端不出现多端改造痕迹（「按端」字样）", () => {
+    for (const host of ["siyuan", "fnos"] as const) {
+      expect(renderText(host)).not.toContain("按端");
+    }
+  });
+
+  it("fnos 端：0.4.1（思源移动端）整版本隐藏", () => {
+    expect(changelogForHost(CHANGELOG, "fnos").map((e) => e.version)).not.toContain("0.4.1");
+  });
+
+  it("intro 按端渲染：0.4.3 / 0.3.0 / 0.1.0", () => {
+    const byHost = (host: "siyuan" | "fnos", version: string) =>
+      changelogForHost(CHANGELOG, host).find((e) => e.version === version)?.intro;
+    expect(byHost("siyuan", "0.4.3")).toContain("加载失败可见提示");
+    expect(byHost("fnos", "0.4.3")).toBe("侧栏 logo 更新");
+    expect(byHost("fnos", "0.3.0")).not.toContain("3.8.9");
+    expect(byHost("siyuan", "0.1.0")).toContain("思源自学课程插件");
+    expect(byHost("fnos", "0.1.0")).not.toContain("思源");
+  });
+});

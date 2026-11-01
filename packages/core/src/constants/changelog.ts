@@ -15,9 +15,20 @@ export interface ChangelogEntry {
   version: string;
   /** YYYY-MM-DD */
   date: string;
-  /** 一句话概述（可选） */
-  intro?: string;
+  /** 一句话概述（可选）；对象 = 按端版本（当前端缺省时不显示 intro） */
+  intro?: string | Partial<Record<ChangelogHost, string>>;
   items: ChangelogItem[];
+}
+
+/** 解析 intro：字符串直接用；对象取当前端值（host 未知时取首个已定义值） */
+function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null | undefined): string | undefined {
+  if (intro == null) return undefined;
+  if (typeof intro === "string") return intro;
+  if (host && intro[host]) return intro[host];
+  if (!host) {
+    return (Object.values(intro) as string[]).find(Boolean);
+  }
+  return undefined;
 }
 
 /**
@@ -28,9 +39,8 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.4.3",
     date: "2026-11-01",
-    intro: "更新说明按端显示 + 加载失败可见提示",
+    intro: { siyuan: "侧栏 logo 更新 + 加载失败可见提示", fnos: "侧栏 logo 更新" },
     items: [
-      { text: "更新说明按端区分：思源端只显示思源相关更新，飞牛端只显示飞牛相关更新，两端一致的内容都有" },
       { text: "侧栏 logo 更新为与插件图标一致的新版「机器人 + 书本」图标" },
       { hosts: ["siyuan"], head: "可靠性", text: "插件页面加载 / 挂载失败时，页签内直接显示可见错误提示（此前静默白屏）；页签打开失败有明确报错，便于定位问题" },
     ],
@@ -49,7 +59,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     intro: "移动端支持（iOS / Android）",
     items: [
       { hosts: ["siyuan"], text: "思源移动端（iPad / iPhone / Android）支持：声明支持移动端平台，并修复原生移动端前端资源加载（改走内核 HTTP）" },
-      { text: "界面当前以桌面体验为主，移动端交互优化将在后续版本迭代" },
+      { hosts: ["siyuan"], text: "界面当前以桌面体验为主，移动端交互优化将在后续版本迭代" },
     ],
   },
   {
@@ -80,7 +90,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.3.0",
     date: "2026-10-30",
-    intro: "学习计划甘特图视图 + UI 审计优化全量落地 + 3.8.9 兼容加固",
+    intro: { siyuan: "学习计划甘特图视图 + UI 审计优化全量落地 + 3.8.9 兼容加固", fnos: "学习计划甘特图视图 + UI 审计优化全量落地" },
     items: [
       { head: "学习计划", text: "新增甘特图视图：章节 / 知识点任务条，按任务类型着色（学习 / 练习 / 复习 / 测验），已完成划线" },
       { text: "时间粒度聚焦（仿飞书）：全部 / 周 / 月 / 季 / 年切换，今天定位与区间翻页" },
@@ -110,7 +120,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       { text: "学习日志与作答记录超保留期自动归档为月度汇总（默认 90 天，设置页可配 90/180/365/永久），累计统计口径不变" },
       { text: "学习对话文档单知识点超 50 轮时折叠显示最近轮次" },
       { text: "列表 / 章节树 / 知识图谱的 O(n²) 热点优化" },
-      { head: "稳定性", text: "修复 23 项 P0/P1 缺陷：数据保存与并发覆盖、思源笔记文档同步、切课数据竞态、级联删除遗漏等" },
+      { head: "稳定性", text: "修复 23 项 P0/P1 缺陷：数据保存与并发覆盖、文档同步、切课数据竞态、级联删除遗漏等" },
       { text: "保存性能优化：只写有变化的课程文件" },
       { text: "修复 11 项健壮性问题（错误提示、空态、边界条件）" },
     ],
@@ -118,7 +128,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.1.0",
     date: "2026-10-27",
-    intro: "基于可自定义大模型服务商的思源自学课程插件：资料导入、知识点拆解、学习计划、题库刷题、错题复盘、知识图谱、学习报告",
+    intro: {
+      siyuan: "基于可自定义大模型服务商的思源自学课程插件：资料导入、知识点拆解、学习计划、题库刷题、错题复盘、知识图谱、学习报告",
+      fnos: "基于可自定义大模型服务商的自学课程应用：资料导入、知识点拆解、学习计划、题库刷题、错题复盘、知识图谱、学习报告",
+    },
     items: [
       { text: "支持任意 OpenAI 兼容大模型服务商，按任务分配模型" },
       { text: "PDF / Word / PPT / TXT / Markdown 资料解析（扫描件 OCR）" },
@@ -159,7 +172,8 @@ export function changelogForHost(entries: ChangelogEntry[], host: ChangelogHost 
       items.push(kept);
     }
     if (items.length > 0) {
-      out.push({ version: entry.version, date: entry.date, ...(entry.intro ? { intro: entry.intro } : {}), items });
+      const intro = resolveIntro(entry.intro, host);
+      out.push({ version: entry.version, date: entry.date, ...(intro ? { intro } : {}), items });
     }
   }
   return out;

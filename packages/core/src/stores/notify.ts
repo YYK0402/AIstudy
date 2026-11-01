@@ -133,7 +133,7 @@ export const useNotifyStore = defineStore("notify", () => {
           t.status = "failed";
           t.unread = true;
           t.finishedAt = new Date().toISOString();
-          t.message = "任务中断（插件重载或思源重启），请重试";
+          t.message = "任务中断（插件重载或系统重启），请重试";
         }
       }
       save();

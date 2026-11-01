@@ -77,7 +77,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useCourseStore } from "../stores/course";
 import { useProviderStore } from "../stores/provider";
-import { createCourse, updateCourse, queryCourses, deleteCourse } from "../api";
+import { createCourse, updateCourse, queryCourses, deleteCourse, docsEnabled } from "../api";
 import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
@@ -175,7 +175,8 @@ async function save() {
 async function remove() {
   const editing = modalStore.editingCourse;
   if (!editing || creating.value) return;
-  if (!(await confirm({ message: `确定删除课程「${editing.name}」？其下章节、知识点、资料、题目与全部学习记录将一并删除，且已落库思源的文档会同步删除。此操作不可恢复。`, danger: true, confirmText: "删除" }))) {
+  const docClause = docsEnabled() ? "，且已落库思源的文档会同步删除" : "";
+  if (!(await confirm({ message: `确定删除课程「${editing.name}」？其下章节、知识点、资料、题目与全部学习记录将一并删除${docClause}。此操作不可恢复。`, danger: true, confirmText: "删除" }))) {
     return;
   }
   creating.value = true;

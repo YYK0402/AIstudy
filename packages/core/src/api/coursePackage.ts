@@ -274,9 +274,12 @@ export async function buildCoursePackageZip(
     note: "本课程包仅供学习交流，请仅分享你原创或有权分享的资料。",
   };
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+  // 生成方署名按宿主端：仅思源端提「思源插件」，避免其他端用户感知到思源的存在
+  const host = typeof window !== "undefined" ? window.__AI_STUDY_BRIDGE__?.capabilities?.host : undefined;
+  const generator = host === "siyuan" ? "由思源插件「AI 智能学习」生成" : "由「AI 智能学习」生成";
   zip.file(
     "README.txt",
-    `课程包：${pkg.course.name}\n由思源插件「AI 智能学习」生成\n\n导入方式：在插件首页点「导入课程包」选择本文件。\n\n注意：请仅分享你原创或有权分享的资料，尊重原始版权。`,
+    `课程包：${pkg.course.name}\n${generator}\n\n导入方式：在插件首页点「导入课程包」选择本文件。\n\n注意：请仅分享你原创或有权分享的资料，尊重原始版权。`,
   );
 
   let assetFiles = 0;
