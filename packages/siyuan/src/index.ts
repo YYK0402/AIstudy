@@ -909,6 +909,11 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
+  // 前端 bundle 加载中（init 竞态防护）：内核恢复隐藏页签与用户开新页签的 init 可能并发，
+  // 若各自注入 script 会二次求值 bundle（两套独立模块状态互相 adopt，实例落到隐藏页签、可见页签空白）
+  private frontendLoading = false;
+  private pendingPanels: Element[] = [];
+
   // 注册自定义页签：动态加载前端 bundle 并直接 mount 到页签元素
   private registerTab() {
     const pluginName = this.name;
@@ -922,6 +927,11 @@ export default class AiStudyPlugin extends Plugin {
           self.mountApp(this.element);
           return;
         }
+        // 并发 init（bundle 尚在加载）：登记面板排队，首份 script 加载完成后统一挂载
+        if (self.frontendLoading) {
+          self.pendingPanels.push(this.element);
+          return;
+        }
         // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载（3.8.9 移动端
         // 也是 /stage/desktop/ 且 getFrontend() 返回 "desktop"，无法据此区分 Electron），
         // 相对路径 /plugins/... 均解析到内核；加时间戳避免构建后刷新仍命中旧 bundle 缓存
@@ -929,18 +939,31 @@ export default class AiStudyPlugin extends Plugin {
         const src = `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
         const script = document.createElement("script");
         script.src = src;
+        self.frontendLoading = true;
         script.onload = () => {
+          self.frontendLoading = false;
+          const queued = self.pendingPanels.splice(0);
           if (!window.AiStudyApp) {
             // bundle 下载成功但求值中途抛错（语法/运行时），AiStudyApp 未挂上
             console.error("[AIstudy-diag] bundle 已下载但求值失败，window.AiStudyApp 未定义");
             self.showTabError(this.element, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
+            for (const p of queued) {
+              self.showTabError(p, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
+            }
             return;
           }
           self.mountApp(this.element);
+          // 排队的并发面板依次挂载：mount 的 adopt 逻辑保证实例最终跟随最后一个面板
+          for (const p of queued) self.mountApp(p);
         };
         script.onerror = () => {
+          self.frontendLoading = false;
+          const queued = self.pendingPanels.splice(0);
           console.error("[AIstudy-diag] 加载前端资源失败:", src);
           self.showTabError(this.element, "前端资源加载失败", `script 请求未成功：${src}`);
+          for (const p of queued) {
+            self.showTabError(p, "前端资源加载失败", `script 请求未成功：${src}`);
+          }
         };
         document.head.appendChild(script);
       },
