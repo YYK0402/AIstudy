@@ -25,7 +25,7 @@
         >{{ h.text }}</div>
       </div>
       <div class="mp-content">
-        <div v-if="material && material.contentText">{{ material.contentText }}</div>
+        <div v-if="material && material.contentText" class="md-body" v-html="contentHtml"></div>
         <EmptyState v-else compact icon="book" text="该资料没有可预览的文本内容" />
       </div>
     </div>
@@ -39,6 +39,7 @@ import EmptyState from "./EmptyState.vue";
 import { materialSourceLabel, openSiyuanDoc } from "../api";
 import type { Material } from "../api";
 import type { ParsedHeading } from "../utils/documentParser";
+import { renderMarkdown } from "../utils/markdown";
 import { getBridge } from "@/bridge";
 
 const props = defineProps<{
@@ -63,6 +64,11 @@ async function openInSiyuan() {
     opening.value = false;
   }
 }
+
+/** 资料正文为 Markdown（文档解析产物），渲染成 HTML 展示 */
+const contentHtml = computed(() =>
+  props.material?.contentText ? renderMarkdown(props.material.contentText) : "",
+);
 
 const headings = computed<ParsedHeading[]>(() => {
   if (!props.material) return [];
