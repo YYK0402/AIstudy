@@ -33,7 +33,9 @@ export function mount(el: Element): void {
   app.mount(el);
   installModalGlobals(el);
 
-  useThemeStore().apply();
+  const theme = useThemeStore();
+  theme.setRoot(el.querySelector(":scope > .ai-study-app"));
+  theme.apply();
 }
 
 export function unmount(): void {

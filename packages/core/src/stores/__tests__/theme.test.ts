@@ -46,14 +46,32 @@ describe("useThemeStore", () => {
   });
 
   it("apply：light 时设 data-theme，dark 时移除", () => {
-    document.body.innerHTML = '<div class="ai-study-app"></div>';
+    const root = document.createElement("div");
+    root.className = "ai-study-app";
+    document.body.appendChild(root);
     const s = useThemeStore();
+    s.setRoot(root);
     s.mode = "light";
     s.apply();
-    expect(document.querySelector(".ai-study-app")!.getAttribute("data-theme")).toBe("light");
+    expect(root.getAttribute("data-theme")).toBe("light");
     s.mode = "dark";
     s.apply();
-    expect(document.querySelector(".ai-study-app")!.hasAttribute("data-theme")).toBe(false);
+    expect(root.hasAttribute("data-theme")).toBe(false);
+    document.body.innerHTML = "";
+  });
+
+  it("多实例（多页签）：apply 只作用于绑定实例，不波及 DOM 中更早的实例", () => {
+    const first = document.createElement("div");
+    first.className = "ai-study-app";
+    const second = document.createElement("div");
+    second.className = "ai-study-app";
+    document.body.append(first, second);
+    const s = useThemeStore();
+    s.setRoot(second);
+    s.mode = "light";
+    s.apply();
+    expect(second.getAttribute("data-theme")).toBe("light");
+    expect(first.hasAttribute("data-theme")).toBe(false);
     document.body.innerHTML = "";
   });
 });

@@ -27,11 +27,17 @@ export const useThemeStore = defineStore("theme", {
   state: () => ({
     /** auto = 按时间自动；light/dark = 手动覆盖 */
     mode: readMode(),
+    /** 本实例的挂载根（mount 时绑定）；多页签各自独立实例，
+     *  全局 querySelector 会命中 DOM 中更早的（可能已隐藏的）实例导致切换「不生效」 */
+    root: null as Element | null,
   }),
   actions: {
     /** 当前实际生效的明暗 */
     getEffective(): "light" | "dark" {
       return effectiveTheme(this.mode, new Date().getHours());
+    },
+    setRoot(el: Element | null): void {
+      this.root = el;
     },
     /** 循环切换：auto → light → dark → auto */
     cycle() {
@@ -40,7 +46,7 @@ export const useThemeStore = defineStore("theme", {
       this.apply();
     },
     apply() {
-      const root = document.querySelector(".ai-study-app");
+      const root = this.root;
       if (!root) {
         return;
       }

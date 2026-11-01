@@ -115,8 +115,7 @@ describe("CHANGELOG 数据形状", () => {
     expect(s.length).toBeGreaterThan(0);
     expect(f.length).toBeGreaterThan(0);
     expect(s[0].version).toBe(CHANGELOG[0].version);
-    // 0.4.4 为思源端专属修复，fnos 最新可见版本为 0.4.3
-    expect(f[0].version).toBe("0.4.3");
+    expect(f[0].version).toBe(CHANGELOG[0].version);
   });
 });
 

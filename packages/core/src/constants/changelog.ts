@@ -39,9 +39,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "0.4.4",
     date: "2026-11-01",
-    intro: "修复：原生移动端（iPad / Android）插件页空白",
+    intro: "修复：移动端前端加载失败 + 多页签主题切换不生效",
     items: [
       { hosts: ["siyuan"], text: "修复原生移动端打开插件页空白：前端资源统一改由内核 HTTP 加载（此前移动端误走本地文件路径，iOS 安全策略禁止加载导致白屏）" },
+      { text: "修复同时打开多个插件页签时，主题切换不生效（切换只作用于隐藏页签）" },
     ],
   },
   {
