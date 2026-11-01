@@ -13,3 +13,7 @@ packages/tools/
 
 # brainstorming 视觉协作 mockup
 .superpowers/
+
+# 误提交的导出数据 / 草稿目录（2026-11-01 审计出仓，勿再入库）
+tblpS1Hcazh1IAt5_20261031_131457_259.*
+draft_298ef4ee_folder/
