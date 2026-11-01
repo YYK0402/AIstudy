@@ -15,6 +15,7 @@
 - 改动后验证顺序：`npx vue-tsc --noEmit -p packages/siyuan/tsconfig.json && npx vue-tsc --noEmit -p packages/core/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`packages/core/src/**/__tests__` 与 `packages/siyuan/src/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
 - **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → `POST /api/backend/plugin/reloadPlugin {name:"AIstudy"}` → **整页刷新（page.reload）后再点顶栏** `div[aria-label="AI 智能学习"]` 开页签（web bundle 每页会话只加载一次，不刷新会跑旧 bundle；反复重载插件会在页签栏累积重复页签与隐藏应用实例，发现 `.ai-study-app` 多于一个时用中键点掉多余页签）→ 验证 `.ai-study-app` 挂载与课程数据 → 经 `window.__AI_STUDY_BRIDGE__` 直接 `callAi`（用启用的 provider/model）→ `saveData` 原样往返 → 临时文档落库全链路（ensureFolder/createDoc/docExists/getDocMarkdown/renameDoc/removeDoc，测完必删）。
 - 前端样式统一写在 `packages/core/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
+- **双端同发**：每次发版/打包，只要改动涉及 `packages/core`（两端共享）就必须两端一起打包——思源 `npm run build:web && npm run build:plugin && node scripts/make_install.js` + 飞牛 `npm run pack:fnos`，禁止只发一端导致两端包内 core 版本不一致。
 
 ## 发布（集市上架）
 - **集市只认 GitHub Release**：思源集市（bazaar）Stage 工作流每 1–3 小时按插件仓库「含 package.zip 的正式 GitHub Release」自动拉取索引。只 bump `plugin.json` 版本 + 推代码**不会**让新版进集市（v0.2.1–v0.2.4 事故：集市停在 v0.2.0 数日，2026-10-30 排查发现）。
