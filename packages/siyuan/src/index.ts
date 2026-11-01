@@ -293,14 +293,20 @@ export default class AiStudyPlugin extends Plugin {
     });
   }
 
-  /** 强制读盘：全局文件 + 各课程文件合并为内存视图；失败返回 null（保留现有内存） */
+  /** 强制读盘：全局文件 + 各课程文件合并为内存视图；失败返回 null（恢复现有内存，避免读空） */
   private async rebuildMergedFromDisk(): Promise<AppData | null> {
+    const prev = this.data[DATA_STORAGE];
     try {
+      // 强制真实读盘：loadData 默认直接返回内存缓存，须先移除
       delete this.data[DATA_STORAGE];
       const disk = (await this.withTimeout(this.loadData(DATA_STORAGE))) as AppData | null;
-      if (!disk || typeof disk !== "object") return null;
+      if (!disk || typeof disk !== "object") {
+        if (prev) this.data[DATA_STORAGE] = prev;
+        return null;
+      }
       return await this.loadMergedData({ ...createEmptyData(), ...disk });
     } catch {
+      if (prev) this.data[DATA_STORAGE] = prev;
       return null;
     }
   }
@@ -730,10 +736,11 @@ export default class AiStudyPlugin extends Plugin {
     return { content, tokenIn, tokenOut };
   }
 
-  /** 按 aiRateLimitPerMin 排队等待发送槽位；返回是否发生了等待 */
-  private async acquireRateSlot(limitPerMin: number): Promise<boolean> {
+  /** 按 aiRateLimitPerMin 排队等待发送槽位；返回是否发生了等待。shouldCancel 为 true 时立即中止排队 */
+  private async acquireRateSlot(limitPerMin: number, shouldCancel?: () => boolean): Promise<boolean> {
     let waited = false;
     while (true) {
+      if (shouldCancel?.()) throw new Error("AI 调用已取消");
       const now = Date.now();
       this.rateWindow = this.rateWindow.filter((t) => now - t < 60_000);
       const waitMs = nextRateSlotWaitMs(this.rateWindow, limitPerMin, now);
@@ -775,14 +782,15 @@ export default class AiStudyPlugin extends Plugin {
       throw new Error("服务商不存在");
     }
     const limitPerMin = Math.max(0, Math.trunc(data.settings?.aiRateLimitPerMin ?? 0));
-    await this.acquireRateSlot(limitPerMin);
     const retryCount = Math.min(2, Math.max(0, Math.trunc(data.settings?.aiRetryCount ?? 0)));
     const maxAttempts = 1 + retryCount;
     const key = this.aiCallKey(input.taskKey, input.scope);
+    // 登记在限流等待之前：排队期间用户取消也能立即生效（acquireRateSlot 检查 canceled 直接中止）
     const entry: { canceled: boolean } = { canceled: false };
     this.inflightAi.set(key, entry);
     let result: CallAiResult;
     try {
+      await this.acquireRateSlot(limitPerMin, () => entry.canceled);
       result = await runWithRetry(
         async () => {
           const r = await this.attemptCallAi(data, provider, input);
@@ -808,7 +816,10 @@ export default class AiStudyPlugin extends Plugin {
       }
       throw canceled ? new Error("AI 调用已取消") : this.toFriendlyAiError(error, provider);
     } finally {
-      this.inflightAi.delete(key);
+      // 同 key 并发时后者的 set 会覆盖前者；结束时只清理自己，避免误删在途新调用的登记
+      if (this.inflightAi.get(key) === entry) {
+        this.inflightAi.delete(key);
+      }
     }
     this.appendLog(data, input.taskKey, provider.name, input.modelId, result.tokenIn, result.tokenOut, "success", "");
     await this.persist(data);

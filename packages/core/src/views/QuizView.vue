@@ -539,6 +539,7 @@ onDeactivated(() => {
     kpChangeOpen.value = false;
     importOpen.value = false;
     paperModalOpen.value = false;
+    askModalOpen.value = false;
 });
 import GenConfigBar from "../components/GenConfigBar.vue";
 import EmptyState from "../components/EmptyState.vue";
@@ -1042,8 +1043,8 @@ async function submitAll(force = false) {
         const s = answerDrafts.value[q.id]?.state ?? currentAnswerState();
         userAnswer.value = resolveAnswerText(q, s);
         await submitCurrent(answerDrafts.value[q.id]?.sec ?? elapsedQuestionSec());
-        // 简答 AI 判分失败不中断批量阅卷：记 0 分占位（作答已落盘 graded=false）
         if (pendingGrading.value !== null) {
+          // 简答 AI 判分失败不中断批量阅卷：记 0 分占位（作答已落盘 graded=false）
           answeredResults.value.push({
             isCorrect: false,
             score: "0",
@@ -1054,6 +1055,19 @@ async function submitAll(force = false) {
             planNotes: [],
           });
           pendingGrading.value = null;
+          quizError.value = "";
+        } else if (!quizResult.value) {
+          // 通用失败（submitCurrent 已吞异常并提示）：同样记占位，
+          // 保证 answeredResults 与 quizList 逐题对齐，成绩单/回顾不错位
+          answeredResults.value.push({
+            isCorrect: false,
+            score: "0",
+            qType: q.qType,
+            userAnswer: userAnswer.value,
+            feedback: "提交失败，本次记 0 分",
+            masteryNotes: [],
+            planNotes: [],
+          });
           quizError.value = "";
         }
       }

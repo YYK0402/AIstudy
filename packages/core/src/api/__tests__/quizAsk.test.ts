@@ -139,6 +139,60 @@ describe("sendQuizAsk", () => {
     await expect(sendQuizAsk(1, 400, "x")).rejects.toThrow("未配置 AI 任务模型");
   });
 
+  it("callAi 失败时 user 轮已落库（重开续聊不丢问题）", async () => {
+    installBridge();
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      callAi: async () => {
+        throw new Error("AI 请求超时");
+      },
+    } as unknown as StudyBridge);
+    await expect(sendQuizAsk(1, 400, "为什么选 B？")).rejects.toThrow("AI 请求超时");
+    const asks = dataRef.data.questionAsks;
+    expect(asks).toHaveLength(1);
+    expect(asks[0].turns).toHaveLength(1);
+    expect(asks[0].turns[0].role).toBe("user");
+    expect(asks[0].turns[0].content).toBe("为什么选 B？");
+  });
+
+  it("失败后重发续聊：历史含失败前已落库的 user 轮", async () => {
+    installBridge();
+    // 第一轮：AI 失败（user 轮应已落库）
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      callAi: async () => {
+        throw new Error("AI 请求超时");
+      },
+    } as unknown as StudyBridge);
+    await expect(sendQuizAsk(1, 400, "为什么选 B？")).rejects.toThrow();
+    // 第二轮：AI 恢复，续聊历史须含第一轮 user 轮
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      callAi: async (input: { messages: { role: string; content: string }[] }) => {
+        aiMessages.push(input.messages);
+        return { code: 0, content: "重试后的回答" };
+      },
+    } as unknown as StudyBridge);
+    await sendQuizAsk(1, 400, "能举个例子吗？");
+    // system + 第一轮 user + 当前 user（第一轮无 assistant 轮，属合法中间态）
+    const last = aiMessages[aiMessages.length - 1];
+    expect(last.map((m) => m.role)).toEqual(["system", "user", "user"]);
+    expect(last[1].content).toBe("为什么选 B？");
+    expect(last[2].content).toBe("能举个例子吗？");
+  });
+
   it("queryQuestionAsk 读回会话", async () => {
     installBridge();
     await sendQuizAsk(1, 400, "你好");

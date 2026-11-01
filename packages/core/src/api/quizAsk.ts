@@ -71,6 +71,8 @@ export async function sendQuizAsk(courseId: number, qId: number, userText: strin
     );
   }
   const ask = upsertAskSession(data, courseId, qId, "user", userText);
+  // 先落盘 user 轮再调 AI：callAi 失败/中断时问题不丢，重开弹窗续聊自然接上（对齐 quiz.ts 简答题模式）
+  await saveData(data);
   const history = ask.turns.slice(0, -1);
   const tpl = resolvePromptTemplate(data, "quiz_ask");
   const vars = { userText };
