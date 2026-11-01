@@ -43,7 +43,7 @@
 
 ### 修复
 
-`web/src/stores/course.ts` 的 `setCourses` 改为用**数组变异方法 splice + 深拷贝元素**：
+`packages/core/src/stores/course.ts` 的 `setCourses` 改为用**数组变异方法 splice + 深拷贝元素**：
 
 ```ts
 setCourses(courses: Course[]) {

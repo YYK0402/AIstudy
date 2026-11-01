@@ -1,5 +1,6 @@
 import type { AppData, Material } from "../types/appData";
 import type { ParsedHeading } from "../utils/documentParser";
+import { isSafeAssetPath } from "../utils/assetPath";
 import { getData, saveData } from "./storage";
 import { removeCsvIds } from "../utils/csvIds";
 import { nextId, now, truncateText } from "./format";
@@ -200,6 +201,7 @@ async function runOrganizeTask(
     let source = text;
     if (!source) {
       if (material.assetPath) {
+        if (!isSafeAssetPath(material.assetPath)) throw new Error("资料源文件路径非法，无法读取");
         const res = await fetch(material.assetPath);
         if (!res.ok) throw new Error("读取源文件失败，请重新上传");
         const blob = await res.blob();
