@@ -230,7 +230,7 @@
     </div>
     <div v-show="activeTab === 'prompts'">
       <div class="s t-faint" style="margin-bottom:12px">
-        修改 8 类 AI 任务的提示词。模板中用
+        修改 12 类 AI 任务的提示词。模板中用
         <code class="code-inline">{{ "{varName}" }}</code>
         占位，运行时由系统填充实际值（各任务可用变量见卡片内列表）；删除占位符则该部分信息不再提供。保存与默认完全一致的内容会自动回到「默认」状态。
       </div>
