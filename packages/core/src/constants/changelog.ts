@@ -37,6 +37,26 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.6",
+    date: "2026-11-01",
+    intro: {
+      siyuan: "窄屏/移动端布局适配 + 资料表格可读性 + 内核 3.8.9 兼容",
+      fnos: "窄屏/移动端布局适配 + 资料表格可读性",
+    },
+    items: [
+      {
+        head: "适配",
+        text: "窄屏与移动端布局全面适配：页签被挤窄或手机使用时，首页看板、组卷表单、知识图谱、学习报告、模型配置等页面不再横向溢出，顶栏统计与按钮自动降级",
+      },
+      {
+        hosts: ["siyuan"],
+        text: "适配思源内核 3.8.9：移动端不再静默失败（打开学习页签会明确提示「移动端暂不支持，请通过桌面端使用」），页签自检不再依赖已移除的旧接口",
+      },
+      { head: "改进", text: "资料里的 HTML 表格自动转为 Markdown 表格渲染（含跨行跨列），讲义中的表格恢复可读；调用日志等宽表格窄屏下可横向滚动" },
+      { head: "加固", text: "Markdown 渲染加固：表格内特殊符号（竖线等）不再截断内容；资源路径读取增加安全校验" },
+    ],
+  },
+  {
     version: "0.4.5",
     date: "2026-11-01",
     intro: "AI 问答/资料预览 markdown 渲染 + 修复弹窗不可见等可靠性问题",
