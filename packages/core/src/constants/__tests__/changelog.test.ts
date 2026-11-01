@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { CHANGELOG, changelogForHost, changelogSince, type ChangelogEntry } from "../changelog";
+
+// 根 package.json 是版本号的唯一来源（见仓库 AGENTS.md）
+const rootVersion = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../../../../package.json", import.meta.url)), "utf-8"),
+).version as string;
 
 const sample: ChangelogEntry[] = [
   { version: "0.3.1", date: "2026-10-30", items: [{ text: "a" }] },
@@ -88,9 +95,9 @@ describe("changelogForHost", () => {
 });
 
 describe("CHANGELOG 数据形状", () => {
-  it("非空且最新在前（0.4.4）", () => {
+  it("非空且最新在前（与根 package.json 版本一致）", () => {
     expect(CHANGELOG.length).toBeGreaterThan(0);
-    expect(CHANGELOG[0].version).toBe("0.4.4");
+    expect(CHANGELOG[0].version).toBe(rootVersion);
   });
 
   it("每条都有非空 version/date 与 items", () => {
