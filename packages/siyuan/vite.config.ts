@@ -20,7 +20,6 @@ export default defineConfig({
         { src: resolve(rootDir, "icon.png"), dest: "./" },
         { src: resolve(rootDir, "preview.png"), dest: "./" },
         { src: resolve(repoRoot, "README*.md"), dest: "./" },
-        { src: resolve(rootDir, "i18n/*.json"), dest: "./i18n" },
       ],
     }),
   ],

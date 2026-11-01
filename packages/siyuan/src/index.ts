@@ -98,10 +98,13 @@ function safeJsonParse(text: string): SyNode | null {
   }
 }
 
+/** base64 → UTF-8 文本（浏览器无 Buffer：atob 得二进制串，须按字节 TextDecoder 还原多字节字符） */
 function b64Decode(v: string | undefined): string {
   if (!v) return "";
   try {
-    return Buffer.from(v, "base64").toString("utf8");
+    const bin = atob(v);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
   } catch {
     return v;
   }

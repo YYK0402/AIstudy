@@ -87,9 +87,6 @@ requireFile("index.js", "前端入口");
 if (manifest.readme?.default) requireFile(manifest.readme.default, "集市详情页 README");
 if (manifest.icon) checkImage(manifest.icon, 64 * 1024);
 if (manifest.preview) checkImage(manifest.preview, 512 * 1024);
-if (!existsSync(join(distDir, "i18n"))) {
-  warnings.push("dist 中没有 i18n/ 目录（多语言插件需要打包到该目录）");
-}
 // 构建产物过期检查
 const distManifest = JSON.parse(readFileSync(join(distDir, "plugin.json"), "utf8"));
 if (distManifest.name !== manifest.name || distManifest.version !== manifest.version) {
