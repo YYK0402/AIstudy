@@ -2,10 +2,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
-          <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" />
-        </svg>
+        <img :src="logoUrl" alt="" aria-hidden="true" />
       </div>
       <div>
         <div class="brand-name">研习</div>
@@ -85,6 +82,8 @@ import { useModalStore } from "../stores/modal";
 import { queryCourses, queryWrongQuestions, queryDueFlashcardCount } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { emojiOf } from "../utils";
+// 品牌 logo 与插件图标同源（packages/siyuan/icon.png / 飞牛 ICON），改图标时三处同步
+import logoUrl from "../assets/logo.png";
 import type { Course } from "../api";
 
 const courseStore = useCourseStore();

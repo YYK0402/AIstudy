@@ -28,6 +28,8 @@ export default defineConfig({
   build: {
     outDir: resolve(coreDir, "../../dist/web"),
     emptyOutDir: false,
+    // 图片等资源强制内联为 data URL，保持 web bundle 单文件（插件按单文件 index.js 分发）
+    assetsInlineLimit: 10000000,
     lib: {
       entry: resolve(coreDir, "src/mount.ts"),
       name: "AiStudyApp",
