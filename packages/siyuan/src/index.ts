@@ -5,6 +5,7 @@ import type { AppData, CallLog, CourseData } from "../../core/src/types/appData"
 import type { CallAiResult, ListModelsResult, StudyBridge, TestProviderResult } from "../../core/src/bridge/types";
 import { decryptApiKey, migrateProviderKeys } from "../../core/src/crypto";
 import { buildChatPayload, nextRateSlotWaitMs } from "../../core/src/aiPayload";
+import { llmHttpErrorMessage } from "../../core/src/utils/aiError";
 import {
   courseStorageName,
   hasCourseEntities,
@@ -724,8 +725,8 @@ export default class AiStudyPlugin extends Plugin {
       throw new Error(`forwardProxy 失败: ${res.msg}`);
     }
     if (res.data.status < 200 || res.data.status >= 300) {
-      // 错误体可能很大（HTML 错误页），截断避免撑爆日志/提示
-      throw new Error(`LLM 请求失败: HTTP ${res.data.status} ${res.data.body.slice(0, 500)}`);
+      // 401/403 响应体可能回显部分 API Key（OpenAI 系），消息会落日志/展示，不带响应体
+      throw new Error(llmHttpErrorMessage(res.data.status, res.data.body));
     }
     const body = JSON.parse(res.data.body) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -860,7 +861,7 @@ export default class AiStudyPlugin extends Plugin {
       if (res.data.status >= 200 && res.data.status < 300) {
         return { ok: true, message: `连接成功（HTTP ${res.data.status}）` };
       }
-      return { ok: false, message: `HTTP ${res.data.status}: ${res.data.body.slice(0, 200)}` };
+      return { ok: false, message: llmHttpErrorMessage(res.data.status, res.data.body) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, message };
@@ -887,7 +888,7 @@ export default class AiStudyPlugin extends Plugin {
         return { ok: false, message: "连接失败", models: [] };
       }
       if (res.data.status < 200 || res.data.status >= 300) {
-        return { ok: false, message: `HTTP ${res.data.status}: ${res.data.body.slice(0, 200)}`, models: [] };
+        return { ok: false, message: llmHttpErrorMessage(res.data.status, res.data.body), models: [] };
       }
       const body = JSON.parse(res.data.body) as
         | { data?: Array<{ id?: string }> }

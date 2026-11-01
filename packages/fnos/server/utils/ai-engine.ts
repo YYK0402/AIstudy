@@ -1,5 +1,6 @@
 // AI 调用引擎（服务端）：与思源适配器同一套重试/限流/日志逻辑，差异仅在传输层（Node fetch 直连）
 import { buildChatPayload, nextRateSlotWaitMs } from "../../../core/src/aiPayload";
+import { llmHttpErrorMessage } from "../../../core/src/utils/aiError";
 import { runWithRetry } from "../../../core/src/aiRetry";
 import { decryptApiKey } from "../../../core/src/crypto";
 import type { AppData, CallLog } from "../../../core/src/types/appData";
@@ -102,9 +103,9 @@ async function attemptCallAi(
     throw new Error(`LLM 请求失败: ${e instanceof Error ? e.message : String(e)} ${detail}`.trim());
   }
   if (!res.ok) {
-    // 错误体可能很大（HTML 错误页），截断避免撑爆日志/提示
-    const body = (await res.text()).slice(0, 500);
-    throw new Error(`LLM 请求失败: HTTP ${res.status} ${body}`);
+    // 401/403 响应体可能回显部分 API Key（OpenAI 系），消息会落日志/展示，不带响应体
+    const body = await res.text();
+    throw new Error(llmHttpErrorMessage(res.status, body));
   }
   const json = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -197,7 +198,7 @@ export async function testProvider(uid: string, providerId: number): Promise<Tes
     if (res.ok) {
       return { ok: true, message: `连接成功（HTTP ${res.status}）` };
     }
-    return { ok: false, message: `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}` };
+    return { ok: false, message: llmHttpErrorMessage(res.status, await res.text()) };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
@@ -223,7 +224,7 @@ export async function listModels(uid: string, providerId: number): Promise<ListM
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      return { ok: false, message: `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`, models: [] };
+      return { ok: false, message: llmHttpErrorMessage(res.status, await res.text()), models: [] };
     }
     const body = (await res.json()) as { data?: Array<{ id?: string }> } | Array<{ id?: string }>;
     const raw = Array.isArray(body) ? body : body.data ?? [];
