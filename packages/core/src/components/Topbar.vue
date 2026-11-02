@@ -1,8 +1,13 @@
 <template>
   <div class="topbar">
-    <div class="crumbs">研习 <span class="sep">/</span> <span class="cur">{{ title }}</span></div>
+    <!-- 移动端：课程名切换入口（面包屑/今日指标隐藏，功能经「更多」弹层可达） -->
+    <button v-if="isMobile" type="button" class="topbar-course" @click="courseSheetOpen = true">
+      <span class="topbar-course-name">{{ courseStore.currentCourse?.name ?? "未选择课程" }}</span>
+      <span class="chev" aria-hidden="true">▾</span>
+    </button>
+    <div v-else class="crumbs">研习 <span class="sep">/</span> <span class="cur">{{ title }}</span></div>
     <div class="spacer"></div>
-    <div v-if="currentCourseId" class="topbar-today">
+    <div v-if="!isMobile && currentCourseId" class="topbar-today">
       <span class="dot"></span>
       <router-link class="metric" to="/">今日 <b>{{ todayTaskCount }}</b> 项任务</router-link>
       <span class="sep">·</span>
@@ -44,10 +49,10 @@
         </div>
       </div>
     </div>
-    <button class="theme-toggle" title="更新日志" @click="openChangelog">
+    <button v-if="!isMobile" class="theme-toggle" title="更新日志" @click="openChangelog">
       <AppIcon name="changelog" :size="17" />
     </button>
-    <button class="theme-toggle" title="反馈 / 建议" @click="openFeedback">
+    <button v-if="!isMobile" class="theme-toggle" title="反馈 / 建议" @click="openFeedback">
       <AppIcon name="quiz" :size="17" />
     </button>
     <button class="theme-toggle" :title="themeTitle" @click="theme.cycle()">
@@ -55,6 +60,8 @@
       <AppIcon v-else-if="theme.mode === 'light'" name="sun" :size="17" />
       <AppIcon v-else name="moon" :size="17" />
     </button>
+
+    <CourseSwitcherSheet v-if="isMobile" :open="courseSheetOpen" @close="courseSheetOpen = false" />
   </div>
 </template>
 
@@ -80,6 +87,8 @@ import {
   cancelExtractTask,
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
+import { useIsMobile } from "../composables/useIsMobile";
+import CourseSwitcherSheet from "./CourseSwitcherSheet.vue";
 
 /** 用户反馈/BUG 表单（飞书多维表格表单，匿名可填） */
 const FEEDBACK_FORM_URL = "https://liprcmvuqc0.feishu.cn/share/base/shrcnMLw7N7EXR4UB6y9zY3KHbr";
@@ -90,6 +99,8 @@ const theme = useThemeStore();
 const courseStore = useCourseStore();
 const notifyStore = useNotifyStore();
 const modalStore = useModalStore();
+const { isMobile } = useIsMobile();
+const courseSheetOpen = ref(false);
 
 const themeTitle = computed(() => {
   if (theme.mode === "auto") return `自动主题（当前${theme.getEffective() === "light" ? "亮" : "暗"}）`;
