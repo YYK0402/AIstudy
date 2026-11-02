@@ -33,7 +33,7 @@
           window.__AI_STUDY_SET_DATA__(await res.json());
           const s = document.createElement("script");
           s.src = "assets/index.js";
-          s.onload = () => window.AiStudyApp.mount(el);
+          s.onload = () => window.AiStudyApp.mount(el, window.__AI_STUDY_BRIDGE__);
           s.onerror = () => showError("前端资源加载失败（assets/index.js）");
           document.head.appendChild(s);
         } catch (e) {
