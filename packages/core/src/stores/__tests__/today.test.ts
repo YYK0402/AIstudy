@@ -101,12 +101,6 @@ describe("useTodayStore", () => {
     expect(store.items.some((t) => t.title === "归档课任务")).toBe(false);
   });
 
-  it("dueReviewTotal = 到期复习触点总数（TabBar 徽标口径）", async () => {
-    setActivePinia(createPinia());
-    const store = await makeStore();
-    expect(store.dueReviewTotal).toBe(3);
-  });
-
   it("归组：组内未完成在前，counts/doneCount 正确", async () => {
     setActivePinia(createPinia());
     dataRef.data.studyTasks[0] = { ...dataRef.data.studyTasks[0], status: "done" };

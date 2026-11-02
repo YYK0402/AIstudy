@@ -31,11 +31,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useModalStore } from "../stores/modal";
 import { useCourseStore } from "../stores/course";
-import { useTodayStore } from "../stores/today";
 import { getBridge } from "../bridge";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useTabBadges } from "../composables/useTabBadges";
@@ -44,8 +43,11 @@ import { navIcons } from "./navIcons";
 const router = useRouter();
 const modalStore = useModalStore();
 const courseStore = useCourseStore();
-const todayStore = useTodayStore();
-const badges = useTabBadges();
+// 徽标只统计当前课程（与错题本/闪卡组/复习页的内容口径一致）
+const badges = useTabBadges(() => {
+  const c = courseStore.currentCourse;
+  return c ? { id: c.id, status: c.status } : null;
+});
 const moreOpen = ref(false);
 
 interface TabDef {
@@ -59,7 +61,7 @@ const tabs = computed<TabDef[]>(() => [
   { to: "/", label: "首页", icon: "home", badge: 0 },
   { to: "/study", label: "学习", icon: "study", badge: 0 },
   { to: "/quiz", label: "刷题", icon: "quiz", badge: 0 },
-  { to: "/review", label: "复习", icon: "repeat", badge: todayStore.dueReviewTotal },
+  { to: "/review", label: "复习", icon: "repeat", badge: badges.dueReviewTotal.value },
 ]);
 
 const moreItems = computed<TabDef[]>(() => [
@@ -101,12 +103,13 @@ function onKeydown(e: KeyboardEvent): void {
 
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
-  // 到期复习徽标随今日任务刷新
-  void todayStore.load().catch((e) => console.error("刷新今日任务失败:", e));
   void badges.refresh();
 });
 onBeforeUnmount(() => document.removeEventListener("keydown", onKeydown));
 
-// 任意课程数据变化都刷新徽标（错题/闪卡跨课程求和，200ms 防抖）
+// 切课后徽标立即跟随新课程
+watch(() => courseStore.currentCourseId, () => void badges.refresh());
+
+// 任意课程数据变化都刷新徽标（200ms 防抖）
 useDataSavedRefresh(() => void badges.refresh(), { scope: "any" });
 </script>

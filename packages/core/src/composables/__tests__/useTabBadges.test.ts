@@ -48,26 +48,54 @@ setBridge({
   showMessage: () => {},
 } as unknown as StudyBridge);
 
-describe("useTabBadges", () => {
-  it("错题徽标 = 活跃课程在管（未毕业）错题求和，归档课程与已毕业不计入", async () => {
+describe("useTabBadges（当前课程口径，与页面内容一致）", () => {
+  it("当前课程 A：错题=在管未毕业 2，闪卡=到期 1，复习=到期触点 1", async () => {
     const { useTabBadges } = await import("../useTabBadges");
-    const badges = useTabBadges();
+    const badges = useTabBadges(() => ({ id: 1, status: "active" }));
     await badges.refresh();
-    // 课程A：q1（active）+ q2（active）= 2；q1 的 graduated 记录不计；课程B 归档不计
+    // q1（active）+ q2（active）= 2；q1 的 graduated 记录不计
     expect(badges.wrongTotal.value).toBe(2);
+    // 卡 71 到期 1
+    expect(badges.cardDueTotal.value).toBe(1);
+    // 触点 301（卡 71）到期 1
+    expect(badges.dueReviewTotal.value).toBe(1);
   });
 
-  it("闪卡徽标 = 活跃课程到期触点求和", async () => {
+  it("切到归档课程 → 全 0（归档课只读，与仪表盘口径一致）", async () => {
     const { useTabBadges } = await import("../useTabBadges");
-    const badges = useTabBadges();
+    const badges = useTabBadges(() => ({ id: 2, status: "archived" }));
     await badges.refresh();
-    // 课程A 卡 71 到期 1；课程B 归档不计
-    expect(badges.cardDueTotal.value).toBe(1);
+    expect(badges.wrongTotal.value).toBe(0);
+    expect(badges.cardDueTotal.value).toBe(0);
+    expect(badges.dueReviewTotal.value).toBe(0);
+  });
+
+  it("未选择课程 → 全 0", async () => {
+    const { useTabBadges } = await import("../useTabBadges");
+    const badges = useTabBadges(() => null);
+    await badges.refresh();
+    expect(badges.wrongTotal.value).toBe(0);
+    expect(badges.cardDueTotal.value).toBe(0);
+    expect(badges.dueReviewTotal.value).toBe(0);
+  });
+
+  it("徽标跟随当前课程 getter（模拟 Topbar 切课）", async () => {
+    const { useTabBadges } = await import("../useTabBadges");
+    let current: { id: number; status: string } | null = { id: 1, status: "active" };
+    const badges = useTabBadges(() => current);
+    await badges.refresh();
+    expect(badges.wrongTotal.value).toBe(2);
+    current = { id: 2, status: "archived" };
+    await badges.refresh();
+    expect(badges.wrongTotal.value).toBe(0);
+    current = { id: 1, status: "active" };
+    await badges.refresh();
+    expect(badges.wrongTotal.value).toBe(2);
   });
 
   it("数据变化后 refresh 得到新值", async () => {
     const { useTabBadges } = await import("../useTabBadges");
-    const badges = useTabBadges();
+    const badges = useTabBadges(() => ({ id: 1, status: "active" }));
     await badges.refresh();
     dataRef.data.wrongQuestions = dataRef.data.wrongQuestions.slice(0, 1);
     await badges.refresh();

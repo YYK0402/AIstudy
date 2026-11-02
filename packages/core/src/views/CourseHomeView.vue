@@ -3,7 +3,7 @@
     <div class="hero">
       <div class="greet">
         {{ courseName }}<small>{{ courseDesc || "暂无简介" }}</small>
-        <div style="display:flex;gap:8px;margin-top:12px">
+        <div class="hero-actions">
           <button v-if="courseStore.currentCourse" class="btn sm" @click="openEdit"><AppIcon name="pencil" :size="13" /> 编辑课程信息</button>
           <button v-if="courseStore.currentCourse" class="btn sm" @click="exportOpen = true"><AppIcon name="download" :size="13" /> 导出课程包</button>
           <button v-if="!archived && questionCount > 0" class="btn sm primary" @click="startFinalExam"><AppIcon name="quiz" :size="13" /> 结业模考</button>

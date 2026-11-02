@@ -1,6 +1,6 @@
 <template>
-  <!-- 移动端独立首页：课程行切换 + 跨课程今日任务聚合 -->
-  <MobileHomePanel v-if="isMobile" />
+  <!-- 移动端首页 = 课程首页（与 PC 同组件，内容只对应当前课程；切课入口在 Topbar） -->
+  <CourseHomeView v-if="isMobile" />
   <div v-else class="page">
     <div class="hero">
       <div class="greet">{{ greeting }}，专心者<small>{{ courseStore.courses.length }} 门课程 · 点击课程卡片开始学习</small></div>
@@ -143,7 +143,7 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
-import MobileHomePanel from "../components/home/MobileHomePanel.vue";
+import CourseHomeView from "./CourseHomeView.vue";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
@@ -316,7 +316,7 @@ function formatDate(iso: string): string {
 }
 
 async function load() {
-  // 今日任务跨课程聚合在 todayStore（与移动首页共用），独立加载
+    // 今日任务跨课程聚合在 todayStore，独立加载
   void todayStore.load().catch((e) => console.error("加载今日任务失败:", e));
   try {
     const data = await getData();
@@ -359,7 +359,7 @@ async function load() {
   }
 }
 
-// 移动端渲染 MobileHomePanel（自带刷新订阅），桌面分支才订阅仪表盘加载
+// 移动端渲染 CourseHomeView（自带刷新订阅），桌面分支才订阅仪表盘加载
 if (!isMobile.value) {
   useDataSavedRefresh(() => load().catch((e) => console.error("刷新首页失败:", e)));
   onMounted(() => {

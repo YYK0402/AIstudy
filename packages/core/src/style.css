@@ -418,6 +418,7 @@
 }
 .hero .greet { font-family: var(--as-font-display); font-size: 24px; font-weight: 500; }
 .hero .greet small { display: block; font-family: var(--as-font-body); font-size: 12.5px; color: var(--as-text-dim); font-weight: 400; margin-top: 5px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .hero-stats { display: flex; align-items: center; gap: 22px; }
 .hero .streak { text-align: right; }
 .hero .streak + .streak { border-left: 1px solid var(--as-border); padding-left: 22px; }
@@ -2065,31 +2066,7 @@
 .cs-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-check { color: var(--as-accent); font-weight: 600; }
 
-/* ===== 移动端：首页课程行 / Topbar 课程入口 ===== */
-.mobile-home { max-width: 640px; margin: 0 auto; }
-.mh-course-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 8px 12px;
-  border: 1px solid var(--as-border-soft);
-  border-radius: 12px;
-  background: var(--as-bg-elev2);
-  color: var(--as-text);
-  cursor: pointer;
-}
-.mh-course-name {
-  flex: 1;
-  font-size: 15px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mh-course-prog { font-size: 12px; color: var(--as-text-faint); }
-.mobile-home .chev,
+/* ===== 移动端：Topbar 课程入口 ===== */
 .topbar-course .chev { color: var(--as-text-faint); font-size: 12px; }
 .topbar-course {
   display: flex;

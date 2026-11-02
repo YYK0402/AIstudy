@@ -65,9 +65,6 @@ export const useTodayStore = defineStore("today", () => {
     return [...map.values()];
   });
 
-  /** 全局到期复习触点总数（含闪卡），TabBar 复习徽标 */
-  const dueReviewTotal = computed(() => items.reduce((n, t) => n + (t.kind === "review" ? 1 : 0), 0));
-
   function isCourseOpen(courseId: number): boolean {
     return expandedCourses.value.has(courseId);
   }
@@ -198,7 +195,6 @@ export const useTodayStore = defineStore("today", () => {
     loading,
     loadError,
     pendingTaskIds,
-    dueReviewTotal,
     load,
     isCourseOpen,
     toggleCourse,
