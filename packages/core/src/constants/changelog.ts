@@ -37,6 +37,22 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.1",
+    date: "2026-11-02",
+    intro: {
+      siyuan: "修复前端脚本在部分浏览器环境下加载即崩溃的问题",
+      fnos: "修复应用页面无法打开（白屏）的问题",
+    },
+    items: [
+      {
+        hosts: ["siyuan"],
+        head: "修复",
+        text: "修复前端脚本在严格 URL 实现的浏览器环境下加载失败的问题（当前思源内核不受影响，属兼容性加固）",
+      },
+      { hosts: ["fnos"], text: "修复应用打开后白屏无法使用的问题（挂载桥接参数缺失 + 前端脚本加载失败）" },
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-11-02",
     intro: {
