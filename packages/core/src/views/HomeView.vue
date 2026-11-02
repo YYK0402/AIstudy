@@ -1,5 +1,7 @@
 <template>
-  <div class="page">
+  <!-- 移动端独立首页：课程行切换 + 跨课程今日任务聚合 -->
+  <MobileHomePanel v-if="isMobile" />
+  <div v-else class="page">
     <div class="hero">
       <div class="greet">{{ greeting }}，专心者<small>{{ courseStore.courses.length }} 门课程 · 点击课程卡片开始学习</small></div>
       <div class="hero-stats">
@@ -141,10 +143,12 @@
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
+import MobileHomePanel from "../components/home/MobileHomePanel.vue";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
+import { useIsMobile } from "../composables/useIsMobile";
 import { useModalStore } from "../stores/modal";
 import { emojiOf } from "../utils";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
@@ -171,6 +175,7 @@ const router = useRouter();
 const courseStore = useCourseStore();
 const todayStore = useTodayStore();
 const modalStore = useModalStore();
+const { isMobile } = useIsMobile();
 const { confirm } = useConfirm();
 
 // ===== 试一试示例课（开箱即用）=====
@@ -354,14 +359,16 @@ async function load() {
   }
 }
 
-useDataSavedRefresh(() => load().catch((e) => console.error("刷新首页失败:", e)));
-
-onMounted(() => {
-  load().catch((e) => console.error("加载首页失败:", e));
-});
-watch(
-  () => courseStore.courses.length,
-  () => load().catch((e) => console.error("刷新首页失败:", e)),
-);
+// 移动端渲染 MobileHomePanel（自带刷新订阅），桌面分支才订阅仪表盘加载
+if (!isMobile.value) {
+  useDataSavedRefresh(() => load().catch((e) => console.error("刷新首页失败:", e)));
+  onMounted(() => {
+    load().catch((e) => console.error("加载首页失败:", e));
+  });
+  watch(
+    () => courseStore.courses.length,
+    () => load().catch((e) => console.error("刷新首页失败:", e)),
+  );
+}
 </script>
 
