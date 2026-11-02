@@ -57,3 +57,10 @@ export function taskAction(t: {
   }
   return null;
 }
+
+/** 今日任务组摘要：按任务类型计数（"新知 2 · 复习 1"），类型顺序固定按 TASK_TYPES */
+export function taskCountsSummary(counts: Record<string, number>): string {
+  return TASK_TYPES.filter((key) => counts[key])
+    .map((key) => `${TASK_TYPE_LABELS[key]} ${counts[key]}`)
+    .join(" · ");
+}

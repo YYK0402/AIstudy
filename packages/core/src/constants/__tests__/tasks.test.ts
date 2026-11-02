@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { taskAction, taskTypeIcon, taskTypeLabel } from "../tasks";
+import { taskAction, taskCountsSummary, taskTypeIcon, taskTypeLabel } from "../tasks";
 
 describe("taskAction", () => {
   it("新知有知识点时去学习页", () => {
@@ -33,5 +33,19 @@ describe("任务类型元数据", () => {
     expect(taskTypeIcon("test")).toBe("check-square");
     expect(taskTypeLabel("other")).toBe("other");
     expect(taskTypeIcon("other")).toBe("book");
+  });
+});
+
+describe("taskCountsSummary", () => {
+  it("按类型顺序输出计数摘要", () => {
+    expect(taskCountsSummary({ review: 1, learn: 2, practice: 3 })).toBe("新知 2 · 练习 3 · 复习 1");
+  });
+
+  it("空计数为空串", () => {
+    expect(taskCountsSummary({})).toBe("");
+  });
+
+  it("未知类型不计入", () => {
+    expect(taskCountsSummary({ other: 5 })).toBe("");
   });
 });

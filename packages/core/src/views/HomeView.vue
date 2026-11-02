@@ -96,29 +96,29 @@
       <h2>今日任务</h2><span class="hint">按课程汇总 · 学习计划 + 到期间隔复习</span>
     </div>
     <div class="card">
-      <SkeletonList v-if="loading && todayGroups.length === 0" :rows="4" />
+      <SkeletonList v-if="todayStore.loading && todayStore.groups.length === 0" :rows="4" />
       <LoadError
-        v-else-if="loadError && todayGroups.length === 0"
-        :message="loadError"
-        @retry="load"
+        v-else-if="todayStore.loadError && todayStore.groups.length === 0"
+        :message="todayStore.loadError"
+        @retry="todayStore.load"
       />
-      <div v-else-if="todayGroups.length === 0" class="empty-state">
+      <div v-else-if="todayStore.groups.length === 0" class="empty-state">
         <span class="ico"><AppIcon name="folder" :size="28" /></span>
         暂无待办任务，生成学习计划或出现到期复习后会显示在这里
       </div>
       <div v-else class="today-groups">
-        <div v-for="g in todayGroups" :key="g.courseId" class="today-group">
-          <div class="today-course" @click="toggleCourse(g.courseId)">
+        <div v-for="g in todayStore.groups" :key="g.courseId" class="today-group">
+          <div class="today-course" @click="todayStore.toggleCourse(g.courseId)">
             <span class="tc-emoji" aria-hidden="true">{{ emojiOf(g.courseId) }}</span>
             <span class="tc-name">{{ g.courseName }}</span>
-            <span class="tc-sum">{{ g.tasks.length }} 个任务 · {{ groupSummary(g) }}</span>
+            <span class="tc-sum">{{ g.tasks.length }} 个任务 · {{ taskCountsSummary(g.counts) }}</span>
             <span class="tc-prog">{{ g.doneCount }}/{{ g.tasks.length }} 完成</span>
             <ProgressBar :value="g.doneCount" :max="g.tasks.length" tone="green" sm />
-            <button class="link-btn tc-tgl" @click.stop="toggleCourse(g.courseId)">
-              {{ isCourseOpen(g.courseId) ? "收起" : "展开" }}
+            <button class="link-btn tc-tgl" @click.stop="todayStore.toggleCourse(g.courseId)">
+              {{ todayStore.isCourseOpen(g.courseId) ? "收起" : "展开" }}
             </button>
           </div>
-          <div v-if="isCourseOpen(g.courseId)" class="today-list">
+          <div v-if="todayStore.isCourseOpen(g.courseId)" class="today-list">
             <StudyTaskRow
               v-for="task in g.tasks"
               :key="task.kind + '-' + task.id"
@@ -126,11 +126,11 @@
               :task-type="task.taskType"
               :done="task.done"
               :checkable="task.kind === 'plan'"
-              :busy="pendingTaskIds.has(task.id)"
+              :busy="todayStore.pendingTaskIds.has(task.id)"
               :action="taskAction(task)"
               dense
-              @click="openTask(task)"
-              @toggle="toggleTask(task)"
+              @click="todayStore.openTask(task)"
+              @toggle="todayStore.toggleTask(task)"
             />
           </div>
         </div>
@@ -151,16 +151,11 @@ import StudyTaskRow from "../components/StudyTaskRow.vue";
 import ProgressBar from "../components/ProgressBar.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
-import { TASK_TYPES, TASK_TYPE_LABELS, taskAction } from "../constants/tasks";
+import { taskAction, taskCountsSummary } from "../constants/tasks";
+import { useTodayStore } from "../stores/today";
 import {
   getData,
-  queryStudyPlans,
-  queryStudyTasks,
-  queryDueReviews,
-  updateStudyTask,
   setCourseStatus,
-  formatLocalDate,
-  truncateText,
   importCourseZip,
   createSampleCourse,
 } from "../api";
@@ -174,6 +169,7 @@ import { getBridge } from "@/bridge";
 
 const router = useRouter();
 const courseStore = useCourseStore();
+const todayStore = useTodayStore();
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
 
@@ -301,86 +297,6 @@ function forecastBarH(count: number): string {
   return `${Math.max(2, Math.round((count / max) * 56))}px`;
 }
 
-interface TodayTaskItem {
-  id: number;
-  courseId: number;
-  /** plan=计划任务（可手动勾选）；review=到期 SM2 复习项（评级即完成，id 取负 schedule.id 防冲突） */
-  kind: "plan" | "review";
-  planId: number;
-  chapterId: number | null;
-  kpId: number | null;
-  taskType: string;
-  scheduledDate: string;
-  sort: number;
-  title: string;
-  course: string;
-  done: boolean;
-}
-
-const todayTasks = reactive<TodayTaskItem[]>([]);
-const loading = ref(true);
-const loadError = ref("");
-/** 正在写入的任务：防止连点，勾选框显示转圈 */
-const pendingTaskIds = ref<Set<number>>(new Set());
-
-interface CourseDayGroup {
-  courseId: number;
-  courseName: string;
-  tasks: TodayTaskItem[];
-  counts: Record<string, number>;
-  doneCount: number;
-}
-
-/** 今日任务按课程归组（组间保持课程原顺序，组内未完成在前） */
-const todayGroups = computed<CourseDayGroup[]>(() => {
-  const map = new Map<number, CourseDayGroup>();
-  for (const t of todayTasks) {
-    const g = map.get(t.courseId) ?? {
-      courseId: t.courseId,
-      courseName: t.course,
-      tasks: [],
-      counts: {},
-      doneCount: 0,
-    };
-    g.tasks.push(t);
-    g.counts[t.taskType] = (g.counts[t.taskType] ?? 0) + 1;
-    if (t.done) g.doneCount += 1;
-    map.set(t.courseId, g);
-  }
-  return [...map.values()];
-});
-
-function groupSummary(g: CourseDayGroup): string {
-  return TASK_TYPES.filter((key) => g.counts[key])
-    .map((key) => `${TASK_TYPE_LABELS[key]} ${g.counts[key]}`)
-    .join(" · ");
-}
-
-/** 课程行展开状态：仅一门课程有任务时默认展开，多门默认收起 */
-const expandedCourses = ref<Set<number>>(new Set());
-let loadedGroupsKey = "";
-
-function isCourseOpen(courseId: number): boolean {
-  return expandedCourses.value.has(courseId);
-}
-
-function toggleCourse(courseId: number) {
-  const next = new Set(expandedCourses.value);
-  if (next.has(courseId)) next.delete(courseId);
-  else next.add(courseId);
-  expandedCourses.value = next;
-}
-
-function applyDefaultExpand() {
-  const key = todayGroups.value
-    .map((g) => `${g.courseId}:${g.tasks.map((t) => t.id).join(",")}`)
-    .join("|");
-  if (key === loadedGroupsKey) return;
-  loadedGroupsKey = key;
-  expandedCourses.value =
-    todayGroups.value.length === 1 ? new Set([todayGroups.value[0].courseId]) : new Set();
-}
-
 function enterCourse(course: Course) {
   courseStore.setCurrent(course.id);
   router.push("/course");
@@ -395,32 +311,29 @@ function formatDate(iso: string): string {
 }
 
 async function load() {
-  loading.value = true;
-  loadError.value = "";
+  // 今日任务跨课程聚合在 todayStore（与移动首页共用），独立加载
+  void todayStore.load().catch((e) => console.error("加载今日任务失败:", e));
   try {
-  const data = await getData();
-  // 课程卡片学习概览
-  for (const c of data.courses) {
-    const kps = data.knowledgePoints.filter((k) => k.courseId === c.id);
-    courseStats[c.id] = {
-      kpTotal: kps.length,
-      mastered: kps.filter((k) => k.mastery === "mastered" || k.mastery === "proficient").length,
-    };
-  }
-  // 清理已删除课程的统计
-  for (const id of Object.keys(courseStats)) {
-    if (!data.courses.some((c) => c.id === Number(id))) delete courseStats[Number(id)];
-  }
-    // 跨课程今日任务 = 计划任务（今天排期）+ 到期 SM2 复习项（合轨决策 A）
-    // 已归档课程仅查看：其计划任务与到期复习不再浮现到今日任务
-    const activeCourses = data.courses.filter((c) => c.status !== "archived");
-    const activeIds = new Set(activeCourses.map((c) => c.id));
+    const data = await getData();
+    // 课程卡片学习概览
+    for (const c of data.courses) {
+      const kps = data.knowledgePoints.filter((k) => k.courseId === c.id);
+      courseStats[c.id] = {
+        kpTotal: kps.length,
+        mastered: kps.filter((k) => k.mastery === "mastered" || k.mastery === "proficient").length,
+      };
+    }
+    // 清理已删除课程的统计
+    for (const id of Object.keys(courseStats)) {
+      if (!data.courses.some((c) => c.id === Number(id))) delete courseStats[Number(id)];
+    }
+    // 学习仪表盘：时长趋势 / 连续天数（全量日志）+ 复习预测 / 错题快照（仅学习中的课程）
+    const activeIds = new Set(data.courses.filter((c) => c.status !== "archived").map((c) => c.id));
     const kpCourse = new Map(data.knowledgePoints.map((k) => [k.id, k.courseId]));
     const qCourse = new Map(data.questions.map((q) => [q.id, q.courseId]));
     const cardCourse = new Map(data.flashCards.map((c) => [c.id, c.courseId]));
     /** 复习项/错题归属课程是否仍在学习（归档课程不计入仪表盘） */
     const inActiveCourse = (courseId: number | undefined): boolean => courseId != null && activeIds.has(courseId);
-    // 学习仪表盘：时长趋势 / 连续天数（全量日志）+ 复习预测 / 错题快照（仅学习中的课程）
     const trend = aggregateStudyTrend(data.studyLogs, 7);
     trendDaily.value = trend.daily;
     todaySec.value = trend.daily[trend.daily.length - 1]?.seconds ?? 0;
@@ -436,96 +349,8 @@ async function load() {
     });
     forecast.value = reviewForecast(activeSchedules, 7);
     Object.assign(wrongSnap, wrongSnapshot(data.wrongQuestions.filter((w) => inActiveCourse(qCourse.get(w.qId)))));
-    const today = formatLocalDate();
-  const items: TodayTaskItem[] = [];
-  for (const c of activeCourses) {
-    const plans = data.studyPlans.filter((p) => p.courseId === c.id && p.status !== "paused");
-    for (const p of plans) {
-      const tasks = data.studyTasks.filter((t) => t.planId === p.id && t.scheduledDate === today);
-      for (const t of tasks) {
-        items.push({
-          id: t.id,
-          courseId: c.id,
-          kind: "plan",
-          planId: t.planId,
-          chapterId: t.chapterId,
-          kpId: t.kpId ?? null,
-          taskType: t.taskType,
-          scheduledDate: t.scheduledDate,
-          sort: t.sort,
-          title: t.title,
-          course: c.name,
-          done: t.status === "done",
-        });
-      }
-    }
-  }
-  // 到期间隔复习项：完成 = 复习计划页评级（dueTime 推后后自动消失）
-  for (const c of activeCourses) {
-    for (const item of await queryDueReviews(c.id)) {
-      const kp = item.knowledgePoint;
-      const q = item.question;
-      const card = item.flashcard;
-      items.push({
-        id: -item.schedule.id,
-        courseId: c.id,
-        kind: "review",
-        planId: 0,
-        chapterId: null,
-        kpId: item.schedule.kpId,
-        taskType: "review",
-        scheduledDate: item.schedule.dueTime,
-        sort: 0,
-        title: kp ? `复习：${kp.name}` : q ? `错题复习：${q.title}` : card ? `闪卡：${truncateText(card.front, 24)}` : `复习 #${item.schedule.id}`,
-        course: c.name,
-        done: false,
-      });
-    }
-  }
-  items.sort((a, b) => Number(a.done) - Number(b.done));
-  todayTasks.splice(0, todayTasks.length, ...items);
-  applyDefaultExpand();
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : "加载失败";
     console.error("加载首页失败:", e);
-  } finally {
-    loading.value = false;
-  }
-}
-
-function openTask(task: TodayTaskItem) {
-  const action = taskAction(task);
-  if (action) {
-    router.push(action.to);
-    return;
-  }
-  router.push("/plan");
-  getBridge().showMessage("该任务无绑定知识点，请在学习计划页处理");
-}
-
-async function toggleTask(task: TodayTaskItem) {
-  if (pendingTaskIds.value.has(task.id)) return;
-  pendingTaskIds.value = new Set(pendingTaskIds.value).add(task.id);
-  try {
-    await updateStudyTask({
-      id: task.id,
-      planId: task.planId,
-      chapterId: task.chapterId,
-      kpId: task.kpId,
-      taskType: task.taskType,
-      title: task.title,
-      scheduledDate: task.scheduledDate,
-      status: task.done ? "todo" : "done",
-      sort: task.sort,
-    });
-    task.done = !task.done;
-  } catch (e) {
-    console.error("更新任务状态失败:", e);
-    getBridge().showMessage(e instanceof Error ? e.message : "更新任务状态失败", 4000, "error");
-  } finally {
-    const next = new Set(pendingTaskIds.value);
-    next.delete(task.id);
-    pendingTaskIds.value = next;
   }
 }
 
