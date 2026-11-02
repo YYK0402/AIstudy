@@ -4,11 +4,12 @@ import mammoth from "mammoth/mammoth.browser";
 import JSZip from "jszip";
 import { htmlTablesToMarkdown } from "./htmlTable";
 
-// pdfjs-dist 需要设置 worker 路径；经 vite 构建后 worker 会被内联为 data URL
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+// pdfjs-dist 需要设置 worker 路径；?url 导入 + assetsInlineLimit 使其编译为 data URL 字符串常量。
+// 不用 new URL(..., import.meta.url)：IIFE 构建下 import.meta.url 被 shim 成字符串 "undefined"，
+// 严格 URL 实现（新 Chromium/Node）对 new URL(绝对URL, 非法base) 直接抛 Invalid base URL，
+// 且本模块被 UploadMaterialModal 静态引用 → bundle 顶层执行 → 整个前端白屏
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export interface ParsedHeading {
   level: number;

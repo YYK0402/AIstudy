@@ -1,5 +1,11 @@
 import type { StudyBridge } from "./bridge/types";
 
+declare module "*?url" {
+  /** vite ?url 导入：资源 URL（本项目 assetsInlineLimit 全量内联，实际为 data URL 字符串） */
+  const url: string;
+  export default url;
+}
+
 declare global {
   /** 当前插件版本（构建期由 vite.config.ts 从根 package.json 注入） */
   const __APP_VERSION__: string;
