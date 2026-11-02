@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-study-app">
+  <div ref="appRoot" class="ai-study-app">
     <Sidebar v-if="!isMobile" />
     <main class="main">
       <Topbar />
@@ -27,6 +27,7 @@ import Sidebar from "./components/Sidebar.vue";
 import Topbar from "./components/Topbar.vue";
 import TabBar from "./components/TabBar.vue";
 import { useIsMobile } from "./composables/useIsMobile";
+import { useMobileHostBar } from "./composables/useMobileHostBar";
 import NewCourseModal from "./components/NewCourseModal.vue";
 import NewProviderModal from "./components/NewProviderModal.vue";
 import UploadMaterialModal from "./components/UploadMaterialModal.vue";
@@ -39,6 +40,9 @@ import { isNewerVersion } from "./utils/version";
 
 const modalStore = useModalStore();
 const { isMobile } = useIsMobile();
+const appRoot = ref<HTMLElement | null>(null);
+// 思源移动端：插件 app 可见时隐藏宿主胶囊底栏，切走/卸载归还
+useMobileHostBar(() => appRoot.value);
 
 // 需要 keep-alive 缓存的视图 name（与各自 defineOptions({ name }) 对应，改动需同步）
 const cachedViews = ["CourseContentView", "QuizView", "WrongView", "FlashcardsView", "ReportView"];
