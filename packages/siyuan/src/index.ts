@@ -19,6 +19,7 @@ import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
 import { isMobileFrontend } from "./frontend";
 import { FrontendLoader } from "./frontendLoader";
+import { decideSelfHeal } from "./tabSelfHeal";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
@@ -1073,17 +1074,33 @@ export default class AiStudyPlugin extends Plugin {
       report("openTab 同步异常", error);
       return;
     }
-    // 延迟自检：页签未创建说明 openTab 静默失败
-    // 3.x 内核移除了 getAllModels（类型声明来自旧版 siyuan 包）→ 不可用时回退页签栏 DOM 检测（findTabPanel 同款依据）
-    window.setTimeout(() => {
-      // 3.x 内核模块未提供 getAllModels（旧版 API，类型声明残留）→ 回退 DOM 检测
-      const opened = typeof getAllModels === "function"
-        ? getAllModels().custom.some((m) => m.type === this.name + TAB_TYPE)
-        : Boolean(this.findTabPanel());
-      if (!opened) {
-        report("自检：页签未创建", new Error("1.5s 后仍未找到 AIstudy 自定义页签"));
-      }
-    }, 1500);
+    this.selfHealOpenTab(report);
+  }
+
+  /**
+   * 打开页签后的轮询自检（800/1600/3200ms）：
+   * - 页签未创建 → openTab 静默失败，报错
+   * - 页签存在但面板未挂载 → 关闭→快速重开的竞态（内核 focus 了移除中的旧页签，
+   *   未重跑 init 而 destroy 已 unmount）→ 连续两次同一面板确认稳定后补挂载
+   */
+  private selfHealOpenTab(report: (stage: string, error: unknown) => void) {
+    let prevPanel: Element | null = null;
+    const delays = [800, 1600, 3200];
+    delays.forEach((delay, idx) => {
+      const isLast = idx === delays.length - 1;
+      this.selfHealTimers.push(
+        window.setTimeout(() => {
+          const panel = this.findTabPanel();
+          const action = decideSelfHeal(prevPanel, panel, isLast);
+          if (panel) prevPanel = panel;
+          if (action === "mount" && window.AiStudyApp) {
+            this.mountApp(panel as Element);
+          } else if (action === "error") {
+            report("自检：页签未创建", new Error(`${(delay / 1000).toFixed(1)}s 后仍未找到 AIstudy 自定义页签`));
+          }
+        }, delay),
+      );
+    });
   }
 
   /** 移动端：全屏 Dialog 当页面，前端 app 挂进 Dialog 内容容器（单实例，重复点击不叠加） */
