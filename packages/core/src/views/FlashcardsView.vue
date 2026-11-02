@@ -113,7 +113,6 @@ import EmptyState from "../components/EmptyState.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
-import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 import { useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
 import {
@@ -121,7 +120,6 @@ import {
   queryKnowledgePoints,
   queryChapters,
   queryDueReviews,
-  queryStudyPlans,
   deleteFlashCards,
   generateFlashcards,
   cancelAiCall,
@@ -195,19 +193,18 @@ const { loading, error, load } = useLoad(async (ctx) => {
     dueCardCount.value = 0;
     return;
   }
-  const [cardList, kps, chs, due, plans] = await Promise.all([
+  const [cardList, kps, chs, due] = await Promise.all([
     queryFlashCards(ctx.courseId),
     queryKnowledgePoints(ctx.courseId),
     queryChapters(ctx.courseId),
     queryDueReviews(ctx.courseId),
-    queryStudyPlans(ctx.courseId),
   ]);
   if (ctx.isStale()) return;
   cards.value = cardList;
   knowledgePoints.value = kps;
   chapters.value = chs;
-  // 课程计划全部暂停 → 复习触点挂起（数据不动）
-  const suspended = isCourseReviewSuspended(plans, ctx.courseId);
+  // 课程复习暂停 → 复习触点挂起（数据不动）
+  const suspended = courseStore.currentCourse?.reviewPaused === true;
   dueCardCount.value = suspended ? 0 : due.filter((i) => i.flashcard !== null).length;
 });
 

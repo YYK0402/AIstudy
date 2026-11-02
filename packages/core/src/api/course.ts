@@ -66,6 +66,18 @@ export async function updateCourse(id: number, input: {
   return course;
 }
 
+/** 课程级复习暂停开关：挂起/恢复该课程到期复习触点的浮现（SM-2 排期数据不动） */
+export async function setCourseReviewPaused(id: number, paused: boolean): Promise<Course> {
+  const data = await getData();
+  const course = data.courses.find((c) => c.id === id);
+  if (!course) {
+    throw new Error("课程不存在，可能已被删除");
+  }
+  course.reviewPaused = paused;
+  await saveData(data);
+  return course;
+}
+
 /** 归档 / 取消归档课程（active ↔ archived）；归档后前端隐藏写入口，仅查看 */
 export async function setCourseStatus(id: number, status: "active" | "archived"): Promise<Course> {
   const data = await getData();

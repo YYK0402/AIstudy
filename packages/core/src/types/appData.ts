@@ -54,6 +54,8 @@ export interface Course {
   modelId?: number | null;
   /** 内置示例课标记；用于首页「试一试示例课」卡片显隐、防重与「示例」徽标 */
   isSample?: boolean;
+  /** 课程级复习暂停开关；与学习计划暂停解耦。缺省/旧数据 = 不暂停（复习照常浮现） */
+  reviewPaused?: boolean;
 }
 
 export interface Chapter {

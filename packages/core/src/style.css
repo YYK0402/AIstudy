@@ -465,6 +465,16 @@
 .settings-two-col { grid-template-columns: 1fr 1fr; }
 
 .today-list { display: flex; flex-direction: column; gap: 8px; }
+.today-subgroup {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--as-text-faint);
+  padding: 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.today-subgroup::after { content: ""; flex: 1; height: 1px; background: var(--as-border-soft); }
 
 /* 今日任务按课程分组 */
 .today-groups { display: flex; flex-direction: column; gap: 10px; }
@@ -911,6 +921,20 @@
 .review-item:last-child { border-bottom: none; }
 .ri-head { display: flex; align-items: center; gap: 10px; }
 .ri-meta { font-size: 10.5px; color: var(--as-text-faint); font-family: var(--as-font-mono); }
+.ri-wrong { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--as-text-dim); }
+.ri-wrong .tag { margin-left: 2px; }
+.tag.err-type { color: var(--as-warn, #d97706); border-color: color-mix(in srgb, var(--as-warn, #d97706) 35%, transparent); background: color-mix(in srgb, var(--as-warn, #d97706) 10%, transparent); }
+/* 复习页：进度 + 类型构成 */
+.review-summary { display: flex; align-items: center; gap: 10px; padding: 2px 2px 14px; }
+.review-summary .progress-bar { flex: 1; max-width: 220px; }
+.rs-text { font-size: 12px; color: var(--as-text-dim); white-space: nowrap; font-family: var(--as-font-mono); }
+.rs-chips { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+/* 复习页：类型分组 */
+.review-group { border-top: 1px solid var(--as-border); padding-top: 8px; margin-top: 8px; }
+.review-group:first-of-type { border-top: none; margin-top: 0; }
+.rg-head { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; padding: 6px 2px; user-select: none; }
+.rg-count { font-size: 11px; color: var(--as-text-dim); background: var(--as-bg-elev2); border-radius: 8px; padding: 1px 7px; font-family: var(--as-font-mono); }
+.rg-tgl { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--as-text-faint); }
 
 .recall-mask { padding: 14px 16px; font-size: 12.5px; color: var(--as-text-faint); background: var(--as-bg-elev2); border: 1px dashed var(--as-border); border-radius: var(--as-radius-sm); line-height: 1.6; }
 .review-body { padding: 12px 16px; font-size: 13px; line-height: 1.7; color: var(--as-text); background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); white-space: pre-wrap; word-break: break-word; }
@@ -1065,6 +1089,20 @@
 .modal--lg { width: 640px; }
 .confirm-modal { width: 380px; }
 .confirm-msg { font-size: 13px; color: var(--as-text-dim); line-height: 1.7; white-space: pre-line; }
+.confirm-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--as-border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--as-text);
+  cursor: pointer;
+  line-height: 1.6;
+}
+.confirm-checkbox input { margin-top: 3px; accent-color: var(--as-accent); }
 .modal h2 { font-family: var(--as-font-display); font-size: var(--as-fs-title); font-weight: 500; margin-bottom: 20px; }
 .field { margin-bottom: 15px; }
 .field label { display: block; font-size: 12px; color: var(--as-text-dim); margin-bottom: 6px; }

@@ -37,8 +37,9 @@ describe("任务类型元数据", () => {
 });
 
 describe("taskCountsSummary", () => {
-  it("按类型顺序输出计数摘要", () => {
-    expect(taskCountsSummary({ review: 1, learn: 2, practice: 3 })).toBe("新知 2 · 练习 3 · 复习 1");
+  it("按类型顺序输出计数摘要（key 为展示名，含复习项类型）", () => {
+    expect(taskCountsSummary({ 复习: 1, 新知: 2, 练习: 3 })).toBe("新知 2 · 练习 3 · 复习 1");
+    expect(taskCountsSummary({ 新知: 3, 错题复习: 12, 知识点复习: 3, 闪卡: 2 })).toBe("新知 3 · 错题复习 12 · 知识点复习 3 · 闪卡 2");
   });
 
   it("空计数为空串", () => {

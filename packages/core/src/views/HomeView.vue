@@ -121,19 +121,23 @@
             </button>
           </div>
           <div v-if="todayStore.isCourseOpen(g.courseId)" class="today-list">
-            <StudyTaskRow
-              v-for="task in g.tasks"
-              :key="task.kind + '-' + task.id"
-              :title="task.title"
-              :task-type="task.taskType"
-              :done="task.done"
-              :checkable="task.kind === 'plan'"
-              :busy="todayStore.pendingTaskIds.has(task.id)"
-              :action="taskAction(task)"
-              dense
-              @click="todayStore.openTask(task)"
-              @toggle="todayStore.toggleTask(task)"
-            />
+            <template v-for="(task, ti) in g.tasks" :key="task.kind + '-' + task.id">
+              <!-- 复习项按类型小分组（任务已按 计划→错题→知识点→闪卡 排序） -->
+              <div v-if="isFirstReviewOfKind(g.tasks, ti)" class="today-subgroup">
+                {{ REVIEW_KIND_LABELS[task.reviewKind!] }} · {{ countReviewKind(g.tasks, task.reviewKind!) }}
+              </div>
+              <StudyTaskRow
+                :title="task.title"
+                :task-type="task.taskType"
+                :done="task.done"
+                :checkable="task.kind === 'plan'"
+                :busy="todayStore.pendingTaskIds.has(task.id)"
+                :action="taskAction(task)"
+                dense
+                @click="todayStore.openTask(task)"
+                @toggle="todayStore.toggleTask(task)"
+              />
+            </template>
           </div>
         </div>
       </div>
@@ -155,8 +159,8 @@ import StudyTaskRow from "../components/StudyTaskRow.vue";
 import ProgressBar from "../components/ProgressBar.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
-import { taskAction, taskCountsSummary } from "../constants/tasks";
-import { useTodayStore } from "../stores/today";
+import { taskAction, taskCountsSummary, REVIEW_KIND_LABELS } from "../constants/tasks";
+import { useTodayStore, type TodayTaskItem } from "../stores/today";
 import {
   getData,
   setCourseStatus,
@@ -177,6 +181,18 @@ const todayStore = useTodayStore();
 const modalStore = useModalStore();
 const { isMobile } = useIsMobile();
 const { confirm } = useConfirm();
+
+/** 复习项小分组：该类型第一条前插分组行（任务已按 计划→错题→知识点→闪卡 排序） */
+function isFirstReviewOfKind(tasks: TodayTaskItem[], index: number): boolean {
+  const t = tasks[index];
+  if (t.kind !== "review" || !t.reviewKind) return false;
+  const prev = tasks[index - 1];
+  return !(prev && prev.kind === "review" && prev.reviewKind === t.reviewKind);
+}
+
+function countReviewKind(tasks: TodayTaskItem[], kind: "q" | "kp" | "card"): number {
+  return tasks.filter((t) => t.kind === "review" && t.reviewKind === kind).length;
+}
 
 // ===== 试一试示例课（开箱即用）=====
 const addingSample = ref(false);

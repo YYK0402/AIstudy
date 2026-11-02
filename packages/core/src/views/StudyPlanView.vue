@@ -74,7 +74,7 @@
         </div>
         <div v-if="plan && !editing && !archived" class="plan-ops">
           <button class="btn sm ghost" @click="togglePause">{{ plan.status === "paused" ? "▶ 恢复" : "⏸ 暂停" }}</button>
-          <span v-if="plan.status === 'paused'" class="tag paused" :title="plan.pausedAt ? `自 ${plan.pausedAt} 暂停，恢复时未完成任务将顺延` : '暂停中'"><span class="d"></span>已暂停{{ plan.pausedAt ? ` · 自 ${plan.pausedAt.slice(5).replace("-", "/")}` : "" }}</span>
+          <span v-if="plan.status === 'paused'" class="tag paused" :title="`自 ${plan.pausedAt ?? '—'} 暂停，恢复时未完成任务将顺延`"><span class="d"></span>已暂停{{ plan.pausedAt ? ` · 自 ${plan.pausedAt.slice(5).replace("-", "/")}` : "" }}</span>
           <button class="btn sm ghost" :disabled="!!daysOp" @click="openDaysOp('shift')">延期 N 天</button>
           <button class="btn sm ghost" :disabled="!!daysOp" @click="openDaysOp('extend')">延长 N 天</button>
           <button class="btn sm ghost" :disabled="!!daysOp || unscheduledCount === 0" @click="doSync">
@@ -291,7 +291,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
-import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 import { useCourseStore } from "../stores/course";
 import {
   generateStudyPlan,
@@ -306,6 +305,7 @@ import {
   extendPlan,
   syncPlanKps,
   postponeOverdueTasks,
+  setCourseReviewPaused,
   formatLocalDate,
 } from "../api";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
@@ -328,7 +328,7 @@ import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
-const { confirm } = useConfirm();
+const { confirm, confirmWithChoice } = useConfirm();
 const currentCourseId = () => courseStore.currentCourseId;
 /** 课程归档后计划只读：隐藏生成 / 重生成 / 暂停 / 延期 / 同步入口 */
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
@@ -853,8 +853,8 @@ const { loading, error, load } = useLoad(async (ctx) => {
   applyDefaultCollapse();
   chapters.value = chs;
   knowledgePoints.value = kps;
-  // 课程计划全部暂停 → 复习触点挂起（数据不动）
-  dueReviews.value = isCourseReviewSuspended(plans, ctx.courseId) ? [] : due;
+  // 课程复习暂停 → 复习触点挂起（数据不动）
+  dueReviews.value = courseStore.currentCourse?.reviewPaused ? [] : due;
 });
 
 async function generate() {
@@ -915,12 +915,51 @@ function failMsg(e: unknown, fallback: string) {
 
 async function togglePause() {
   if (!plan.value) return;
-  const next: "active" | "paused" = plan.value.status === "paused" ? "active" : "paused";
+  const course = courseStore.currentCourse;
+  if (!course) return;
   try {
-    const r = await setPlanStatus(plan.value.id, next);
-    plan.value = r.plan;
-    if (next === "active" && r.shiftedDays > 0) {
-      getBridge().showMessage(`已恢复计划，${r.movedTasks} 条未完成任务顺延 ${r.shiftedDays} 天`);
+    if (plan.value.status === "paused") {
+      // 恢复：复习正在暂停时提醒是否一并恢复；否则直接恢复
+      let withReview = false;
+      if (course.reviewPaused) {
+        const r = await confirmWithChoice({
+          title: "恢复学习计划",
+          message: "恢复后计划任务重新浮现，暂停期间未完成任务将顺延。",
+          checkbox: { label: "同时恢复该课程的复习计划", defaultChecked: true },
+          confirmText: "确认恢复",
+        });
+        if (!r.ok) return;
+        withReview = r.checked;
+      }
+      const res = await setPlanStatus(plan.value.id, "active");
+      plan.value = res.plan;
+      if (withReview) {
+        await setCourseReviewPaused(course.id, false);
+        await courseStore.refresh();
+      }
+      const shiftNote = res.shiftedDays > 0 ? `，${res.movedTasks} 条未完成任务顺延 ${res.shiftedDays} 天` : "";
+      const reviewNote = !withReview && course.reviewPaused ? "（复习仍在暂停中）" : "";
+      getBridge().showMessage(`已恢复计划${shiftNote}${reviewNote}`);
+    } else {
+      // 暂停：复习未暂停时提醒是否一并暂停；否则直接暂停
+      let withReview = false;
+      if (!course.reviewPaused) {
+        const r = await confirmWithChoice({
+          title: "暂停学习计划",
+          message: "暂停后该计划任务不再浮现，恢复时未完成任务顺延。",
+          checkbox: { label: "同时暂停该课程的复习计划（到期复习项不再浮现）", defaultChecked: true },
+          confirmText: "确认暂停",
+        });
+        if (!r.ok) return;
+        withReview = r.checked;
+      }
+      const res = await setPlanStatus(plan.value.id, "paused");
+      plan.value = res.plan;
+      if (withReview) {
+        await setCourseReviewPaused(course.id, true);
+        await courseStore.refresh();
+      }
+      getBridge().showMessage(withReview ? "已暂停计划，复习计划已同步暂停" : "已暂停计划");
     }
   } catch (e) {
     failMsg(e, "更新计划状态失败");

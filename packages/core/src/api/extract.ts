@@ -6,7 +6,6 @@ import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../util
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
-import { ensureReviewTouchpointInData } from "./review";
 import { updateKnowledgePoint } from "./kp";
 import { findChapterByTitle, normalizeKpName } from "./kpMatch";
 import {

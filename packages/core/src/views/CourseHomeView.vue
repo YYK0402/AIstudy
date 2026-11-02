@@ -85,7 +85,6 @@ import {
   queryDueReviews,
   queryQuestions,
   queryTodayPlanTasks,
-  queryStudyPlans,
   setCourseStatus,
   updateStudyTask,
 } from "../api";
@@ -97,7 +96,6 @@ import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
 import { getBridge } from "@/bridge";
-import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 
 const courseStore = useCourseStore();
 const modalStore = useModalStore();
@@ -195,17 +193,16 @@ const { loading, error, load } = useLoad(async (ctx) => {
     stats.value = null;
     return;
   }
-  const [s, due, questions, tasks, plans] = await Promise.all([
+  const [s, due, questions, tasks] = await Promise.all([
     queryCourseStats(ctx.courseId),
     queryDueReviews(ctx.courseId),
     queryQuestions(ctx.courseId),
     queryTodayPlanTasks(ctx.courseId),
-    queryStudyPlans(ctx.courseId),
   ]);
   if (ctx.isStale()) return;
   stats.value = s;
-  // 课程计划全部暂停 → 复习触点挂起，统计归零（数据不动）
-  dueReviewCount.value = isCourseReviewSuspended(plans, ctx.courseId) ? 0 : due.length;
+  // 课程复习暂停 → 复习触点挂起，统计归零（数据不动）
+  dueReviewCount.value = courseStore.currentCourse?.reviewPaused ? 0 : due.length;
   questionCount.value = questions.length;
   todayTasks.value = tasks;
 });

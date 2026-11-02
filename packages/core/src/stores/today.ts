@@ -4,8 +4,7 @@ import router from "../router";
 import { useCourseStore } from "./course";
 import { getBridge } from "../bridge";
 import { getData, queryDueReviews, updateStudyTask, formatLocalDate, truncateText } from "../api";
-import { taskAction } from "../constants/tasks";
-import { isCourseReviewSuspended } from "../utils/reviewSuspend";
+import { taskAction, taskTypeLabel, REVIEW_KIND_LABELS } from "../constants/tasks";
 
 export interface TodayTaskItem {
   id: number;
@@ -21,6 +20,8 @@ export interface TodayTaskItem {
   title: string;
   course: string;
   done: boolean;
+  /** 复习项的类型（q=错题 / kp=知识点 / card=闪卡）；计划任务为 null。用于首页按类型小分组 */
+  reviewKind: "q" | "kp" | "card" | null;
 }
 
 export interface CourseDayGroup {
@@ -59,7 +60,9 @@ export const useTodayStore = defineStore("today", () => {
         doneCount: 0,
       };
       g.tasks.push(t);
-      g.counts[t.taskType] = (g.counts[t.taskType] ?? 0) + 1;
+      // counts 的 key 用展示名（计划任务类型标签 / 复习项类型标签），供组摘要直接拼接
+      const label = t.kind === "review" && t.reviewKind ? REVIEW_KIND_LABELS[t.reviewKind] : taskTypeLabel(t.taskType);
+      g.counts[label] = (g.counts[label] ?? 0) + 1;
       if (t.done) g.doneCount += 1;
       map.set(t.courseId, g);
     }
@@ -113,14 +116,15 @@ export const useTodayStore = defineStore("today", () => {
               title: t.title,
               course: c.name,
               done: t.status === "done",
+              reviewKind: null,
             });
           }
         }
       }
       // 到期间隔复习项：完成 = 复习计划页评级（dueTime 推后后自动消失）
-      // 课程计划全部暂停时复习触点整体挂起（不浮现，数据不动，恢复计划后自动恢复）
+      // 课程复习暂停时整体挂起（不浮现，SM-2 排期数据不动，恢复后自动恢复）
       for (const c of activeCourses) {
-        if (isCourseReviewSuspended(data.studyPlans, c.id)) continue;
+        if (c.reviewPaused) continue;
         for (const item of await queryDueReviews(c.id)) {
           const kp = item.knowledgePoint;
           const q = item.question;
@@ -138,10 +142,17 @@ export const useTodayStore = defineStore("today", () => {
             title: kp ? `复习：${kp.name}` : q ? `错题复习：${q.title}` : card ? `闪卡：${truncateText(card.front, 24)}` : `复习 #${item.schedule.id}`,
             course: c.name,
             done: false,
+            reviewKind: q ? "q" : card ? "card" : "kp",
           });
         }
       }
-      next.sort((a, b) => Number(a.done) - Number(b.done));
+      // 计划任务在前（未完成优先），复习项按类型（错题→知识点→闪卡）小分组
+      const kindOrder = { q: 0, kp: 1, card: 2 } as const;
+      next.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "plan" ? -1 : 1;
+        if (a.kind === "plan") return Number(a.done) - Number(b.done);
+        return (kindOrder[a.reviewKind ?? "kp"] - kindOrder[b.reviewKind ?? "kp"]);
+      });
       items.splice(0, items.length, ...next);
       applyDefaultExpand();
     } catch (e) {

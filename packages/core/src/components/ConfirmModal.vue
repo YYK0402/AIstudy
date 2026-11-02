@@ -3,6 +3,10 @@
     <div class="modal confirm-modal" role="alertdialog" aria-modal="true" :aria-label="modalStore.confirmTitle">
       <h2>{{ modalStore.confirmTitle }}</h2>
       <p class="confirm-msg">{{ modalStore.confirmMessage }}</p>
+      <label v-if="modalStore.confirmCheckbox" class="confirm-checkbox">
+        <input v-model="modalStore.confirmChecked" type="checkbox" />
+        <span>{{ modalStore.confirmCheckbox.label }}</span>
+      </label>
       <div class="modal-actions">
         <button class="btn ghost" @click="settle(false)">取消</button>
         <button class="btn" :class="modalStore.confirmDanger ? 'danger-solid' : 'primary'" @click="settle(true)">

@@ -101,36 +101,51 @@ describe("useTodayStore", () => {
     expect(store.items.some((t) => t.title === "归档课任务")).toBe(false);
   });
 
-  it("课程计划全部暂停 → 该课程计划任务与到期复习均不浮现（数据不动）", async () => {
-    dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "paused" };
+  it("课程复习暂停（reviewPaused）→ 复习项不浮现，计划任务不受影响（与计划暂停解耦，数据不动）", async () => {
+    dataRef.data.courses[0] = { ...dataRef.data.courses[0], reviewPaused: true };
     try {
       setActivePinia(createPinia());
       const store = await makeStore();
-      // 课程 A 的计划任务 101 与 3 个到期复习触点全部挂起
-      expect(store.items.filter((t) => t.courseId === 1)).toHaveLength(0);
+      // 计划任务 101 照常浮现，3 个到期复习触点挂起
+      const courseA = store.items.filter((t) => t.courseId === 1);
+      expect(courseA).toHaveLength(1);
+      expect(courseA[0].kind).toBe("plan");
       // 排期数据未被修改
       expect(dataRef.data.reviewSchedules).toHaveLength(3);
-      // 恢复计划 → 任务与复习回来
+      // 计划暂停不影响复习浮现（解耦）
+      dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "paused" };
+      setActivePinia(createPinia());
+      const planPaused = await makeStore();
+      expect(planPaused.items.filter((t) => t.courseId === 1)).toHaveLength(0);
       dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "active" };
+      // 恢复复习 → 复习项回来
+      dataRef.data.courses[0] = { ...dataRef.data.courses[0], reviewPaused: false };
       setActivePinia(createPinia());
       const restored = await makeStore();
       expect(restored.items.filter((t) => t.courseId === 1)).toHaveLength(4);
     } finally {
+      dataRef.data.courses[0] = { ...dataRef.data.courses[0], reviewPaused: false };
       dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "active" };
     }
   });
 
-  it("归组：组内未完成在前，counts/doneCount 正确", async () => {
+  it("归组：计划任务在前（未完成优先），复习项按类型（错题→知识点→闪卡），counts/doneCount 正确", async () => {
     setActivePinia(createPinia());
     dataRef.data.studyTasks[0] = { ...dataRef.data.studyTasks[0], status: "done" };
-    const store = await makeStore();
-    const g = store.groups[0];
-    expect(g.tasks[0].done).toBe(false);
-    expect(g.tasks[3].done).toBe(true);
-    expect(g.doneCount).toBe(1);
-    expect(g.counts.learn).toBe(1);
-    expect(g.counts.review).toBe(3);
-    dataRef.data.studyTasks[0] = { ...dataRef.data.studyTasks[0], status: "todo" };
+    try {
+      const store = await makeStore();
+      const g = store.groups[0];
+      // 顺序：计划任务 101（done）→ 错题 303 → 知识点 301 → 闪卡 302
+      expect(g.tasks.map((t) => t.id)).toEqual([101, -303, -301, -302]);
+      expect(g.tasks[0].done).toBe(true);
+      expect(g.doneCount).toBe(1);
+      expect(g.counts["新知"]).toBe(1);
+      expect(g.counts["错题复习"]).toBe(1);
+      expect(g.counts["知识点复习"]).toBe(1);
+      expect(g.counts["闪卡"]).toBe(1);
+    } finally {
+      dataRef.data.studyTasks[0] = { ...dataRef.data.studyTasks[0], status: "todo" };
+    }
   });
 
   it("单课程默认展开，toggleCourse 切换收起", async () => {
