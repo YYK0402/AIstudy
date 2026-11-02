@@ -93,6 +93,23 @@ describe("useTabBadges（当前课程口径，与页面内容一致）", () => {
     expect(badges.wrongTotal.value).toBe(2);
   });
 
+  it("课程计划全部暂停 → 复习徽标归零（错题/闪卡徽标不受影响，数据不动）", async () => {
+    dataRef.data.studyPlans = [
+      { id: 51, courseId: 1, planContent: "", targetDate: "2026-12-31", dailyHour: "1", createTime: "2026-10-01T00:00:00Z", status: "paused" },
+    ];
+    const { useTabBadges } = await import("../useTabBadges");
+    const badges = useTabBadges(() => ({ id: 1, status: "active" }));
+    await badges.refresh();
+    expect(badges.dueReviewTotal.value).toBe(0);
+    // 错题/闪卡徽标语义独立，保持正常
+    expect(badges.wrongTotal.value).toBe(2);
+    expect(badges.cardDueTotal.value).toBe(1);
+    // 恢复计划 → 复习徽标回来
+    dataRef.data.studyPlans[0].status = "active";
+    await badges.refresh();
+    expect(badges.dueReviewTotal.value).toBe(1);
+  });
+
   it("数据变化后 refresh 得到新值", async () => {
     const { useTabBadges } = await import("../useTabBadges");
     const badges = useTabBadges(() => ({ id: 1, status: "active" }));

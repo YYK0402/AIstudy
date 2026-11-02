@@ -5,6 +5,7 @@ import { useCourseStore } from "./course";
 import { getBridge } from "../bridge";
 import { getData, queryDueReviews, updateStudyTask, formatLocalDate, truncateText } from "../api";
 import { taskAction } from "../constants/tasks";
+import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 
 export interface TodayTaskItem {
   id: number;
@@ -117,7 +118,9 @@ export const useTodayStore = defineStore("today", () => {
         }
       }
       // 到期间隔复习项：完成 = 复习计划页评级（dueTime 推后后自动消失）
+      // 课程计划全部暂停时复习触点整体挂起（不浮现，数据不动，恢复计划后自动恢复）
       for (const c of activeCourses) {
+        if (isCourseReviewSuspended(data.studyPlans, c.id)) continue;
         for (const item of await queryDueReviews(c.id)) {
           const kp = item.knowledgePoint;
           const q = item.question;

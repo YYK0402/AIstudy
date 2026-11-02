@@ -291,6 +291,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
+import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 import { useCourseStore } from "../stores/course";
 import {
   generateStudyPlan,
@@ -852,7 +853,8 @@ const { loading, error, load } = useLoad(async (ctx) => {
   applyDefaultCollapse();
   chapters.value = chs;
   knowledgePoints.value = kps;
-  dueReviews.value = due;
+  // 课程计划全部暂停 → 复习触点挂起（数据不动）
+  dueReviews.value = isCourseReviewSuspended(plans, ctx.courseId) ? [] : due;
 });
 
 async function generate() {

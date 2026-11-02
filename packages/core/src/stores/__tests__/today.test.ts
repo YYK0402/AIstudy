@@ -101,6 +101,25 @@ describe("useTodayStore", () => {
     expect(store.items.some((t) => t.title === "归档课任务")).toBe(false);
   });
 
+  it("课程计划全部暂停 → 该课程计划任务与到期复习均不浮现（数据不动）", async () => {
+    dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "paused" };
+    try {
+      setActivePinia(createPinia());
+      const store = await makeStore();
+      // 课程 A 的计划任务 101 与 3 个到期复习触点全部挂起
+      expect(store.items.filter((t) => t.courseId === 1)).toHaveLength(0);
+      // 排期数据未被修改
+      expect(dataRef.data.reviewSchedules).toHaveLength(3);
+      // 恢复计划 → 任务与复习回来
+      dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "active" };
+      setActivePinia(createPinia());
+      const restored = await makeStore();
+      expect(restored.items.filter((t) => t.courseId === 1)).toHaveLength(4);
+    } finally {
+      dataRef.data.studyPlans[0] = { ...dataRef.data.studyPlans[0], status: "active" };
+    }
+  });
+
   it("归组：组内未完成在前，counts/doneCount 正确", async () => {
     setActivePinia(createPinia());
     dataRef.data.studyTasks[0] = { ...dataRef.data.studyTasks[0], status: "done" };

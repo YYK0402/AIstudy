@@ -1,6 +1,7 @@
 import { ref } from "vue";
-import { queryWrongQuestions, queryDueFlashcardCount, queryDueReviews } from "../api";
+import { queryWrongQuestions, queryDueFlashcardCount, queryDueReviews, queryStudyPlans } from "../api";
 import type { Course } from "../api";
+import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 
 /**
  * TabBar/更多弹层徽标：只统计**当前课程**，与对应页面内容口径一致
@@ -22,14 +23,16 @@ export function useTabBadges(getCurrentCourse: () => Pick<Course, "id" | "status
       return;
     }
     try {
-      const [wrong, cards, due] = await Promise.all([
+      const [wrong, cards, due, plans] = await Promise.all([
         queryWrongQuestions(course.id),
         queryDueFlashcardCount(course.id),
         queryDueReviews(course.id),
+        queryStudyPlans(course.id),
       ]);
       wrongTotal.value = wrong.length;
       cardDueTotal.value = cards;
-      dueReviewTotal.value = due.length;
+      // 课程计划全部暂停 → 复习触点挂起，徽标归零（数据不动）
+      dueReviewTotal.value = isCourseReviewSuspended(plans, course.id) ? 0 : due.length;
     } catch (e) {
       console.error("徽标刷新失败:", e);
     }

@@ -88,6 +88,7 @@ import {
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useIsMobile } from "../composables/useIsMobile";
+import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 import CourseSwitcherSheet from "./CourseSwitcherSheet.vue";
 
 /** 用户反馈/BUG 表单（飞书多维表格表单，匿名可填） */
@@ -247,7 +248,8 @@ async function loadStats() {
       tasks += ts.filter((t) => t.scheduledDate === today && t.status !== "done").length;
     }
     todayTaskCount.value = tasks;
-    dueReviewCount.value = due.length;
+    // 课程计划全部暂停 → 复习触点挂起，统计归零（数据不动）
+    dueReviewCount.value = isCourseReviewSuspended(plans, id) ? 0 : due.length;
     wrongCount.value = wrong.length;
   } catch (e) {
     console.error("加载顶栏统计失败:", e);

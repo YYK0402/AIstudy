@@ -40,7 +40,16 @@
           {{ dueList.length }} 项
         </span>
       </h3>
-        <SkeletonList v-if="loading && dueList.length === 0" :rows="4" />
+        <!-- 计划全部暂停：复习触点整体挂起，不列清单（数据不动，恢复计划后自动恢复） -->
+        <EmptyState
+          v-if="reviewSuspended"
+          compact
+          icon="moon"
+          :text="`课程学习计划已暂停，${suspendedCount} 个复习触点已挂起。&#10;恢复计划后自动恢复复习。`"
+        >
+          <router-link class="btn sm primary" to="/plan">去学习计划恢复</router-link>
+        </EmptyState>
+        <SkeletonList v-else-if="loading && dueList.length === 0" :rows="4" />
         <LoadError v-else-if="error && dueList.length === 0" :message="error" @retry="load" />
         <EmptyState
           v-else-if="dueList.length === 0"
@@ -143,10 +152,11 @@ import { useLoad } from "../composables/useLoad";
 import EmptyState from "../components/EmptyState.vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCourseStore } from "../stores/course";
-import { queryDueReviews, queryKnowledgePoints, submitReview, submitKpReview, submitAnswer, QUESTION_TYPE_LABELS } from "../api";
+import { queryDueReviews, queryStudyPlans, queryKnowledgePoints, submitReview, submitKpReview, submitAnswer, QUESTION_TYPE_LABELS } from "../api";
 import type { ReviewDueItem, QuestionType, KnowledgePoint } from "../api";
 import { capStudySec } from "../constants/study";
 import { getBridge } from "@/bridge";
+import { isCourseReviewSuspended } from "../utils/reviewSuspend";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
@@ -205,14 +215,19 @@ function reveal(id: number) {
   revealed[id] = false;
 }
 
+const reviewSuspended = ref(false);
+const suspendedCount = ref(0);
+
 const { loading, error, load } = useLoad(async (ctx) => {
   if (!ctx.courseId) {
     dueList.value = [];
     return;
   }
-  const due = await queryDueReviews(ctx.courseId);
+  const [due, plans] = await Promise.all([queryDueReviews(ctx.courseId), queryStudyPlans(ctx.courseId)]);
   if (ctx.isStale()) return;
-  dueList.value = due;
+  reviewSuspended.value = isCourseReviewSuspended(plans, ctx.courseId);
+  suspendedCount.value = reviewSuspended.value ? due.length : 0;
+  dueList.value = reviewSuspended.value ? [] : due;
 });
 
 async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
