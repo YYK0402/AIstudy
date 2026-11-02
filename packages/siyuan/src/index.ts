@@ -1,4 +1,4 @@
-import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend, getAllModels } from "siyuan";
+import { Plugin, showMessage, openTab, fetchSyncPost, getFrontend, getAllModels, Dialog } from "siyuan";
 import type { TPluginDataChangeReason } from "siyuan";
 import { createEmptyData } from "../../core/src/types/appData";
 import type { AppData, CallLog, CourseData } from "../../core/src/types/appData";
@@ -18,6 +18,7 @@ import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
 import { isMobileFrontend } from "./frontend";
+import { FrontendLoader } from "./frontendLoader";
 
 const DATA_STORAGE = "data";
 const TAB_TYPE = "study_tab";
@@ -320,7 +321,9 @@ export default class AiStudyPlugin extends Plugin {
     // 清除自愈轮询定时器，避免卸载发生在窗口期内时回调仍向内核已移除的面板 mount
     for (const timer of this.selfHealTimers) window.clearTimeout(timer);
     this.selfHealTimers = [];
-    // 卸载时清理已挂载的前端应用，避免 Vue 实例泄漏
+    // 卸载时清理移动端 Dialog（destroy 触发 destroyCallback → unmount），避免 Vue 实例泄漏
+    this.mobileDialog?.destroy();
+    this.mobileDialog = null;
     window.AiStudyApp?.unmount();
   }
 
@@ -914,63 +917,52 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
-  // 前端 bundle 加载中（init 竞态防护）：内核恢复隐藏页签与用户开新页签的 init 可能并发，
-  // 若各自注入 script 会二次求值 bundle（两套独立模块状态互相 adopt，实例落到隐藏页签、可见页签空白）
-  private frontendLoading = false;
-  private pendingPanels: Element[] = [];
+  // 前端 bundle 加载器：桌面 custom 页签与移动端全屏 Dialog 共用（幂等/并发排队/错误渲染见 frontendLoader.ts）
+  private frontendLoader: FrontendLoader<Element> | null = null;
+
+  /** 移动端全屏容器单例：内核移动端未实现 custom 页签（openTab 空实现），用 Dialog 当页面 */
+  private mobileDialog: Dialog | null = null;
+
+  private getLoader(): FrontendLoader<Element> {
+    if (!this.frontendLoader) {
+      this.frontendLoader = new FrontendLoader<Element>(
+        {
+          isLoaded: () => Boolean(window.AiStudyApp),
+          injectScript: (src, onSuccess, onFailure) => {
+            // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载
+            // （3.8.9 移动端是 /stage/build/mobile/，getFrontend() 返回 browser-mobile / mobile），
+            // 相对路径 /plugins/... 均解析到内核（曾按 file:// 区分原生桌面，iOS WKWebView 禁 http 页加载 file:// 导致白屏）
+            const script = document.createElement("script");
+            script.src = src;
+            script.onload = onSuccess;
+            script.onerror = () => onFailure(src);
+            document.head.appendChild(script);
+          },
+          mount: (panel) => this.mountApp(panel),
+          reportEvalError: (panel) => {
+            // bundle 下载成功但求值中途抛错（语法/运行时），AiStudyApp 未挂上
+            console.error("[AIstudy-diag] bundle 已下载但求值失败，window.AiStudyApp 未定义");
+            this.showTabError(panel, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
+          },
+          reportNetworkError: (panel, src) => {
+            console.error("[AIstudy-diag] 加载前端资源失败:", src);
+            this.showTabError(panel, "前端资源加载失败", `script 请求未成功：${src}`);
+          },
+        },
+        this.name,
+      );
+    }
+    return this.frontendLoader;
+  }
 
   // 注册自定义页签：动态加载前端 bundle 并直接 mount 到页签元素
   private registerTab() {
-    const pluginName = this.name;
     // init/destroy 回调内 this 是 Custom 模型（见 siyuan 类型），插件能力须经闭包引用
     const self = this;
     this.addTab({
       type: TAB_TYPE,
       init() {
-        // 幂等：bundle 已加载过（内核重放页签 init / 插件重载后）直接挂载，不重复插入 script 二次执行
-        if (window.AiStudyApp) {
-          self.mountApp(this.element);
-          return;
-        }
-        // 并发 init（bundle 尚在加载）：登记面板排队，首份 script 加载完成后统一挂载
-        if (self.frontendLoading) {
-          self.pendingPanels.push(this.element);
-          return;
-        }
-        // 全端统一走内核 HTTP：桌面 / 移动端 petal 页面本身都由内核 HTTP 加载
-        // （3.8.9 移动端是 /stage/build/mobile/，getFrontend() 返回 browser-mobile / mobile），
-        // 相对路径 /plugins/... 均解析到内核；加时间戳避免构建后刷新仍命中旧 bundle 缓存
-        // （曾按 file:// 区分原生桌面，iOS WKWebView 禁 http 页加载 file:// 导致白屏）
-        const src = `/plugins/${pluginName}/web/index.js?v=${Date.now()}`;
-        const script = document.createElement("script");
-        script.src = src;
-        self.frontendLoading = true;
-        script.onload = () => {
-          self.frontendLoading = false;
-          const queued = self.pendingPanels.splice(0);
-          if (!window.AiStudyApp) {
-            // bundle 下载成功但求值中途抛错（语法/运行时），AiStudyApp 未挂上
-            console.error("[AIstudy-diag] bundle 已下载但求值失败，window.AiStudyApp 未定义");
-            self.showTabError(this.element, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
-            for (const p of queued) {
-              self.showTabError(p, "前端脚本执行失败", "bundle 已下载但执行中途出错，请查看控制台 [AIstudy-diag] 日志或截图本页反馈");
-            }
-            return;
-          }
-          self.mountApp(this.element);
-          // 排队的并发面板依次挂载：mount 的 adopt 逻辑保证实例最终跟随最后一个面板
-          for (const p of queued) self.mountApp(p);
-        };
-        script.onerror = () => {
-          self.frontendLoading = false;
-          const queued = self.pendingPanels.splice(0);
-          console.error("[AIstudy-diag] 加载前端资源失败:", src);
-          self.showTabError(this.element, "前端资源加载失败", `script 请求未成功：${src}`);
-          for (const p of queued) {
-            self.showTabError(p, "前端资源加载失败", `script 请求未成功：${src}`);
-          }
-        };
-        document.head.appendChild(script);
+        self.getLoader().load(this.element);
       },
       // 内核关闭页签时移除 DOM 但不会销毁前端应用；不接 destroy 钩子会导致
       // Vue 实例 + pinia store 定时器（notify 5s interval）每次开关页签累积泄漏
@@ -1060,8 +1052,9 @@ export default class AiStudyPlugin extends Plugin {
       showMessage(`AI 学习：打开页签失败（${stage}）${message ? "：" + message.slice(0, 60) : ""}，详情见控制台 [AIstudy-diag]`, 8000, "error");
     };
     if (isMobileFrontend(getFrontend())) {
-      // 内核移动端未实现 custom 页签（openTab 空实现，DOM 无 custom 渲染分支）→ 明确提示，不触发注定失败的 openTab
-      showMessage("AI 学习：当前内核版本的移动端暂不支持学习页签，请通过桌面端（桌面应用或电脑浏览器）使用", 10000, "info");
+      // 内核移动端未实现 custom 页签（openTab 空实现，DOM 无 custom 渲染分支）
+      // → 全屏 Dialog 当页面（前端 app 经 768px 断点自适应移动布局）
+      this.openMobileDialog();
       return;
     }
     try {
@@ -1091,6 +1084,28 @@ export default class AiStudyPlugin extends Plugin {
         report("自检：页签未创建", new Error("1.5s 后仍未找到 AIstudy 自定义页签"));
       }
     }, 1500);
+  }
+
+  /** 移动端：全屏 Dialog 当页面，前端 app 挂进 Dialog 内容容器（单实例，重复点击不叠加） */
+  private openMobileDialog() {
+    if (this.mobileDialog) return;
+    const dialog = new Dialog({
+      content: '<div id="aiStudyMobileRoot" style="height:100%;width:100%"></div>',
+      width: "100%",
+      height: "100%",
+      destroyCallback: () => {
+        this.mobileDialog = null;
+        window.AiStudyApp?.unmount();
+      },
+    });
+    this.mobileDialog = dialog;
+    const root = dialog.element.querySelector("#aiStudyMobileRoot");
+    if (!root) {
+      dialog.destroy();
+      this.mobileDialog = null;
+      return;
+    }
+    this.getLoader().load(root);
   }
 
   // 各数据文件的已写盘状态（序列化快照）；commitData 据此判断是否需要真实写盘
