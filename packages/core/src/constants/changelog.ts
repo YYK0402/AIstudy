@@ -37,6 +37,17 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.2",
+    date: "2026-11-02",
+    intro: "暂停学习计划后，该课程的到期复习也会一并暂停，不再出现在首页任务与徽标中",
+    items: [
+      {
+        head: "修复",
+        text: "暂停学习计划后首页仍持续出现大量到期复习项：现在课程的全部计划暂停时，其到期复习触点整体挂起（首页任务、徽标、课程统计归零，复习页显示挂起说明），恢复计划后自动恢复，复习排期数据不受影响",
+      },
+    ],
+  },
+  {
     version: "0.5.1",
     date: "2026-11-02",
     intro: {
