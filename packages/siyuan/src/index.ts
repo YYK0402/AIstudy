@@ -1091,6 +1091,7 @@ export default class AiStudyPlugin extends Plugin {
     if (this.mobileDialog) return;
     const dialog = new Dialog({
       content: '<div id="aiStudyMobileRoot" style="height:100%;width:100%"></div>',
+      title: "AI 智能学习",
       width: "100%",
       height: "100%",
       destroyCallback: () => {

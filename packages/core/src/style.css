@@ -206,6 +206,8 @@
   z-index: 0;
 }
 .ai-study-app { display: flex; height: 100vh; position: relative; z-index: 1; }
+/* 移动端全屏 Dialog 场景：宿主 header 占高，app 改随 Dialog 内容区（100vh 会溢出 TabBar 被裁） */
+#aiStudyMobileRoot .ai-study-app { height: 100%; }
 
 /* ===== 侧边栏 ===== */
 .sidebar {
