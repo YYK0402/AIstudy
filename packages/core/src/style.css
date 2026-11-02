@@ -2111,7 +2111,7 @@
 
 /* ===== 移动端：内容区与触控目标 ===== */
 @media (max-width: 768px) {
-  .content { padding: 14px; }
+  .content { padding: 14px; -webkit-overflow-scrolling: touch; }
   .topbar { padding: 0 10px; }
   .task-row { min-height: 44px; }
   .chip { min-height: 38px; }
