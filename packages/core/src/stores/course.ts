@@ -30,5 +30,10 @@ export const useCourseStore = defineStore("course", {
       const courses = await queryCourses();
       this.setCourses(courses);
     },
+    /** 幂等首载：移动端 Sidebar 不挂载时由 App 兜底加载课程列表 */
+    async ensureLoaded() {
+      if (this.courses.length > 0) return;
+      await this.refresh();
+    },
   },
 });

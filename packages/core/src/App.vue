@@ -35,10 +35,12 @@ import ChapterTreePreviewModal from "./components/ChapterTreePreviewModal.vue";
 import ChangelogModal from "./components/ChangelogModal.vue";
 import ConfirmModal from "./components/ConfirmModal.vue";
 import { useModalStore } from "./stores/modal";
+import { useCourseStore } from "./stores/course";
 import { CHANGELOG, changelogSince } from "./constants/changelog";
 import { isNewerVersion } from "./utils/version";
 
 const modalStore = useModalStore();
+const courseStore = useCourseStore();
 const { isMobile } = useIsMobile();
 const appRoot = ref<HTMLElement | null>(null);
 // 思源移动端：插件 app 可见时隐藏宿主胶囊底栏，切走/卸载归还
@@ -52,6 +54,8 @@ const SEEN_KEY = "aiStudy.seenChangelogVersion";
 const pendingSeenUpdate = ref<string | null>(null);
 
 onMounted(() => {
+  // 移动端 Sidebar 不挂载：App 兜底首载课程列表（幂等）
+  void courseStore.ensureLoaded();
   const current = __APP_VERSION__;
   const seen = localStorage.getItem(SEEN_KEY);
   if (seen == null) {
