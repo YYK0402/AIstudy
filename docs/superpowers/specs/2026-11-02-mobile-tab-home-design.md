@@ -38,14 +38,28 @@
 
 ### 2. TabBar（新组件 `components/TabBar.vue`）
 
-- 底部固定，5 项：**首页 `/` · 学习 `/study` · 刷题 `/quiz` · 复习 `/review` · 更多**
+**布局方式：in-flow，不用 `position: fixed`**（环境分析结论，见附录 A）：
+- 移动端 `.ai-study-app` 改 flex column：内容滚动区（flex-1，原 `.content`）+ TabBar 底部（高 56px + `padding-bottom: env(safe-area-inset-bottom)`）
+- 优势：无遮挡/z-index 问题；iOS 键盘弹起 visual viewport 收缩时 in-flow 自然上移（fixed 会被键盘盖住/错位）
+- 思源插件 UI 直接挂主文档（非 iframe），可操作宿主元素，见 §2.1
+
+**Tab 项**（5 项）：**首页 `/` · 学习 `/study` · 刷题 `/quiz` · 复习 `/review` · 更多**
 - `router-link` + active 态；**复习 Tab 徽标** = 全局到期复习数（含闪卡，全部活跃课程）
 - 「更多」= 底部弹层（Bottom Sheet）：
   - 两列网格 7 项：错题本（徽标：全局未毕业错题数）/ 闪卡本（徽标：全局到期闪卡）/ 课程内容 / 学习计划 / 知识图谱 / 学习报告 / 设置
   - 两个快捷入口：**新建课程**、**上传资料**（打开现有 modal，与侧边栏同款）
   - 图标复用 Sidebar 的 icon set
-- `padding-bottom: env(safe-area-inset-bottom)` 兼容 iPhone 手势条
 - 弹层打开时遮罩点击/下滑关闭
+
+#### 2.1 宿主底栏处理（思源移动端专属）
+
+思源移动端自带**胶囊悬浮底栏** `#mobileBottomBar`（fixed、h48、z-index 3、bottom=safe-area+8px），与插件 TabBar 同占底部 → 插件 app 可见时隐藏、不可见时恢复：
+
+- 新 composable `useMobileHostBar()`（仅 `isMobile && #mobileBottomBar` 存在时启用）：
+  - `IntersectionObserver` 观察 `.ai-study-app`：intersecting → `#mobileBottomBar.style.visibility = "hidden"`；non-intersecting（tab 切换 display:none）→ **移除 inline**（把控制权还给宿主）
+  - 用 `visibility` 而非 opacity/transform：宿主的滚动显隐逻辑只写 `--mobile-bar-translate-y/--mobile-bar-opacity` 两个变量到元素 inline，不碰 visibility → 无冲突；且插件 tab 可见时编辑器隐藏、宿主滚动逻辑不触发，不会被顶回来
+  - **unmount 必须清理**（移除 inline + 断开 observer），防宿主底栏永久消失
+- 桌面 stage 无此元素，composable 自动 no-op
 
 ### 3. 移动端首页（`components/home/MobileHomePanel.vue`）
 
@@ -96,6 +110,7 @@
 | 新增 | `packages/core/src/components/CourseSwitcherSheet.vue` |
 | 新增 | `packages/core/src/composables/useTodayTasks.ts` |
 | 新增 | `packages/core/src/composables/useIsMobile.ts` |
+| 新增 | `packages/core/src/composables/useMobileHostBar.ts` |
 | 修改 | `packages/core/src/App.vue`（Sidebar/TabBar 分支） |
 | 修改 | `packages/core/src/views/HomeView.vue`（抽数据层 + isMobile 分支） |
 | 修改 | `packages/core/src/components/Topbar.vue`（移动端简化） |
@@ -136,8 +151,24 @@ useTodayTasks()（reactive items + todayGroups 归组 + 勾选动作）
 
 | 风险 | 处置 |
 | --- | --- |
+| 宿主底栏 visibility 残留（插件 unmount 未清理 → 思源移动端底栏永久消失） | `useMobileHostBar` 在 onUnmounted 强制移除 inline；冒烟验证「开插件 tab → 切走 → 底栏恢复」 |
 | `useTodayTasks` 抽取改变桌面首页行为 | 纯搬移不改逻辑；桌面首页回归对比 |
 | 768px 断点与思源桌面窗口最小宽冲突 | 思源桌面窗口实际最小宽 >800px；冒烟覆盖 1127px 不误触发 |
 | Bottom Sheet 与现有 modal 焦点管理（modals.ts 焦点陷阱）冲突 | sheet 走现有 `.modal-mask` 约定，Esc/焦点循环复用 |
 | 移动端长任务名/课程名溢出 | 单行省略 + title，已有 `.chip--ellipsis` 模式复用 |
 | 跨端 core 改动 | 双端同发（飞牛 fnos 端同 bundle，无移动端 UI 差异影响，打包流程照旧） |
+
+## 附录 A：思源移动端环境分析（2026-11-02 实测）
+
+来源：`/stage/build/mobile/` 静态 HTML/CSS/JS 分析 + 390x844 模拟视口 DOM 实测。
+
+| 事实 | 证据 |
+| --- | --- |
+| 壳结构：`mobile-topbar`（48px）+ 内容区（flex-1 直伸屏幕底）+ 胶囊悬浮底栏 | mobile stage HTML body 结构（fn__flex-column） |
+| 胶囊底栏：`position:fixed`、h48、`width:min(100%-32px, 288px)` 居中圆角、`bottom: calc(safe-area + 8px)`、z-index 3 | `base.*.css` `.mobile-bottom-bar` 规则 |
+| 底栏 8 项：搜索/最近文档/数据历史/新建文档/新建笔记本/用户指南/页签(计数)/更多 | mobile stage HTML `#mobileBottomBar` |
+| 滚动显隐：宿主 JS 写 `#mobileBottomBar` **元素 inline** 的 `--mobile-bar-translate-y/--mobile-bar-opacity`（documentElement 变量会被 inline 覆盖，不可用） | `main.*.js` `getElementById("mobileBottomBar").style.setProperty(...)` |
+| 键盘弹起：`body.mobile-keyboard--open` → `--mobile-bottom-bar-offset: 0px`，宿主自动让位 | CSS 规则 |
+| `viewport-fit=cover` → `env(safe-area-inset-*)` 有效 | mobile stage `<meta name="viewport">` |
+| 插件 UI 非 iframe：petal 直接挂主文档，`.ai-study-app` 祖先链 `layout-tab-container → layout__center → layout → body`（两端同构） | 桌面 stage DOM 实测 |
+| tab 切换 = 面板 display:none（非销毁），可被 IntersectionObserver 感知 | AGENTS.md 冒烟「隐藏应用实例」+ 插件实例常驻 |
