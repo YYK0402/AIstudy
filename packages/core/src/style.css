@@ -1950,3 +1950,169 @@
   font-weight: 600;
   color: var(--as-accent);
 }
+
+/* ===== 移动端：底部 TabBar（in-flow，不用 fixed，键盘弹起自动让位）===== */
+.tabbar {
+  display: flex;
+  flex-shrink: 0;
+  border-top: 1px solid var(--as-border-soft);
+  background: var(--as-bg-elev);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar .tab {
+  position: relative;
+  flex: 1;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--as-text-faint);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.tabbar .tab svg { width: 22px; height: 22px; }
+.tabbar .tab .t-lbl { font-size: 11px; line-height: 1; }
+.tabbar .tab.active { color: var(--as-accent); }
+.tab-badge {
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 22px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--as-accent);
+  color: #1a1f1a;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ===== 移动端：底部弹层（更多/切课程共用）===== */
+.more-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 60;
+}
+.more-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  background: var(--as-bg-elev);
+  border-radius: 16px 16px 0 0;
+  border-top: 1px solid var(--as-border-soft);
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  animation: sheet-up 0.18s ease;
+}
+@keyframes sheet-up {
+  from { transform: translateY(40%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.more-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.more-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 64px;
+  border: 1px solid var(--as-border-soft);
+  background: var(--as-bg-elev2);
+  border-radius: 10px;
+  color: var(--as-text);
+  cursor: pointer;
+}
+.more-item svg { width: 22px; height: 22px; }
+.more-item .m-lbl { font-size: 12px; }
+.more-quick {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.more-quick .btn { flex: 1; }
+
+/* ===== 移动端：课程切换弹层行 ===== */
+.cs-head { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--as-text); }
+.cs-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--as-text);
+}
+.cs-item:active { background: var(--as-accent-soft); }
+.cs-item.active { background: var(--as-accent-soft); }
+.cs-item.archived { opacity: 0.55; }
+.cs-emoji { font-size: 18px; line-height: 1; }
+.cs-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-check { color: var(--as-accent); font-weight: 600; }
+
+/* ===== 移动端：首页课程行 / Topbar 课程入口 ===== */
+.mobile-home { max-width: 640px; margin: 0 auto; }
+.mh-course-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--as-border-soft);
+  border-radius: 12px;
+  background: var(--as-bg-elev2);
+  color: var(--as-text);
+  cursor: pointer;
+}
+.mh-course-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mh-course-prog { font-size: 12px; color: var(--as-text-faint); }
+.mobile-home .chev,
+.topbar-course .chev { color: var(--as-text-faint); font-size: 12px; }
+.topbar-course {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--as-text);
+  cursor: pointer;
+}
+.topbar-course-name {
+  font-size: 15px;
+  font-weight: 600;
+  max-width: 48vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 移动端：内容区与触控目标 ===== */
+@media (max-width: 768px) {
+  .content { padding: 14px; }
+  .topbar { padding: 0 10px; }
+  .task-row { min-height: 44px; }
+  .chip { min-height: 38px; }
+}

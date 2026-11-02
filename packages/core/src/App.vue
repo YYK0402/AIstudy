@@ -1,6 +1,6 @@
 <template>
   <div class="ai-study-app">
-    <Sidebar />
+    <Sidebar v-if="!isMobile" />
     <main class="main">
       <Topbar />
       <div class="content">
@@ -10,6 +10,7 @@
           </keep-alive>
         </router-view>
       </div>
+      <TabBar v-if="isMobile" />
     </main>
     <NewCourseModal v-if="modalStore.newCourseOpen" />
     <NewProviderModal v-if="modalStore.newProviderOpen" />
@@ -24,6 +25,8 @@
 import { onMounted, ref, watch } from "vue";
 import Sidebar from "./components/Sidebar.vue";
 import Topbar from "./components/Topbar.vue";
+import TabBar from "./components/TabBar.vue";
+import { useIsMobile } from "./composables/useIsMobile";
 import NewCourseModal from "./components/NewCourseModal.vue";
 import NewProviderModal from "./components/NewProviderModal.vue";
 import UploadMaterialModal from "./components/UploadMaterialModal.vue";
@@ -35,6 +38,7 @@ import { CHANGELOG, changelogSince } from "./constants/changelog";
 import { isNewerVersion } from "./utils/version";
 
 const modalStore = useModalStore();
+const { isMobile } = useIsMobile();
 
 // 需要 keep-alive 缓存的视图 name（与各自 defineOptions({ name }) 对应，改动需同步）
 const cachedViews = ["CourseContentView", "QuizView", "WrongView", "FlashcardsView", "ReportView"];

@@ -9,3 +9,15 @@ if (typeof g.window === "undefined") {
     dispatchEvent: (ev: Event) => target.dispatchEvent(ev),
   };
 }
+// jsdom 未实现 matchMedia：补默认桩（不命中=桌面布局）；单测可用 defineProperty 覆盖控制命中
+const w = g.window as Record<string, unknown>;
+if (typeof w.matchMedia !== "function") {
+  w.matchMedia = (media: string) => ({
+    matches: false,
+    media,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
