@@ -1113,7 +1113,9 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     );
     const label = node === null ? `课程「${course.name}」` : `章节「${target.label}」`;
     const region = renderKpRegion(kps);
-    const renderedHash = djb2Hex(canonicalRegion(kps));
+    // 渲染态哈希必须与「实际写入区的解析哈希」同源（renderKpRegion 内部按 sort 排序，
+    // 直接对未排序 kps 算 canonicalRegion 会因顺序不同永不匹配 → 恒停写误报）
+    const renderedHash = parseKpRegion(region).hash;
     const bridge = getBridge();
 
     let docId = target.docId;
@@ -1464,7 +1466,8 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
     }
     try {
       await bridge.updateDoc(n.docId, mergeKpRegion(freshMd, region));
-      nextData.docRegions![n.docId] = { h: djb2Hex(canonicalRegion(nodeKps)), ids: nodeKps.map((k) => k.id) };
+      // 与写回管道同口径：用渲染区解析哈希（renderKpRegion 内部按 sort 排序）
+      nextData.docRegions![n.docId] = { h: parseKpRegion(region).hash, ids: nodeKps.map((k) => k.id) };
     } catch (e) {
       console.error("知识点区合并写回失败:", e);
       writeErrors.push(label);
