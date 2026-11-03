@@ -111,10 +111,20 @@ export async function deleteCourse(id: number): Promise<void> {
     } catch (e) {
       siyuanCleanupErrors.push(`课程文档「${course.name}」删除失败`);
     }
+    if (data.docRegions) {
+      delete data.docRegions[course.siyuanDocId];
+      // 章文档随树级联删除，写入状态一并清理
+      for (const ch of data.chapters.filter((c) => c.courseId === id)) {
+        if (ch.siyuanBlockId) delete data.docRegions[ch.siyuanBlockId];
+      }
+    }
   } else {
     if (course.siyuanDocId) {
       // 历史坏数据：id 格式异常，无法按顶层文档整树删除
       siyuanCleanupErrors.push(`课程「${course.name}」的思源文档 id 格式异常，无法自动删除顶层文档`);
+      // 课程已删，写入状态无用（读回删除消歧对全部课程的 docRegions 取 ids 并集，
+      // 残留条目会被复用同 id 的新 KP 命中，把待写 KP 误判成「用户删除」）
+      if (data.docRegions) delete data.docRegions[course.siyuanDocId];
     }
     for (const ch of data.chapters.filter((c) => c.courseId === id)) {
       if (!ch.siyuanBlockId) continue;
@@ -123,6 +133,7 @@ export async function deleteCourse(id: number): Promise<void> {
       } catch (e) {
         siyuanCleanupErrors.push(`章节「${ch.name}」删除失败`);
       }
+      if (data.docRegions) delete data.docRegions[ch.siyuanBlockId];
     }
     for (const m of data.materials.filter((x) => x.courseId === id)) {
       if (!m.siyuanDocId) continue;
