@@ -80,6 +80,8 @@ export interface ChapterDiffAdd {
 export interface ChapterDiffRemove {
   id: number;
   name: string;
+  /** 计算 diff 时的思源文档 id 快照（apply 后章对象可能已从 data 移除，同步侧不可依赖查表） */
+  siyuanBlockId: string | null;
 }
 export interface KpTreeDiff {
   updated: KpDiffUpdate[];
@@ -395,7 +397,7 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
   for (const c of chapters) {
     const pc = parsedChById.get(c.id);
     if (!pc) {
-      chaptersRemoved.push({ id: c.id, name: c.name });
+      chaptersRemoved.push({ id: c.id, name: c.name, siyuanBlockId: c.siyuanBlockId ?? null });
       continue;
     }
     const nameChanged = pc.name !== c.name;

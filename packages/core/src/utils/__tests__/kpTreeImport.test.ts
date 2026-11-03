@@ -204,6 +204,20 @@ describe("computeKpTreeDiff", () => {
     expect(diff.chaptersRemoved.map((r) => r.id).sort()).toEqual([20]);
   });
 
+  it("chaptersRemoved 携带 siyuanBlockId 快照（章无思源文档时为 null）", () => {
+    const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03" })
+      .replace(/\n# 第二章 固定资产（0） <!-- ch:20 -->\n/, "\n");
+    const tree = roundTrip(md);
+    // 章带思源文档 → 快照取原值
+    const withDoc = CHAPTERS.map((c) => (c.id === 20 ? { ...c, siyuanBlockId: "doc-ch20" } : c));
+    const diff = computeKpTreeDiff(tree, withDoc, KPS);
+    expect(diff.chaptersRemoved).toHaveLength(1);
+    expect(diff.chaptersRemoved[0].siyuanBlockId).toBe("doc-ch20");
+    // 章无思源文档（null）→ 字段为 null
+    const diff2 = computeKpTreeDiff(tree, CHAPTERS, KPS);
+    expect(diff2.chaptersRemoved[0].siyuanBlockId).toBeNull();
+  });
+
   it("新章节 + 新条目 → chaptersAdded + added（chapterKey 指向新章节）", () => {
     const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03" }) +
       "\n# 第三章 新章\n- 新知识点\n  新内容\n";

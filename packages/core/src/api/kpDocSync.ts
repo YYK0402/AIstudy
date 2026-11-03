@@ -656,14 +656,17 @@ export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, a
   if (!notebook) return;
 
   // 1. 删除（级联幂等）+ 清 docRegions 状态
+  // 真实导入流程先 applyKpTreeDiff 再调本函数：被删章已不在 data.chapters，
+  // 优先用现存对象的 blockId，查不到时回退 diff 计算时的快照
   for (const r of diff.chaptersRemoved) {
     const ch = data.chapters.find((c) => c.id === r.id);
-    if (ch?.siyuanBlockId) {
-      await removeDocIfExists(ch.siyuanBlockId).catch((e) => {
+    const docId = ch?.siyuanBlockId ?? r.siyuanBlockId;
+    if (docId) {
+      await removeDocIfExists(docId).catch((e) => {
         console.error("删除思源章节文档失败:", e);
-        errors.push(`章节「${ch.name}」文档删除失败`);
+        errors.push(`章节「${r.name}」文档删除失败`);
       });
-      if (data.docRegions) delete data.docRegions[ch.siyuanBlockId];
+      if (data.docRegions) delete data.docRegions[docId];
     }
   }
 

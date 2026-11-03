@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppData, Chapter, Course, KnowledgePoint } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
-import { computeKpTreeDiff, type KpTreeDiff } from "../../utils/kpTreeImport";
+import { applyKpTreeDiff, computeKpTreeDiff, parseKpTreeMarkdown, type KpTreeDiff } from "../../utils/kpTreeImport";
 import { setBridge } from "../../bridge";
 import type { StudyBridge } from "../../bridge/types";
 import {
@@ -282,9 +282,15 @@ describe("buildSiyuanParsedTree 读回分流", () => {
 // ---------- 写回管道（bridge mock）文件级设施：写回/读回管道测试共用同一套 mock ----------
 
 const docs = new Map<string, string>();
-const calls: { update: Array<{ id: string; md: string }>; create: Array<{ md: string; path: string; parent: string | null }>; toast: string[] } = {
+const calls: {
+  update: Array<{ id: string; md: string }>;
+  create: Array<{ md: string; path: string; parent: string | null }>;
+  remove: string[];
+  toast: string[];
+} = {
   update: [],
   create: [],
+  remove: [],
   toast: [],
 };
 let data: AppData;
@@ -306,6 +312,7 @@ function setup(): void {
   docs.set("docA", "# 章A\n\n用户手写");
   calls.update.length = 0;
   calls.create.length = 0;
+  calls.remove.length = 0;
   calls.toast.length = 0;
 }
 
@@ -346,6 +353,7 @@ beforeEach(() => {
     moveDoc: async () => {},
     renameDoc: async () => {},
     removeDoc: async (id: string) => {
+      calls.remove.push(id);
       docs.delete(id);
     },
   } as unknown as StudyBridge);
@@ -580,7 +588,7 @@ describe("syncChapterStructure（bridge mock）", () => {
         { key: "new:0", name: "新章", level: "chapter", parentKey: null, sort: 2 },
         { key: "new:1", name: "新节", level: "unit", parentKey: "new:0", sort: 1 },
       ],
-      chaptersRemoved: [{ id: 90, name: "待删章" }],
+      chaptersRemoved: [{ id: 90, name: "待删章", siyuanBlockId: "docDel" }],
     };
     await syncChapterStructure(1, diff, [addedTop, addedUnit]);
     expect(calls.create).toHaveLength(2);
@@ -592,6 +600,40 @@ describe("syncChapterStructure（bridge mock）", () => {
     expect(addedUnit.siyuanBlockId).toBe("doc-new-1");
     expect(docs.has("docDel")).toBe(false);
     expect(data.docRegions?.docDel).toBeUndefined();
+  });
+
+  it("删章回归：apply 已把章移出 data 后，仍按 diff 快照删思源文档 + 清 docRegions", async () => {
+    setup();
+    // ch10 为待删章（有思源文档 + 区状态）；ch11 为保留章
+    data.chapters = [
+      { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-old-10", name: "章A", level: "chapter", sort: 1 },
+      { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-11", name: "章B", level: "chapter", sort: 2 },
+    ];
+    data.knowledgePoints = [
+      { id: 1, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-11-01T00:00:00Z" },
+      { id: 2, courseId: 1, chapterId: 11, blockId: null, name: "KP2", content: "", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章B", sort: 1, createTime: "2026-11-01T00:00:00Z" },
+    ];
+    data.docRegions = { "doc-old-10": { h: "h10", ids: [1] }, "doc-11": { h: "h11", ids: [2] } };
+    docs.set("doc-old-10", "# 章A\n\n正文");
+    docs.set("doc-11", "# 章B\n\n正文");
+
+    // md 树仅保留 ch11（ch10 整章被删）→ 真实解析 + 真实 diff
+    const res = parseKpTreeMarkdown("# 测试课程 知识点树\n# 章B (1) <!-- ch:11 -->\n- KP2 [未学习] <!-- kp:2 -->\n");
+    if (!res.ok) throw new Error(res.error);
+    const tree = res.tree;
+    const diff = computeKpTreeDiff(tree, data.chapters, data.knowledgePoints);
+    expect(diff.chaptersRemoved).toEqual([{ id: 10, name: "章A", siyuanBlockId: "doc-old-10" }]);
+
+    // 真实流程：先 apply（ch10 从 data.chapters 消失），再 syncChapterStructure
+    data = applyKpTreeDiff(data, 1, tree, diff);
+    expect(data.chapters.map((c) => c.id)).toEqual([11]);
+    const { syncChapterStructure } = await import("../kpDocSync");
+    await syncChapterStructure(1, diff, []);
+
+    expect(calls.remove).toContain("doc-old-10"); // 修复前静默跳过，此处为空
+    expect(docs.has("doc-old-10")).toBe(false);
+    expect(data.docRegions?.["doc-old-10"]).toBeUndefined();
+    expect(data.docRegions?.["doc-11"]).toEqual({ h: "h11", ids: [2] }); // 保留章状态不受影响
   });
 
   it("课程顶层文档为 null：先补建课程文档再挂章", async () => {
