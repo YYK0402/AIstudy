@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
-import type { Chapter, Course, KnowledgePoint } from "../../types/appData";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppData, Chapter, Course, KnowledgePoint } from "../../types/appData";
+import { createEmptyData } from "../../types/appData";
 import { computeKpTreeDiff } from "../../utils/kpTreeImport";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
 import {
   KP_REGION_BEGIN,
   KP_REGION_END,
@@ -11,6 +14,7 @@ import {
   mergeKpRegion,
   parseKpRegion,
   renderKpRegion,
+  scheduleKpRegionSync,
 } from "../kpDocSync";
 
 function makeKp(over: Partial<KnowledgePoint> & { id: number }): KnowledgePoint {
@@ -272,5 +276,181 @@ describe("buildSiyuanParsedTree 读回分流", () => {
     expect(built.retained).toBe(1);
     const diff = computeKpTreeDiff(built.tree, chapters, kps);
     expect(diff.removed).toEqual([]);
+  });
+});
+
+// ---------- 写回管道（bridge mock）文件级设施：写回/读回管道测试共用同一套 mock ----------
+
+const docs = new Map<string, string>();
+const calls: { update: Array<{ id: string; md: string }>; create: Array<{ md: string; path: string; parent: string | null }>; toast: string[] } = {
+  update: [],
+  create: [],
+  toast: [],
+};
+let data: AppData;
+
+function setup(): void {
+  data = createEmptyData();
+  data.courses = [
+    { id: 1, siyuanDocId: "doc-course", name: "测试课程", description: "", target: "", totalCycle: "", status: "active", createTime: "2026-11-01T00:00:00Z" },
+  ];
+  data.chapters = [
+    { id: 10, courseId: 1, parentId: null, siyuanBlockId: "docA", name: "章A", level: "chapter", sort: 1 },
+  ];
+  data.knowledgePoints = [
+    { id: 1, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "c", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-11-01T00:00:00Z" },
+  ];
+  data.settings = { chapterMode: "manual", persistToSiyuan: true, notebookName: "AI 研习" };
+  docs.clear();
+  docs.set("doc-course", "# 测试课程");
+  docs.set("docA", "# 章A\n\n用户手写");
+  calls.update.length = 0;
+  calls.create.length = 0;
+  calls.toast.length = 0;
+}
+
+beforeAll(() => {
+  (globalThis as Record<string, unknown>).window = {
+    addEventListener: () => {},
+    dispatchEvent: () => true,
+  };
+});
+
+beforeEach(() => {
+  setup();
+  vi.useFakeTimers();
+  setBridge({
+    capabilities: { docs: "siyuan" },
+    getData: async () => data,
+    saveData: async (next: AppData) => {
+      data = next;
+      return { code: 0, dirty: { global: true, courseIds: [] } };
+    },
+    ensureFolder: async () => "nb",
+    createDoc: async (md: string, path: string, _nb: string, parent?: string | null) => {
+      const id = `doc-new-${calls.create.length}`;
+      calls.create.push({ md, path, parent: parent ?? null });
+      docs.set(id, md);
+      return { id };
+    },
+    updateDoc: async (id: string, md: string) => {
+      calls.update.push({ id, md });
+      docs.set(id, md);
+    },
+    getDocMarkdown: async (id: string) => (docs.has(id) ? (docs.get(id) as string) : null),
+    docExists: async (id: string) => docs.has(id),
+    showMessage: (msg: string) => {
+      calls.toast.push(msg);
+    },
+    isValidDocRef: () => true,
+    moveDoc: async () => {},
+    renameDoc: async () => {},
+    removeDoc: async (id: string) => {
+      docs.delete(id);
+    },
+  } as unknown as StudyBridge);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+const flush = () => vi.advanceTimersByTimeAsync(1000);
+
+describe("写回管道（bridge mock）", () => {
+  it("历史文档（无区无状态）：追加区 + 存状态", async () => {
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].id).toBe("docA");
+    expect(calls.update[0].md).toContain("用户手写");
+    expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+    expect(data.docRegions?.docA?.ids).toEqual([1]);
+  });
+
+  it("应用领先（区 == 存储态、应用已改）：正常写回，不误报停写", async () => {
+    docs.set("docA", `# 章A\n\n用户手写\n\n${renderKpRegion(data.knowledgePoints)}`);
+    data.docRegions = { docA: { h: parseKpRegion(docs.get("docA")!).hash, ids: [1] } };
+    data.knowledgePoints[0] = { ...data.knowledgePoints[0], content: "c2" };
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].md).toContain("c2");
+    expect(calls.toast).toEqual([]);
+  });
+
+  it("用户在思源改过区：停写 + toast，文档不变", async () => {
+    docs.set("docA", `# 章A\n\n${renderKpRegion(data.knowledgePoints)}`.replace("c", "c-用户改"));
+    data.docRegions = { docA: { h: "old-hash", ids: [1] } };
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.update).toHaveLength(0);
+    expect(calls.toast.some((t) => t.includes("未同步编辑"))).toBe(true);
+  });
+
+  it("用户删了整个区：停写 region-deleted", async () => {
+    docs.set("docA", "# 章A\n\n区没了");
+    data.docRegions = { docA: { h: "x", ids: [1] } };
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.update).toHaveLength(0);
+    expect(calls.toast.some((t) => t.includes("删除"))).toBe(true);
+  });
+
+  it("文档被删：自愈重建（新 docId 回填 + toast）", async () => {
+    docs.delete("docA");
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.create).toHaveLength(1);
+    expect(calls.create[0].path).toBe("/测试课程/章A");
+    expect(calls.create[0].parent).toBe("doc-course");
+    expect(data.chapters[0].siyuanBlockId).not.toBe("docA");
+    expect(calls.toast.some((t) => t.includes("重建"))).toBe(true);
+  });
+
+  it("siyuanBlockId 为 null：补建文档 + 回填 id", async () => {
+    data.chapters[0].siyuanBlockId = null;
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.create).toHaveLength(1);
+    expect(data.chapters[0].siyuanBlockId).toBe("doc-new-0");
+  });
+
+  it("课程未落库（siyuanDocId=null）+ 章文档存在：未归章 KP 触发课程文档补建 + 回填 course.siyuanDocId", async () => {
+    data.courses[0].siyuanDocId = null;
+    data.knowledgePoints[0].chapterId = null;
+    await scheduleKpRegionSync(1, null, 0);
+    await flush();
+    expect(calls.create).toHaveLength(1);
+    expect(calls.create[0].path).toBe("/测试课程");
+    expect(calls.create[0].parent).toBeNull();
+    expect(data.courses[0].siyuanDocId).toBe("doc-new-0");
+    expect(calls.toast.some((t) => t.includes("补建"))).toBe(true);
+  });
+
+  it("未归章（node=null）：写课程顶层文档", async () => {
+    data.knowledgePoints[0].chapterId = null;
+    await scheduleKpRegionSync(1, null, 0);
+    await flush();
+    expect(calls.update[0].id).toBe("doc-course");
+    expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+  });
+
+  it("persistToSiyuan 关闭：不写不提示", async () => {
+    data.settings.persistToSiyuan = false;
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.update).toHaveLength(0);
+    expect(calls.toast).toEqual([]);
+  });
+
+  it("同文档连续两次变更：防抖合并为一次写入", async () => {
+    data.knowledgePoints[0] = { ...data.knowledgePoints[0], content: "c2" };
+    await scheduleKpRegionSync(1, 10, 100);
+    data.knowledgePoints[0] = { ...data.knowledgePoints[0], content: "c3" };
+    await scheduleKpRegionSync(1, 10, 100);
+    await flush();
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].md).toContain("c3");
   });
 });

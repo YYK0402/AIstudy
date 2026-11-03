@@ -6,6 +6,10 @@ import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/a
 import { effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
 import type { ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
+import { createDoc, docsEnabled, ensureFolder } from "./docStore";
+import { getData, saveData } from "./storage";
+import { getSettings } from "./settings";
+import { getBridge } from "@/bridge";
 
 // ---------- 区常量与规范哈希 ----------
 
@@ -263,4 +267,161 @@ export function buildSiyuanParsedTree(input: SiyuanSyncBuildInput): SiyuanSyncBu
     historicalDocs,
     retained,
   };
+}
+
+// ---------- 写回管道（应用 → 思源） ----------
+
+export interface NodeDocTarget {
+  docId: string | null;
+  /** 补建/自愈重建用的文档路径 */
+  path: string;
+  parentID: string | null;
+  /** 文档首行标题（# 名称） */
+  titleLine: string;
+  /** 展示名（toast 用） */
+  label: string;
+}
+
+/** 节点区域目标文档：null = 课程顶层文档；章/节 = siyuanBlockId 文档；幽灵节点回退课程文档 */
+export function nodeDocTarget(course: Course, chapters: Chapter[], node: number | null): NodeDocTarget {
+  if (node === null) {
+    return { docId: course.siyuanDocId, path: `/${course.name}`, parentID: null, titleLine: `# ${course.name}`, label: course.name };
+  }
+  const ch = chapters.find((c) => c.id === node);
+  if (!ch) return nodeDocTarget(course, chapters, null);
+  if (ch.level === "chapter" || ch.parentId === null) {
+    return {
+      docId: ch.siyuanBlockId,
+      path: `/${course.name}/${ch.name}`,
+      parentID: course.siyuanDocId,
+      titleLine: `# ${ch.name}`,
+      label: ch.name,
+    };
+  }
+  const parent = ch.parentId !== null ? chapters.find((c) => c.id === ch.parentId) : null;
+  return {
+    docId: ch.siyuanBlockId,
+    path: parent ? `/${course.name}/${parent.name}/${ch.name}` : `/${course.name}/${ch.name}`,
+    parentID: parent?.siyuanBlockId ?? course.siyuanDocId,
+    titleLine: `# ${ch.name}`,
+    label: parent ? `${parent.name} · ${ch.name}` : ch.name,
+  };
+}
+
+/** 写回管道是否可用（非思源宿主短路；persistToSiyuan 在执行段内按最新设置检查） */
+export function kpRegionSyncEnabled(): boolean {
+  return docsEnabled();
+}
+
+// 每文档防抖合并 + 串行队列（storage.ts saveChain / siyuanSync.ts convSyncChains 同款）：
+// 同章连续多次操作只写一次；同文档串行避免并发读旧文→各自合并→后写覆盖先写
+const kpSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const kpSyncChains = new Map<string, Promise<unknown>>();
+
+function nodeKeyOf(courseId: number, node: number | null): string {
+  return `${courseId}:${node === null ? "course" : node}`;
+}
+
+/** 调度单节点区域写回（node=null → 课程文档）。fire-and-forget：失败仅 toast，不阻塞 */
+export function scheduleKpRegionSync(courseId: number, node: number | null, delay = 500): void {
+  if (!kpRegionSyncEnabled()) return;
+  const key = nodeKeyOf(courseId, node);
+  const prev = kpSyncTimers.get(key);
+  if (prev) clearTimeout(prev);
+  kpSyncTimers.set(
+    key,
+    setTimeout(() => {
+      kpSyncTimers.delete(key);
+      const run = (kpSyncChains.get(key) ?? Promise.resolve()).then(() => doNodeSync(courseId, node));
+      kpSyncChains.set(key, run.catch(() => undefined));
+    }, delay),
+  );
+}
+
+async function doNodeSync(courseId: number, node: number | null): Promise<void> {
+  try {
+    const data = await getData();
+    const settings = await getSettings();
+    if (!settings.persistToSiyuan) return;
+    const course = data.courses.find((c) => c.id === courseId);
+    if (!course) return;
+    const chapters = data.chapters.filter((c) => c.courseId === courseId);
+    const target = nodeDocTarget(course, chapters, node);
+    const kps = data.knowledgePoints.filter(
+      (k) => k.courseId === courseId && effectiveNodeOf(k, chapters) === node,
+    );
+    const label = node === null ? `课程「${course.name}」` : `章节「${target.label}」`;
+    const region = renderKpRegion(kps);
+    // 渲染态哈希必须与「实际写入区的解析哈希」同源（renderKpRegion 内部按 sort 排序，
+    // 直接对未排序 kps 算 canonicalRegion 会因顺序不同永不匹配 → 恒停写误报）
+    const renderedHash = parseKpRegion(region).hash;
+    const bridge = getBridge();
+
+    const docId = target.docId;
+    const assignDocId = (id: string): void => {
+      if (node === null) course.siyuanDocId = id;
+      else {
+        const ch = chapters.find((c) => c.id === node);
+        if (ch) ch.siyuanBlockId = id;
+      }
+    };
+    // 补建/重建文档并回填数据 id；返回新 docId（闭包内改外层变量 TS 不收窄，直接返回）
+    const createFresh = async (): Promise<string> => {
+      const notebook = await ensureFolder(settings.notebookName);
+      const { id } = await createDoc(`${target.titleLine}\n\n${region}`, target.path, notebook, target.parentID);
+      assignDocId(id);
+      return id;
+    };
+
+    if (!docId) {
+      const newId = await createFresh();
+      if (!data.docRegions) data.docRegions = {};
+      data.docRegions[newId] = { h: renderedHash, ids: kps.map((k) => k.id) };
+      await saveData(data);
+      bridge.showMessage(`思源文档曾缺失，已自动补建：${label}`, 3000);
+      return;
+    }
+
+    const md = await bridge.getDocMarkdown(docId);
+    if (md === null) {
+      if (await bridge.docExists(docId)) {
+        bridge.showMessage(`思源文档读取失败，本次写回跳过：${label}`, 4000, "error");
+        return;
+      }
+      const newId = await createFresh();
+      if (!data.docRegions) data.docRegions = {};
+      data.docRegions[newId] = { h: renderedHash, ids: kps.map((k) => k.id) };
+      await saveData(data);
+      bridge.showMessage(`思源文档曾被删除，已自动重建：${label}`, 3000);
+      return;
+    }
+
+    const parsed = parseKpRegion(md);
+    const stored = data.docRegions?.[docId];
+    const decision = decideRegionWrite({
+      hasStored: stored !== undefined,
+      storedHash: stored?.h ?? null,
+      regionHash: parsed.hash,
+      renderedHash,
+    });
+    if (decision.action === "stop") {
+      const msg =
+        decision.reason === "region-deleted"
+          ? `思源「${label}」的知识点区已被删除，本次应用侧变更未写入思源。请先用「从思源同步」确认变更`
+          : decision.reason === "state-missing"
+            ? `思源「${label}」知识点区写入状态缺失，为避免覆盖你的编辑已跳过写回。请用「从思源同步」恢复`
+            : `思源「${label}」有未同步编辑，本次应用侧变更未写入思源。请先点「从思源同步」合并`;
+      bridge.showMessage(msg, 5000, "error");
+      return;
+    }
+    if (decision.action === "skip") return;
+
+    await bridge.updateDoc(docId, mergeKpRegion(md, region));
+    if (!data.docRegions) data.docRegions = {};
+    data.docRegions[docId] = { h: renderedHash, ids: kps.map((k) => k.id) };
+    await saveData(data);
+  } catch (e) {
+    console.error("知识点区写回失败:", e);
+    getBridge().showMessage(`思源知识点区写回失败：${e instanceof Error ? e.message : "未知错误"}`, 4000, "error");
+  }
 }
