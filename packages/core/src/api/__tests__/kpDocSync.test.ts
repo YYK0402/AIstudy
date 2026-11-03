@@ -455,6 +455,43 @@ describe("写回管道（bridge mock）", () => {
   });
 });
 
+describe("写回竞态（课程顶层文档缺失时创建章文档）", () => {
+  it("章+课程文档都缺：先建课程文档再建章文档（parent=新课程文档，双 id 回填）", async () => {
+    data.courses[0].siyuanDocId = null;
+    data.chapters[0].siyuanBlockId = null;
+    await scheduleKpRegionSync(1, 10, 0);
+    await flush();
+    expect(calls.create).toHaveLength(2);
+    expect(calls.create[0].path).toBe("/测试课程"); // 课程文档先建
+    expect(calls.create[0].parent).toBeNull();
+    expect(calls.create[1].path).toBe("/测试课程/章A");
+    expect(calls.create[1].parent).toBe("doc-new-0"); // 课程文档新 id
+    expect(data.courses[0].siyuanDocId).toBe("doc-new-0");
+    expect(data.chapters[0].siyuanBlockId).toBe("doc-new-1");
+    // 仅章文档有区状态（ensureCourseDoc 建的课程文档不带区 → 无写回状态；
+    // 若给无区文档写状态，下次课程同步会误判 region-deleted 停写）
+    expect(Object.keys(data.docRegions ?? {})).toHaveLength(1);
+    expect(data.docRegions?.["doc-new-1"]?.ids).toEqual([1]);
+  });
+
+  it("并行多章建文档 + 课程文档缺：课程文档只建一次，两章 parent 均为该课程文档", async () => {
+    data.courses[0].siyuanDocId = null;
+    data.chapters[0].siyuanBlockId = null;
+    data.chapters.push({ id: 11, courseId: 1, parentId: null, siyuanBlockId: null, name: "章B", level: "chapter", sort: 2 });
+    await scheduleKpRegionSync(1, 10, 0);
+    await scheduleKpRegionSync(1, 11, 0);
+    await flush();
+    const courseCreates = calls.create.filter((c) => c.path === "/测试课程");
+    expect(courseCreates).toHaveLength(1);
+    expect(courseCreates[0].parent).toBeNull();
+    expect(calls.create.find((c) => c.path === "/测试课程/章A")?.parent).toBe("doc-new-0");
+    expect(calls.create.find((c) => c.path === "/测试课程/章B")?.parent).toBe("doc-new-0");
+    expect(data.courses[0].siyuanDocId).toBe("doc-new-0");
+    expect(data.chapters[0].siyuanBlockId).not.toBeNull();
+    expect(data.chapters[1].siyuanBlockId).not.toBeNull();
+  });
+});
+
 describe("读回管道（bridge mock）", () => {
   it("readSiyuanKpSync：读全部文档 → diff + 计数 + readCtx", async () => {
     setup();

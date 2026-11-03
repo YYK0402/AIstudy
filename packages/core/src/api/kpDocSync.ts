@@ -338,14 +338,36 @@ export function scheduleKpRegionSync(courseId: number, node: number | null, dela
   );
 }
 
+/**
+ * 确保课程顶层文档存在（章文档写回竞态自愈）：挂课程级串行链
+ * （与 node=null 同步同 key，同一文档不并发写），防止多个并行章同步各自创建重复课程文档。
+ * 内部自愈不弹 toast；返回最终 siyuanDocId（null = 课程不存在；创建失败直接抛出，由调用方原逻辑报错）
+ */
+async function ensureCourseDoc(courseId: number, notebookName: string): Promise<string | null> {
+  const key = nodeKeyOf(courseId, null);
+  const run = (kpSyncChains.get(key) ?? Promise.resolve()).then(async (): Promise<string | null> => {
+    const data = await getData();
+    const course = data.courses.find((c) => c.id === courseId);
+    if (!course) return null;
+    if (course.siyuanDocId) return course.siyuanDocId;
+    const notebook = await ensureFolder(notebookName);
+    const { id } = await createDoc(`# ${course.name}`, `/${course.name}`, notebook, null);
+    course.siyuanDocId = id;
+    await saveData(data);
+    return id;
+  });
+  kpSyncChains.set(key, run.catch(() => undefined));
+  return run;
+}
+
 async function doNodeSync(courseId: number, node: number | null): Promise<void> {
   try {
-    const data = await getData();
+    let data = await getData();
     const settings = await getSettings();
     if (!settings.persistToSiyuan) return;
     const course = data.courses.find((c) => c.id === courseId);
     if (!course) return;
-    const chapters = data.chapters.filter((c) => c.courseId === courseId);
+    let chapters = data.chapters.filter((c) => c.courseId === courseId);
     const target = nodeDocTarget(course, chapters, node);
     const kps = data.knowledgePoints.filter(
       (k) => k.courseId === courseId && effectiveNodeOf(k, chapters) === node,
@@ -374,6 +396,22 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     };
 
     if (!docId) {
+      // 写回竞态自愈：章文档缺失但课程顶层文档也缺失 → 先经课程级串行链确保课程文档存在
+      //（防并行章同步重复创建），再从最新数据重新查找 course/刷新 chapters 引用（跨宿主防御：
+      // fnos 端 getData 返回新对象，也避免旧对象 saveData 覆盖刚回填的课程 docId）
+      if (node !== null && course.siyuanDocId === null) {
+        await ensureCourseDoc(courseId, settings.notebookName);
+        const fresh = await getData();
+        const freshCourse = fresh.courses.find((c) => c.id === courseId);
+        if (!freshCourse) return;
+        data = fresh;
+        chapters = fresh.chapters.filter((c) => c.courseId === courseId);
+        const ch = chapters.find((c) => c.id === node);
+        if (!ch) return; // 幽灵节点（章已删）：目标回退课程文档且已确保存在，无可建内容
+        if (ch.level === "chapter" || ch.parentId === null) {
+          target.parentID = freshCourse.siyuanDocId; // 顶章父文档；unit 级保持现有 parent 回退
+        }
+      }
       const newId = await createFresh();
       if (!data.docRegions) data.docRegions = {};
       data.docRegions[newId] = { h: renderedHash, ids: kps.map((k) => k.id) };
