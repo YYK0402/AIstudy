@@ -1107,12 +1107,17 @@
 .field { margin-bottom: 15px; }
 .field label { display: block; font-size: 12px; color: var(--as-text-dim); margin-bottom: 6px; }
 .field label .req { color: var(--as-accent-strong); }
-.field input, .field textarea {
+/* 复选/单选框统一主题色（原生默认蓝与暖金主题割裂）；
+   注意不能命中 .field input 的文本框样式——会被 width:100% 撑成长条 */
+.ai-study-app input[type="checkbox"], .ai-study-app input[type="radio"] {
+  accent-color: var(--as-accent); cursor: pointer;
+}
+.field input:not([type="checkbox"]):not([type="radio"]), .field textarea {
   width: 100%; background: var(--as-bg-elev2); border: 1px solid var(--as-border);
   border-radius: var(--as-radius-sm); color: var(--as-text);
   padding: 10px 12px; font-family: var(--as-font-body); font-size: 13px;
 }
-.field input:focus, .field textarea:focus { outline: none; border-color: var(--as-accent-line); }
+.field input:not([type="checkbox"]):not([type="radio"]):focus, .field textarea:focus { outline: none; border-color: var(--as-accent-line); }
 .field textarea { resize: none; line-height: 1.6; }
 .field select {
   width: 100%; background-color: var(--as-bg-elev2);
