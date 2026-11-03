@@ -1159,6 +1159,14 @@
 .mode-card .t { font-weight: 600; font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
 .mode-card .d { font-size: 11.5px; color: var(--as-text-faint); line-height: 1.5; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+/* 知识点树导入变更预览 */
+.import-diff { margin-top: 12px; max-height: 44vh; overflow-y: auto; padding-right: 6px; }
+.import-diff section { margin-bottom: 13px; }
+.import-diff h4 { font-size: 12px; font-weight: 600; color: var(--as-text-dim); margin-bottom: 5px; }
+.import-diff ul { list-style: none; margin: 0; padding: 0; }
+.import-diff li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; padding: 3px 0; line-height: 1.5; }
+.import-diff .dn { color: var(--as-text); }
+.diff-badge { font-size: 11px; color: var(--as-accent-strong); border: 1px solid var(--as-accent-line); background: var(--as-accent-soft); border-radius: 9px; padding: 0 7px; white-space: nowrap; }
 
 /* 更新说明 / 更新日志 */
 .changelog-body { flex: 1; min-height: 0; overflow-y: auto; }

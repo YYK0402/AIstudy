@@ -24,6 +24,7 @@
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           </template>
           <button class="btn sm ghost" title="导出知识点树 Markdown（含掌握度/错题数选项）" :disabled="!currentCourseId()" @click="kpTreeExportOpen = true">导出知识点树</button>
+          <button class="btn sm ghost" v-if="!archived" title="导入导出过的知识点树 Markdown（编辑后更新课程）" :disabled="!currentCourseId()" @click="kpTreeImportOpen = true">导入知识点树</button>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
@@ -280,6 +281,13 @@
       :course-name="courseStore.currentCourse?.name ?? ''"
       @close="kpTreeExportOpen = false"
     />
+    <KpTreeImportModal
+      :open="kpTreeImportOpen"
+      :course-id="currentCourseId() ?? 0"
+      :course-name="courseStore.currentCourse?.name ?? ''"
+      @close="kpTreeImportOpen = false"
+      @saved="onKpTreeImported"
+    />
   </div>
 </template>
 
@@ -293,6 +301,7 @@ onDeactivated(() => {
     previewMaterial.value = null;
     chapterModal.value = null;
     reviewChapter.value = null;
+    kpTreeImportOpen.value = false;
 });
 import AppIcon from "../components/AppIcon.vue";
 import { onDeactivated, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -336,6 +345,7 @@ import ChapterEditModal from "../components/ChapterEditModal.vue";
 import ChapterReviewModal from "../components/ChapterReviewModal.vue";
 import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
 import KpTreeExportModal from "../components/KpTreeExportModal.vue";
+import KpTreeImportModal from "../components/KpTreeImportModal.vue";
 import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
@@ -360,6 +370,11 @@ const archived = computed(() => courseStore.currentCourse?.status === "archived"
 const materials = ref<Material[]>([]);
 const previewMaterial = ref<Material | null>(null);
 const kpTreeExportOpen = ref(false);
+const kpTreeImportOpen = ref(false);
+/** 知识点树导入落盘后刷新目录树与知识点列表 */
+async function onKpTreeImported() {
+  await Promise.all([loadChapters(), loadKnowledgePoints()]);
+}
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
 const detailKp = ref<KnowledgePoint | null>(null);

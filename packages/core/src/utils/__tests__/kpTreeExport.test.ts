@@ -6,14 +6,21 @@ function chapter(id: number, level: "chapter" | "unit", parentId: number | null,
   return { id, courseId: 1, parentId, siyuanBlockId: null, name, level, sort };
 }
 
-function kp(id: number, chapterId: number | null, mastery: Mastery, sort: number, name = `kp${id}`): KnowledgePoint {
+function kp(
+  id: number,
+  chapterId: number | null,
+  mastery: Mastery,
+  sort: number,
+  name = `kp${id}`,
+  content = "",
+): KnowledgePoint {
   return {
     id,
     courseId: 1,
     chapterId,
     blockId: null,
     name,
-    content: "",
+    content,
     mastery,
     sourceAssetIds: "",
     prevKpIds: "",
@@ -58,42 +65,47 @@ const CHAPTERS = [
   chapter(20, "chapter", null, 2, "第二章 固定资产"),
 ];
 const KPS = [
-  kp(1, 10, "known", 1),
-  kp(2, 11, "mastered", 1),
-  kp(3, null, "unlearn", 1),
-  kp(4, 999, "proficient", 1),
+  kp(1, 10, "known", 1, "kp1", "第一段内容。\n\n第二段内容。"),
+  kp(2, 11, "mastered", 1, "kp2", "单段内容"),
+  kp(3, null, "unlearn", 1, "kp3"),
+  kp(4, 999, "proficient", 1, "kp4"),
 ];
 
-describe("buildKpTreeMarkdown", () => {
-  it("章节树结构：顶章 H1 + 小节 H2 + 孤儿/幽灵归未归章 + 统计行", () => {
+describe("buildKpTreeMarkdown（往返格式）", () => {
+  it("说明头（course id + 使用说明）+ 章节/知识点带 ch/kp 标记 + 内容缩进导出", () => {
     const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03" });
-    expect(md).toBe(
-      [
-        "# 财务管理学 知识点树",
-        "",
-        "> 导出时间 2026-11-03 · 2 章 · 4 知识点（2 已掌握）",
-        "",
-        "# 第一章 存货（2）",
-        "- kp1 [了解]",
-        "## 第一节 存货计价（1）",
-        "- kp2 [掌握]",
-        "",
-        "# 第二章 固定资产（0）",
-        "",
-        "# 未归章（2）",
-        "- kp3 [未学习]",
-        "- kp4 [精通]",
-        "",
-      ].join("\n"),
-    );
+    // 说明头：首行注释块，含课程身份锚点与不可导入检测文案（完整导出可导入）
+    expect(md.startsWith("<!--\n")).toBe(true);
+    expect(md).toContain("课程：财务管理学（course:1）");
+    expect(md).toContain("身份锚点");
+    expect(md).not.toContain("不可用于导入");
+    // 标题与统计行（导入时忽略）
+    expect(md).toContain("# 财务管理学 知识点树\n");
+    expect(md).toContain("> 导出时间 2026-11-03 · 2 章 · 4 知识点（2 已掌握）\n");
+    // 章节/小节标记（含导出添加的计数后缀）
+    expect(md).toContain("# 第一章 存货（2） <!-- ch:10 -->\n");
+    expect(md).toContain("## 第一节 存货计价（1） <!-- ch:11 -->\n");
+    expect(md).toContain("# 第二章 固定资产（0） <!-- ch:20 -->\n");
+    // 未归章是虚拟分组：无 ch 标记
+    expect(md).toContain("# 未归章（2）\n");
+    // 知识点标记 + 掌握度 + 内容缩进
+    expect(md).toContain("- kp1 [了解] <!-- kp:1 -->\n  第一段内容。\n\n  第二段内容。\n");
+    expect(md).toContain("- kp2 [掌握] <!-- kp:2 -->\n  单段内容\n");
+    expect(md).toContain("- kp3 [未学习] <!-- kp:3 -->\n");
+    expect(md).toContain("- kp4 [精通] <!-- kp:4 -->\n");
   });
 
-  it("includeMastery=false 时不带掌握度 tag", () => {
+  it("完整导出（非 onlyUnmastered）声明可往返导入", () => {
+    const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03" });
+    expect(md).toContain("可导回更新");
+  });
+
+  it("includeMastery=false 时不带掌握度 tag（标记仍在，可导入）", () => {
     const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], {
       date: "2026-11-03",
       includeMastery: false,
     });
-    expect(md).toContain("- kp1\n");
+    expect(md).toContain("- kp1 <!-- kp:1 -->\n");
     expect(md).not.toContain("[了解]");
     expect(md).not.toContain("[掌握]");
   });
@@ -107,7 +119,7 @@ describe("buildKpTreeMarkdown", () => {
       [question(101, "1,5"), question(102, "1")],
       { date: "2026-11-03", includeWrongCount: true },
     );
-    expect(md).toContain("- kp1 [了解]（2 错题）");
+    expect(md).toContain("- kp1 [了解]（2 错题） <!-- kp:1 -->");
     // 毕业错题（q102）不计
     expect(md).not.toContain("（3 错题）");
     expect(md).not.toContain("（1 错题）");
@@ -117,18 +129,26 @@ describe("buildKpTreeMarkdown", () => {
     const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [wrong(1, 101)], [question(101, "1")], {
       date: "2026-11-03",
     });
-    expect(md).toContain("- kp1 [了解]\n");
+    expect(md).toContain("- kp1 [了解] <!-- kp:1 -->\n");
   });
 
-  it("onlyUnmastered：只保留未学习/了解，统计行随之收窄", () => {
+  it("onlyUnmastered：只保留未学习/了解，统计行随之收窄，且声明不可导入", () => {
     const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03", onlyUnmastered: true });
     expect(md).toContain("> 导出时间 2026-11-03 · 2 章 · 2 知识点（0 已掌握）");
-    expect(md).toContain("- kp1 [了解]");
-    expect(md).toContain("- kp3 [未学习]");
+    expect(md).toContain("- kp1 [了解] <!-- kp:1 -->");
+    expect(md).toContain("- kp3 [未学习] <!-- kp:3 -->");
     expect(md).not.toContain("- kp2 [掌握]");
     expect(md).not.toContain("- kp4 [精通]");
     // 过滤后第二章与未归章计数
-    expect(md).toContain("# 第二章 固定资产（0）");
-    expect(md).toContain("# 未归章（1）");
+    expect(md).toContain("# 第二章 固定资产（0） <!-- ch:20 -->");
+    expect(md).toContain("# 未归章（1）\n");
+    // 过滤版缺失已掌握知识点 → 导入会误删，必须声明不可导入
+    expect(md).toContain("不可用于导入");
+  });
+
+  it("空内容知识点不产生缩进行；内容保留原始换行", () => {
+    const md = buildKpTreeMarkdown(COURSE, CHAPTERS, KPS, [], [], { date: "2026-11-03" });
+    // kp3 无内容：标记行后直接是下一行
+    expect(md).toContain("- kp3 [未学习] <!-- kp:3 -->\n- kp4 [精通] <!-- kp:4 -->\n");
   });
 });
