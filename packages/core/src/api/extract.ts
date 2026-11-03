@@ -3,6 +3,8 @@ import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, truncateText } from "./format";
 import { findTaskBinding, callAi, cancelAiCall, AiCanceledError } from "./ai";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
+import { effectiveNodeOf } from "../utils/kpTreeImport";
+import { scheduleKpRegionSync } from "./kpDocSync";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
@@ -148,6 +150,7 @@ async function extractKnowledgePointsInner(
   };
 
   let newCount = 0;
+  const newKpNodes = new Map<number, number | null>(); // 新 KP id → 归属节点（落盘后区域写回）
   let duplicateCount = 0;
   const errors: string[] = [];
 
@@ -227,6 +230,7 @@ async function extractKnowledgePointsInner(
           // 加入快照，确保同批后续同名知识点去重
           existingKps.push(newKp);
           newCount++;
+          newKpNodes.set(newKp.id, effectiveNodeOf(newKp, data.chapters));
         }
       }
     } catch (e) {
@@ -240,6 +244,10 @@ async function extractKnowledgePointsInner(
   }
 
   await saveData(data);
+  // 思源知识点区写回：新增 KP 所在节点的章文档
+  if (newKpNodes.size > 0) {
+    for (const node of new Set(newKpNodes.values())) void scheduleKpRegionSync(material.courseId, node);
+  }
   return { newCount, duplicateCount, totalChunks: blocks.length, errors };
 }
 

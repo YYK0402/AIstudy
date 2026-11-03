@@ -6,6 +6,7 @@ import { SAMPLE_COURSE } from "../constants/sampleCourse";
 import { applyImportToData, remapCoursePackage } from "./coursePackage";
 import { generateStudyPlan } from "./plan";
 import { getData, saveData } from "./storage";
+import { scheduleKpRegionSync } from "./kpDocSync";
 import { formatLocalDate, now } from "./format";
 
 export interface SampleCourseResult {
@@ -51,7 +52,13 @@ export async function createSampleCourse(): Promise<SampleCourseResult> {
   for (const p of remapped.examPapers) p.createTime = stamp;
   for (const c of remapped.flashCards) c.createTime = stamp;
 
-  await saveData(applyImportToData(existing, remapped));
+  const merged = applyImportToData(existing, remapped);
+  await saveData(merged);
+  // 思源知识点区写回（惰性补建：示例课的课程/章文档首次创建）
+  for (const ch of merged.chapters.filter((c) => c.courseId === remapped.courseId)) {
+    void scheduleKpRegionSync(remapped.courseId, ch.id);
+  }
+  void scheduleKpRegionSync(remapped.courseId, null);
 
   // 现成学习计划：今天开始、14 天后结束；无 gen_plan 绑定时自动降级为确定性骨架
   const today = new Date();
