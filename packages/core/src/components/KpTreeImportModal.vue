@@ -15,55 +15,18 @@
 
       <p v-if="parseError" class="s t-danger" style="word-break:break-all">{{ parseError }}</p>
 
-      <div v-if="stage === 'preview' && preview" class="import-diff">
+      <div v-if="stage === 'preview' && preview">
         <p class="s t-faint" style="margin:0 0 8px">
           文件：{{ preview.fileName }}
           <template v-if="!preview.courseVerified">（⚠ 缺少课程标识，请确认本文件属于「{{ courseName }}」）</template>
         </p>
-        <template v-if="d && !noChanges">
-          <section v-if="d.updated.length > 0">
-            <h4>更新知识点（{{ d.updated.length }}）</h4>
-            <ul>
-              <li v-for="u in d.updated" :key="u.id">
-                <span class="dn">{{ kpLabel(u.id) }}</span>
-                <span v-if="u.name !== undefined" class="t-faint">→ {{ u.name }}</span>
-                <span v-if="u.content !== undefined" class="diff-badge">内容</span>
-                <span v-if="u.chapterKey !== undefined" class="diff-badge">移至 {{ chName(u.chapterKey) }}</span>
-              </li>
-            </ul>
-          </section>
-          <section v-if="d.added.length > 0">
-            <h4>新增知识点（{{ d.added.length }}，默认「未学习」）</h4>
-            <ul>
-              <li v-for="(a, i) in d.added" :key="i">
-                <span class="dn">{{ a.name }}</span>
-                <span class="diff-badge">{{ chName(a.chapterKey) }}</span>
-              </li>
-            </ul>
-          </section>
-          <section v-if="d.removed.length > 0">
-            <h4>删除知识点（{{ d.removed.length }}）</h4>
-            <ul>
-              <li v-for="r in d.removed" :key="r.id" class="t-danger">{{ r.name }}</li>
-            </ul>
-          </section>
-          <section v-if="chCount > 0">
-            <h4>章节变更（{{ chCount }}）</h4>
-            <ul>
-              <li v-for="c in d.chaptersUpdated" :key="c.id">
-                <span class="dn">{{ chLabel(c.id) }}</span>
-                <span v-if="c.name !== undefined" class="t-faint">→ {{ c.name }}</span>
-                <span v-if="c.parentKey !== undefined" class="diff-badge">移至 {{ chName(c.parentKey) }}</span>
-              </li>
-              <li v-for="a in d.chaptersAdded" :key="a.key">
-                <span class="dn">{{ a.name }}</span>
-                <span class="diff-badge">{{ chAddBadge(a) }}</span>
-              </li>
-              <li v-for="r in d.chaptersRemoved" :key="r.id" class="t-danger">{{ r.name }}（删除章节）</li>
-            </ul>
-          </section>
-        </template>
-        <p v-else class="s t-faint">文件与当前课程知识点树一致，导入不会产生任何变更。</p>
+        <KpTreeChangePreview
+          :diff="d"
+          :kp-old-name="kpOldName"
+          :ch-old-name="chOldName"
+          :ch-key-names="keyName"
+          empty-text="文件与当前课程知识点树一致，导入不会产生任何变更。"
+        />
       </div>
 
       <p v-if="stage === 'pick'" class="s t-faint">
@@ -86,6 +49,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import AppIcon from "./AppIcon.vue";
+import KpTreeChangePreview from "./KpTreeChangePreview.vue";
 import { confirmKpTreeImport, getData, previewKpTreeImport, type KpTreeImportPreview } from "../api";
 import { getBridge } from "@/bridge";
 
@@ -116,7 +80,7 @@ watch(
   },
 );
 
-const d = computed(() => preview.value?.diff);
+const d = computed(() => preview.value?.diff ?? null);
 const keyName = computed(() => new Map((preview.value?.tree.chapters ?? []).map((c) => [c.key, c.name])));
 const chCount = computed(
   () => (d.value?.chaptersUpdated.length ?? 0) + (d.value?.chaptersAdded.length ?? 0) + (d.value?.chaptersRemoved.length ?? 0),
@@ -130,23 +94,6 @@ const confirmLabel = computed(() => {
   if (noChanges.value) return "无变更";
   return `确认导入（${changeCount.value} 处变更）`;
 });
-
-function chName(key: string | null): string {
-  if (key === null) return "未归章";
-  return keyName.value.get(key) ?? "未知章节";
-}
-
-function chAddBadge(a: { level: "chapter" | "unit"; parentKey: string | null }): string {
-  return a.level === "chapter" ? "新增顶章" : `新增小节（${chName(a.parentKey)}）`;
-}
-
-function kpLabel(id: number): string {
-  return kpOldName.value.get(id) ?? `#${id}`;
-}
-
-function chLabel(id: number): string {
-  return chOldName.value.get(id) ?? `#${id}`;
-}
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
