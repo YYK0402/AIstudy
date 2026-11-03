@@ -454,3 +454,76 @@ describe("写回管道（bridge mock）", () => {
     expect(calls.update[0].md).toContain("c3");
   });
 });
+
+describe("读回管道（bridge mock）", () => {
+  it("readSiyuanKpSync：读全部文档 → diff + 计数 + readCtx", async () => {
+    setup();
+    const { readSiyuanKpSync } = await import("../kpDocSync");
+    const preview = await readSiyuanKpSync(1);
+    expect(preview.tree.courseId).toBe(1);
+    expect(preview.tree.chapters.map((c) => c.id).sort()).toEqual([10]); // 现有章节全部带标记
+    expect(preview.readCtx.nodes).toHaveLength(2); // 章A + 课程文档
+    expect(preview.diff.removed).toEqual([]);
+  });
+
+  it("applySiyuanKpSync：区内改动落数据（掌握度不变）+ 刷新存储态", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const region = kpDocSync.renderKpRegion([
+      { ...data.knowledgePoints[0], name: "KP1改", content: "c改" },
+    ]);
+    docs.set("docA", `# 章A\n\n${region}`);
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.diff.updated).toHaveLength(1);
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(data.knowledgePoints[0].name).toBe("KP1改");
+    expect(data.knowledgePoints[0].content).toBe("c改");
+    expect(data.knowledgePoints[0].mastery).toBe("unlearn"); // 学习状态不动
+    expect(data.docRegions?.docA).toBeDefined();
+    expect(data.docRegions?.docA!.ids).toEqual([1]);
+  });
+
+  it("applySiyuanKpSync：用户删了整个区（无区有状态）→ 确认后删 KP + 删 docRegions 条目", async () => {
+    setup();
+    data.docRegions = { docA: { h: "x", ids: [1] } };
+    docs.set("docA", "# 章A\n\n区被删了");
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.diff.removed).toHaveLength(1);
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(data.knowledgePoints).toHaveLength(0);
+    expect(data.docRegions?.docA).toBeUndefined(); // 删除状态条目（不再停写死循环）
+  });
+
+  it("applySiyuanKpSync：保留待写 KP → 合并回区写回 + 状态刷新", async () => {
+    setup();
+    // 区里只有「KP1」的旧写入态；应用又新增了 KP2（待写，∉ 存储 ids）
+    const rendered = (await import("../kpDocSync")).renderKpRegion([data.knowledgePoints[0]]);
+    docs.set("docA", `# 章A\n\n${rendered}`);
+    data.docRegions = { docA: { h: "old", ids: [1] } };
+    data.knowledgePoints.push({ ...data.knowledgePoints[0], id: 2, name: "KP2", content: "", chapterName: "章A", sort: 2 });
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.retained).toBe(1);
+    expect(preview.diff.removed).toEqual([]);
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    const mdA = docs.get("docA")!;
+    expect(mdA).toContain("<!-- kp:2 -->"); // 待写 KP 已合并回区
+    expect(data.docRegions?.docA!.ids.sort()).toEqual([1, 2]);
+  });
+
+  it("applySiyuanKpSync：区在期间又被改 → 跳过该文档写回，不覆盖新编辑", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    // 读回时：用户已把内容从「c」改成「内容a」（产生 updated diff）
+    docs.set("docA", kpDocSync.renderKpRegion([{ ...data.knowledgePoints[0], content: "内容a" }]));
+    data.docRegions = { docA: { h: kpDocSync.parseKpRegion(docs.get("docA")!).hash, ids: [1] } };
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.diff.updated).toHaveLength(1);
+    // 读回后、确认前，用户又改成「内容b」
+    docs.set("docA", docs.get("docA")!.replace("内容a", "内容b"));
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(data.knowledgePoints[0].content).toBe("内容a"); // 读回态落盘
+    expect(docs.get("docA")!).toContain("内容b"); // 期间新编辑未被覆盖
+  });
+});

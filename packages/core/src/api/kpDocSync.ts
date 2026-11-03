@@ -3,8 +3,8 @@
 // 文档格式：章/节文档、课程顶层文档末尾追加锚点区，区是应用数据镜像
 // （仅本节点直属 KP、sort 序、与 md 往返 KP 行逐行一致）；锚点外内容永不触碰。
 import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/appData";
-import { effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
-import type { ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
+import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
+import type { KpTreeDiff, ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
 import { createDoc, docsEnabled, ensureFolder } from "./docStore";
 import { getData, saveData } from "./storage";
@@ -423,5 +423,174 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
   } catch (e) {
     console.error("知识点区写回失败:", e);
     getBridge().showMessage(`思源知识点区写回失败：${e instanceof Error ? e.message : "未知错误"}`, 4000, "error");
+  }
+}
+
+// ---------- 读回管道（思源 → 应用） ----------
+
+export interface SiyuanReadCtxNode {
+  node: number | null;
+  docId: string | null;
+  hadRegion: boolean;
+  /** 读时区规范哈希（"" = 无区） */
+  regionHash: string;
+  /** 读时区带标记条目 id */
+  markedIds: number[];
+  storedExisted: boolean;
+  /** 存储态的 ids（读时快照） */
+  storedIds: number[];
+}
+
+export interface SiyuanReadCtx {
+  course: Course;
+  chapters: Chapter[];
+  nodes: SiyuanReadCtxNode[];
+}
+
+export interface SiyuanKpSyncPreview {
+  tree: ParsedKpTree;
+  diff: KpTreeDiff;
+  deletedDocs: number;
+  historicalDocs: number;
+  retained: number;
+  readCtx: SiyuanReadCtx;
+}
+
+/** 读回：读本课程全部文档（课程文档 + 章/节文档）→ 组树 → 计算 diff（不落盘） */
+export async function readSiyuanKpSync(courseId: number): Promise<SiyuanKpSyncPreview> {
+  const data = await getData();
+  const course = data.courses.find((c) => c.id === courseId);
+  if (!course) throw new Error("课程不存在，请刷新后重试");
+  const chapters = data.chapters.filter((c) => c.courseId === courseId);
+  const kps = data.knowledgePoints.filter((k) => k.courseId === courseId);
+  const docRegions = data.docRegions ?? {};
+  const bridge = getBridge();
+
+  const docTargets: Array<{ node: number | null; docId: string | null }> = [
+    ...[...chapters].sort((a, b) => a.sort - b.sort).map((c) => ({ node: c.id as number | null, docId: c.siyuanBlockId })),
+    { node: null, docId: course.siyuanDocId },
+  ];
+  const docs = new Map<string, string | null>();
+  for (const t of docTargets) {
+    if (t.docId === null || docs.has(t.docId)) continue;
+    const md = await bridge.getDocMarkdown(t.docId).catch(() => null);
+    docs.set(t.docId, md);
+  }
+
+  const built = buildSiyuanParsedTree({ course, chapters, kps, docRegions, docs });
+  const diff = computeKpTreeDiff(built.tree, chapters, kps);
+  const readCtx: SiyuanReadCtx = {
+    course,
+    chapters,
+    nodes: docTargets.map((t) => {
+      const md = t.docId === null ? null : docs.get(t.docId) ?? null;
+      const region = t.docId !== null && md !== null ? parseKpRegion(md) : { hasRegion: false, kps: [], hash: "" };
+      const stored = t.docId !== null ? docRegions[t.docId] : undefined;
+      return {
+        node: t.node,
+        docId: t.docId,
+        hadRegion: region.hasRegion,
+        regionHash: region.hash,
+        markedIds: region.kps.filter((k) => k.id !== null).map((k) => k.id!),
+        storedExisted: stored !== undefined,
+        storedIds: stored?.ids ?? [],
+      };
+    }),
+  };
+  return {
+    tree: built.tree,
+    diff,
+    deletedDocs: built.deletedDocs,
+    historicalDocs: built.historicalDocs,
+    retained: built.retained,
+    readCtx,
+  };
+}
+
+/** 确认读回：应用变更落盘 + 刷新/合并各区写入状态 */
+export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncPreview): Promise<void> {
+  const data = await getData();
+  const nextData = applyKpTreeDiff(data, courseId, preview.tree, preview.diff);
+  if (!nextData.docRegions) nextData.docRegions = {};
+
+  const oldChapters = data.chapters.filter((c) => c.courseId === courseId);
+  const chapters = nextData.chapters.filter((c) => c.courseId === courseId);
+  const kpsNow = nextData.knowledgePoints.filter((k) => k.courseId === courseId);
+
+  // 产生 diff 的节点集合（含保留待写 KP 的节点）
+  const changedNodes = new Set<string>();
+  const mark = (node: number | null): void => {
+    changedNodes.add(node === null ? "course" : String(node));
+  };
+  for (const u of preview.diff.updated) {
+    const oldKp = data.knowledgePoints.find((k) => k.id === u.id);
+    if (oldKp) mark(effectiveNodeOf(oldKp, oldChapters));
+    const newKp = nextData.knowledgePoints.find((k) => k.id === u.id);
+    if (newKp) mark(effectiveNodeOf(newKp, chapters));
+  }
+  for (const r of preview.diff.removed) {
+    const oldKp = data.knowledgePoints.find((k) => k.id === r.id);
+    if (oldKp) mark(effectiveNodeOf(oldKp, oldChapters));
+  }
+  for (const a of preview.diff.added) {
+    mark(a.chapterKey === null ? null : Number(a.chapterKey.slice(3)));
+  }
+  // 存在保留待写 KP 的有区节点（这些 KP 没产生 diff，但需合并回区写回）
+  const unionStored = new Set(preview.readCtx.nodes.flatMap((n) => n.storedIds));
+  const oldKpById = new Map(data.knowledgePoints.map((k) => [k.id, k]));
+  for (const n of preview.readCtx.nodes) {
+    if (!n.hadRegion || n.docId === null) continue;
+    const hasRetained = [...oldKpById.values()].some(
+      (k) =>
+        k.courseId === courseId &&
+        effectiveNodeOf(k, oldChapters) === n.node &&
+        !n.markedIds.includes(k.id) &&
+        !unionStored.has(k.id),
+    );
+    if (hasRetained) mark(n.node);
+  }
+
+  const settings = await getSettings();
+  const canWrite = settings.persistToSiyuan && docsEnabled();
+  const bridge = getBridge();
+  const writeErrors: string[] = [];
+
+  for (const n of preview.readCtx.nodes) {
+    if (!changedNodes.has(n.node === null ? "course" : String(n.node))) continue;
+    if (n.docId === null) continue;
+    const label = nodeDocTarget(preview.readCtx.course, preview.readCtx.chapters, n.node).label;
+    if (!n.hadRegion && n.storedExisted) {
+      // 用户删了整个区并确认全章删除 → 删除状态条目（此后按历史文档处理，避免停写死循环）
+      delete nextData.docRegions![n.docId];
+      continue;
+    }
+    if (!n.hadRegion || !canWrite) continue;
+
+    // 用应用当前渲染重写该节点区（合并写回：用户编辑/新增/保留待写 KP 一次性落定）
+    const nodeKps = kpsNow.filter((k) => effectiveNodeOf(k, chapters) === n.node);
+    const region = renderKpRegion(nodeKps);
+    const freshMd = await bridge.getDocMarkdown(n.docId).catch(() => null);
+    if (freshMd === null) continue; // 期间文档被删：跳过写回，下次写回自愈重建
+    const freshRegion = parseKpRegion(freshMd);
+    if (freshRegion.hasRegion && freshRegion.hash !== n.regionHash) {
+      continue; // 期间区又有新编辑：不覆盖，保留读时状态（下次写回停写提示）
+    }
+    try {
+      await bridge.updateDoc(n.docId, mergeKpRegion(freshMd, region));
+      // 与写回管道同口径：用渲染区解析哈希（renderKpRegion 内部按 sort 排序）
+      nextData.docRegions![n.docId] = { h: parseKpRegion(region).hash, ids: nodeKps.map((k) => k.id) };
+    } catch (e) {
+      console.error("知识点区合并写回失败:", e);
+      writeErrors.push(label);
+    }
+  }
+
+  await saveData(nextData);
+  if (writeErrors.length) {
+    bridge.showMessage(
+      `思源同步数据已保存，但以下知识点区写回失败：${writeErrors.join("、")}`,
+      5000,
+      "error",
+    );
   }
 }

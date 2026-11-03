@@ -27,6 +27,7 @@ export * from "./extract";
 export * from "./course";
 export * from "./coursePackage";
 export * from "./kpTreeImport";
+export * from "./kpDocSync";
 export * from "./sampleCourse";
 export * from "./provider";
 export * from "./prompts";
