@@ -2,8 +2,9 @@
 //
 // 文档格式：章/节文档、课程顶层文档末尾追加锚点区，区是应用数据镜像
 // （仅本节点直属 KP、sort 序、与 md 往返 KP 行逐行一致）；锚点外内容永不触碰。
-import type { KnowledgePoint } from "../types/appData";
-import { parseKpLine } from "../utils/kpTreeImport";
+import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/appData";
+import { effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
+import type { ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
 
 // ---------- 区常量与规范哈希 ----------
@@ -148,4 +149,118 @@ export function decideRegionWrite(opts: {
   if (opts.regionHash !== (opts.storedHash ?? "")) return { action: "stop", reason: "user-modified" };
   if (opts.renderedHash === opts.storedHash) return { action: "skip" };
   return { action: "write" };
+}
+
+// ---------- 读回组树（纯函数） ----------
+
+export interface SiyuanSyncBuildInput {
+  course: Course;
+  /** 本课程全部章节（含 unit） */
+  chapters: Chapter[];
+  /** 本课程全部知识点 */
+  kps: KnowledgePoint[];
+  docRegions: Record<string, DocRegionState>;
+  /** docId → 文档 markdown；null = 文档已删除（docId 为 null 的节点不在此 Map） */
+  docs: Map<string, string | null>;
+}
+
+export interface SiyuanSyncBuild {
+  tree: ParsedKpTree;
+  /** 文档已不存在（用户删除）的文档数（计入提示，不清空该节点 KP） */
+  deletedDocs: number;
+  /** 文档未落库或尚无知识点的区（历史）的文档数 */
+  historicalDocs: number;
+  /** 应用侧待写 KP 保留数（id ∉ 存储 ids 并集，确认后合并回区写回） */
+  retained: number;
+}
+
+/** 读回组装 ParsedKpTree：chapters 全部带标记（读回不产生章节结构变更）；
+ *  kps 按文档/区状态分流（见 spec §3 安全规则表） */
+export function buildSiyuanParsedTree(input: SiyuanSyncBuildInput): SiyuanSyncBuild {
+  const { course, chapters, kps, docRegions, docs } = input;
+
+  const treeChapters: ParsedChapter[] = [...chapters]
+    .sort((a, b) => a.sort - b.sort)
+    .map((c) => ({
+      key: `id:${c.id}`,
+      id: c.id,
+      name: c.name,
+      level: c.level,
+      parentKey: c.level === "unit" && c.parentId !== null ? `id:${c.parentId}` : null,
+      sort: c.sort,
+    }));
+
+  // 存储 ids 并集（跨全部文档）：区分「应用待写」与「用户删除」
+  const unionStoredIds = new Set<number>();
+  for (const s of Object.values(docRegions)) {
+    for (const id of s.ids) unionStoredIds.add(id);
+  }
+
+  const nodeOrder: Array<{ node: number | null; key: string | null }> = [
+    ...[...chapters]
+      .sort((a, b) => a.sort - b.sort)
+      .map((c) => ({ node: c.id as number | null, key: `id:${c.id}` as string | null })),
+    { node: null, key: null },
+  ];
+
+  const treeKps: ParsedKp[] = [];
+  const injectKept = (list: KnowledgePoint[], key: string | null): void => {
+    for (const k of list) {
+      treeKps.push({ key: `id:${k.id}`, id: k.id, name: k.name, content: k.content, chapterKey: key, sort: treeKps.length });
+    }
+  };
+
+  let deletedDocs = 0;
+  let historicalDocs = 0;
+  let retained = 0;
+  let newCounter = 0;
+
+  for (const { node, key } of nodeOrder) {
+    const docId = node === null ? course.siyuanDocId : chapters.find((c) => c.id === node)?.siyuanBlockId ?? null;
+    const nodeKps = kps.filter((k) => effectiveNodeOf(k, chapters) === node).sort((a, b) => a.sort - b.sort);
+    if (docId === null) {
+      historicalDocs++;
+      injectKept(nodeKps, key);
+      continue;
+    }
+    const md = docs.get(docId) ?? null;
+    if (md === null) {
+      deletedDocs++;
+      injectKept(nodeKps, key);
+      continue;
+    }
+    const region = parseKpRegion(md);
+    const stored = docRegions[docId];
+    if (!region.hasRegion) {
+      if (stored !== undefined) {
+        // 用户删了整个区 → 不注入，全章 KP 进删除预览（确认才执行）
+      } else {
+        historicalDocs++;
+        injectKept(nodeKps, key);
+      }
+      continue;
+    }
+    const markedIds = new Set<number>();
+    for (const e of region.kps) {
+      if (e.id !== null) {
+        markedIds.add(e.id);
+        treeKps.push({ key: `id:${e.id}`, id: e.id, name: e.name, content: e.content, chapterKey: key, sort: treeKps.length });
+      } else {
+        treeKps.push({ key: `new:${newCounter++}`, id: null, name: e.name, content: e.content, chapterKey: key, sort: treeKps.length });
+      }
+    }
+    for (const k of nodeKps) {
+      if (markedIds.has(k.id)) continue;
+      if (unionStoredIds.has(k.id)) continue; // 上次写入时在区里、现被用户删 → 进删除预览
+      retained++;
+      treeKps.push({ key: `id:${k.id}`, id: k.id, name: k.name, content: k.content, chapterKey: key, sort: treeKps.length });
+    }
+  }
+
+  return {
+    tree: { importable: true, courseId: course.id, courseName: course.name, chapters: treeChapters, kps: treeKps },
+    deletedDocs,
+    historicalDocs,
+    retained,
+  };
 }
