@@ -25,6 +25,7 @@
           </template>
           <button class="btn sm ghost" title="导出知识点树 Markdown（含掌握度/错题数选项）" :disabled="!currentCourseId()" @click="kpTreeExportOpen = true">导出知识点树</button>
           <button class="btn sm ghost" v-if="!archived" title="导入导出过的知识点树 Markdown（编辑后更新课程）" :disabled="!currentCourseId()" @click="kpTreeImportOpen = true">导入知识点树</button>
+          <button v-if="siyuanKpSyncVisible" class="btn sm ghost" title="读取在思源章文档中编辑的知识点（预览确认后更新）" @click="siyuanKpSyncOpen = true"><AppIcon name="refresh" :size="14" /> 从思源同步</button>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
@@ -288,6 +289,13 @@
       @close="kpTreeImportOpen = false"
       @saved="onKpTreeImported"
     />
+    <SiyuanKpSyncModal
+      :open="siyuanKpSyncOpen"
+      :course-id="currentCourseId() ?? 0"
+      :course-name="courseStore.currentCourse?.name ?? ''"
+      @close="siyuanKpSyncOpen = false"
+      @saved="onKpTreeImported"
+    />
   </div>
 </template>
 
@@ -302,6 +310,7 @@ onDeactivated(() => {
     chapterModal.value = null;
     reviewChapter.value = null;
     kpTreeImportOpen.value = false;
+    siyuanKpSyncOpen.value = false;
 });
 import AppIcon from "../components/AppIcon.vue";
 import { onDeactivated, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -334,6 +343,8 @@ import {
   updateKnowledgePoint,
   startOrganizeTask,
   startExtractTask,
+  docsEnabled,
+  getSettings,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
 import { useNotifyStore, materialTaskId } from "../stores/notify";
@@ -346,6 +357,7 @@ import ChapterReviewModal from "../components/ChapterReviewModal.vue";
 import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
 import KpTreeExportModal from "../components/KpTreeExportModal.vue";
 import KpTreeImportModal from "../components/KpTreeImportModal.vue";
+import SiyuanKpSyncModal from "../components/SiyuanKpSyncModal.vue";
 import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
@@ -374,6 +386,15 @@ const kpTreeImportOpen = ref(false);
 /** 知识点树导入落盘后刷新目录树与知识点列表 */
 async function onKpTreeImported() {
   await Promise.all([loadChapters(), loadKnowledgePoints()]);
+}
+// 从思源同步（读回）：按钮显隐 = 未归档 && 思源文档能力开启 && 开启持久化到思源 && 有当前课程
+const siyuanKpSyncOpen = ref(false);
+const siyuanPersistOn = ref(false);
+const siyuanKpSyncVisible = computed(
+  () => !archived.value && docsEnabled() && siyuanPersistOn.value && !!currentCourseId(),
+);
+async function refreshSiyuanPersist() {
+  siyuanPersistOn.value = (await getSettings()).persistToSiyuan;
 }
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
@@ -1049,10 +1070,13 @@ watch(
 useDataSavedRefresh(() => {
   loadMaterials();
   loadKnowledgePoints();
+  // 设置页改动（persistToSiyuan）会触发 global 保存事件，刷新「从思源同步」按钮显隐
+  void refreshSiyuanPersist();
 });
 onMounted(() => {
   document.addEventListener("click", closeRowMenu);
   void load();
+  void refreshSiyuanPersist();
 });
 onBeforeUnmount(() => {
   document.removeEventListener("click", closeRowMenu);
