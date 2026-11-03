@@ -12,7 +12,7 @@ export interface KpTreeExportOptions {
   date?: string;
 }
 
-const MASTERY_LABEL: Record<Mastery, string> = {
+export const MASTERY_LABEL: Record<Mastery, string> = {
   unlearn: "[未学习]",
   known: "[了解]",
   mastered: "[掌握]",

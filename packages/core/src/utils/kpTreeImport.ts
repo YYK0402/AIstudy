@@ -125,6 +125,18 @@ function parseKpName(rest: string): string {
     .trim();
 }
 
+/** 解析知识点 bullet 行主体：kp 标记 ID + 名称（剥离显示标签）；主解析器与思源区解析共享 */
+export function parseKpLine(rest: string): { name: string; id: number | null } {
+  let id: number | null = null;
+  let s = rest;
+  const m = s.match(KP_MARKER_RE);
+  if (m) {
+    id = Number(m[1]);
+    s = s.slice(0, m.index);
+  }
+  return { name: parseKpName(s), id };
+}
+
 interface HeaderInfo {
   error?: string;
   line?: number;
@@ -266,20 +278,14 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
       if (currentTopKey === null && !inUnassigned && currentUnitKey === null) {
         return fail("知识点条目（-）未在任何章节下（未归章请放在「# 未归章」之后）", lineNo);
       }
-      let rest = line.slice(2);
-      let id: number | null = null;
-      const m = rest.match(KP_MARKER_RE);
-      if (m) {
-        id = Number(m[1]);
-        rest = rest.slice(0, m.index);
-      }
+      const { name, id } = parseKpLine(line.slice(2));
       if (id !== null && seenKpIds.has(id)) return fail(`重复的知识点标记 kp:${id}`, lineNo);
       if (id !== null) seenKpIds.add(id);
       const key = id !== null ? `id:${id}` : `new:${newKpCounter++}`;
       const nodeKey = kpChapterKey() ?? "__unassigned__";
       const idx = nodeKpIndex.get(nodeKey) ?? 0;
       nodeKpIndex.set(nodeKey, idx + 1);
-      currentKp = { key, id, name: parseKpName(rest), content: "", chapterKey: kpChapterKey(), sort: idx };
+      currentKp = { key, id, name, content: "", chapterKey: kpChapterKey(), sort: idx };
       tree.kps.push(currentKp);
       continue;
     }
@@ -296,7 +302,7 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
 }
 
 /** 现有 KP 的归属节点（顶章 id / 小节 id / null），与导出 nodeOf 一致 */
-function effectiveNodeOf(kp: KnowledgePoint, chapters: Chapter[]): number | null {
+export function effectiveNodeOf(kp: Pick<KnowledgePoint, "chapterId">, chapters: Chapter[]): number | null {
   if (kp.chapterId === null) return null;
   const topIds = new Set(chapters.filter((c) => c.level === "chapter").map((c) => c.id));
   if (topIds.has(kp.chapterId)) return kp.chapterId;
