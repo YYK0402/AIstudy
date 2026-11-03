@@ -143,6 +143,15 @@ describe("splitAppData", () => {
     expect(global.reminders).toEqual(data.reminders);
     expect(courses.size).toBe(2);
   });
+
+  it("docRegions 进全局块并随 merge 往返", () => {
+    const data = makeData();
+    data.docRegions = { doc1: { h: "1505", ids: [100, 101] } };
+    const { global, courses } = splitAppData(data);
+    expect(global.docRegions).toEqual({ doc1: { h: "1505", ids: [100, 101] } });
+    const merged = mergeAppData(global, courses);
+    expect(merged.docRegions).toEqual({ doc1: { h: "1505", ids: [100, 101] } });
+  });
 });
 
 describe("mergeAppData", () => {

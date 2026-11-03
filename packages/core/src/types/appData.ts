@@ -297,6 +297,14 @@ export interface AppSettings {
   studyRetentionDays?: number;
 }
 
+/** 思源知识点锚点区写回状态：docId → 最后成功写入状态 */
+export interface DocRegionState {
+  /** 最后成功写入时的区规范串哈希（条目按序 `id|name|content` 拼接的 djb2 hex） */
+  h: string;
+  /** 该次写入时区内标记 KP 的 id 集（读回消歧「应用待写」与「用户删除」） */
+  ids: number[];
+}
+
 /** StudyLog 月度聚合（超保留期记录归档后保留的汇总，month = "YYYY-MM"） */
 export interface StudyLogMonthly {
   courseId: number;
@@ -396,6 +404,8 @@ export interface AppData {
   conversationsDocs?: Record<string, { docId: string; lastMarkdown?: string }>;
   /** 今日任务提醒去重：上次提醒的自然日（YYYY-MM-DD）；缺失 = 从未提醒 */
   reminders?: { lastReminderDate?: string };
+  /** 思源知识点锚点区写回状态（key = 思源文档 id）；缺失 = 从未写入过（旧数据） */
+  docRegions?: Record<string, DocRegionState>;
 }
 
 export function createEmptyData(): AppData {
