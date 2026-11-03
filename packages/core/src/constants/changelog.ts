@@ -37,6 +37,17 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.3",
+    date: "2026-11-03",
+    intro: "修复弹窗复选框样式（被文本框样式撑成长条、与文字间距过大、错位）",
+    items: [
+      {
+        head: "修复",
+        text: "修复「导出课程包 / 上传资料」等弹窗中复选框被文本框样式撑成长条（与文字间距巨大、左边缘错位）的问题；应用内复选框统一为主题色",
+      },
+    ],
+  },
+  {
     version: "0.5.2",
     date: "2026-11-02",
     intro: "学习计划与复习计划暂停解耦，可独立控制；复习页按类型分组并显示进度与错题关联",
