@@ -10,7 +10,13 @@
     "isolatedModules": true,
     "lib": ["ES2020", "DOM"],
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    // 测试经相对路径跨包 import core 源码（如 kpDocSync），其内部用 core 的 @ alias 引 @/bridge，
+    // 此处按 core 同口径映射（仅类型检查生效；vite 构建的 alias 在 vite.config.ts 独立配置）
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../core/src/*"]
+    }
   },
   "include": ["src/**/*.ts", "vite.config.ts", "../../scripts/**/*.js"]
 }
