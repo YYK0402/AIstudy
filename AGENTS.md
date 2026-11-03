@@ -13,9 +13,17 @@
 - 插件目录是符号链接 `~/SiYuan/data/plugins/AIstudy -> <repo>/dist`（目录名须与 `plugin.json` 的 name 一致，reloadPlugin 按此名匹配）。
 - **日常迭代用 `npm run build:web && npm run build:plugin`（不 clean）**；`npm run build` 含 `clean` 会删 dist，思源内核会把插件当卸载（petal 掉线，需重启思源才恢复）。
 - 改动后验证顺序：`npx vue-tsc --noEmit -p packages/siyuan/tsconfig.json && npx vue-tsc --noEmit -p packages/core/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`packages/core/src/**/__tests__` 与 `packages/siyuan/src/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
-- **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → `POST /api/backend/plugin/reloadPlugin {name:"AIstudy"}` → **整页刷新（page.reload）后再点顶栏** `div[aria-label="AI 智能学习"]` 开页签（web bundle 每页会话只加载一次，不刷新会跑旧 bundle；反复重载插件会在页签栏累积重复页签与隐藏应用实例，发现 `.ai-study-app` 多于一个时用中键点掉多余页签）→ 验证 `.ai-study-app` 挂载与课程数据 → 经 `window.__AI_STUDY_BRIDGE__` 直接 `callAi`（用启用的 provider/model）→ `saveData` 原样往返 → 临时文档落库全链路（ensureFolder/createDoc/docExists/getDocMarkdown/renameDoc/removeDoc，测完必删）。
+- **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → **整页刷新（page.reload）** → 点顶栏 `div[aria-label="AI 智能学习"]` 开页签 → 验证 `.ai-study-app` 挂载与课程数据 → 数据注入/业务路径走应用 UI → 测完清理测试数据。
+  - 整页刷新是 fresh-mount 的唯一可靠方式：web bundle 每页会话只加载一次；**关页签重开 ≠ 重新挂载**——应用是单实例 + DOM 迁移（`mount.ts` 的 `findLiveRoot` 把活实例 adopt 到新面板），`onMounted` 不重跑，验证挂载期逻辑（如今日提醒）必须整页刷新；合成事件关页签可能不触发内核 destroy，实例会以隐藏 DOM 存活（判别法：`$pinia.state.value.notify.tasks` 里的历史条目仍在 = 旧实例）。
+  - bridge 直传 `mount(el, bridge)`，**不再挂 `window.__AI_STUDY_BRIDGE__`**（契约重构后）。读应用状态：`.ai-study-app` 父元素的 `__vue_app__` → `config.globalProperties.$pinia.state.value`（course/notify/today 等 store）。
+  - **内核 petal 缓存优先于磁盘**：直改 `~/SiYuan/data/storage/petal/AIstudy/` 文件插件不可见，整页刷新也不读盘（内核仅进程启动时读盘）；`/api/petal/*` HTTP API 空响应不可用。注入测试数据用 UI：首页「试一试示例课」一键导入完整课程（含 12 章 186 知识点/题目 + 自动生成 14 天计划，含一次小规模真实 gen_plan AI 调用），清理走「课程主页 → 编辑课程信息 → 删除课程」；需要磁盘级注入时只能重启思源进程。
 - 前端样式统一写在 `packages/core/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
 - **双端同发**：每次发版/打包，只要改动涉及 `packages/core`（两端共享）就必须两端一起打包——思源 `npm run build:web && npm run build:plugin && node scripts/make_install.js` + 飞牛 `npm run pack:fnos`，禁止只发一端导致两端包内 core 版本不一致。
+
+## 发版策略（2026-11-03 起）
+- **功能迭代不发版、不推远端**：功能开发只做本地提交（commit 不 push origin），不 bump 版本、不打包/Release——版本停留在当前已发布版本（当前 v0.5.2），集市同步停留；本地 dist 照常构建供自己的思源使用。
+- **BUG 修复走完整发版**：按下方「发布（集市上架）」标准流程执行（patch bump → 修复提交与版本 bump 分开提交 → 构建 → push main + tag → GitHub Release → 集市复验）。
+- **功能批量发版**：时机由用户明确指定（如某功能批次完成后说「发版」），届时一次性执行标准流程；release notes 必须覆盖自上一 Release 以来的全部变更。
 
 ## 发布（集市上架）
 - **集市只认 GitHub Release**：思源集市（bazaar）Stage 工作流每 1–3 小时按插件仓库「含 package.zip 的正式 GitHub Release」自动拉取索引。只 bump `plugin.json` 版本 + 推代码**不会**让新版进集市（v0.2.1–v0.2.4 事故：集市停在 v0.2.0 数日，2026-10-30 排查发现）。
