@@ -2,10 +2,12 @@ import { getData, saveData } from "./storage";
 import {
   applyKpTreeDiff,
   computeKpTreeDiff,
+  effectiveNodeOf,
   parseKpTreeMarkdown,
   type KpTreeDiff,
   type ParsedKpTree,
 } from "../utils/kpTreeImport";
+import { scheduleKpRegionSync, syncChapterStructure } from "./kpDocSync";
 
 export interface KpTreeImportPreview {
   tree: ParsedKpTree;
@@ -45,8 +47,50 @@ export async function previewKpTreeImport(file: File, courseId: number): Promise
   return { tree, diff, courseVerified: tree.courseId !== null || tree.courseName !== null, fileName: file.name };
 }
 
-/** 确认导入：应用变更并落盘 */
+/** 确认导入：应用变更并落盘；思源端顺带同步章文档（建/删/改名/移动）与知识点区 */
 export async function confirmKpTreeImport(courseId: number, preview: KpTreeImportPreview): Promise<void> {
   const data = await getData();
-  await saveData(applyKpTreeDiff(data, courseId, preview.tree, preview.diff));
+  const chapters = data.chapters.filter((c) => c.courseId === courseId);
+  const oldMaxKp = data.knowledgePoints.reduce((m, k) => Math.max(m, k.id), 0);
+  const oldMaxCh = data.chapters.reduce((m, c) => Math.max(m, c.id), 0);
+  const affected = new Set<string>();
+  const mark = (node: number | null): void => {
+    affected.add(node === null ? "course" : String(node));
+  };
+  // 旧节点（落盘前口径）
+  for (const u of preview.diff.updated) {
+    const k = data.knowledgePoints.find((x) => x.id === u.id);
+    if (k) mark(effectiveNodeOf(k, chapters));
+  }
+  for (const r of preview.diff.removed) {
+    const k = data.knowledgePoints.find((x) => x.id === r.id);
+    if (k) mark(effectiveNodeOf(k, chapters));
+  }
+
+  const nextData = applyKpTreeDiff(data, courseId, preview.tree, preview.diff);
+  await saveData(nextData);
+
+  // 新节点（落盘后口径）：updated 新归属 + 新增 KP + 新建章节
+  const newChapters = nextData.chapters.filter((c) => c.courseId === courseId);
+  const addedChapters = nextData.chapters.filter((c) => c.courseId === courseId && c.id > oldMaxCh);
+  for (const u of preview.diff.updated) {
+    const k = nextData.knowledgePoints.find((x) => x.id === u.id);
+    if (k) mark(effectiveNodeOf(k, newChapters));
+  }
+  for (const k of nextData.knowledgePoints) {
+    if (k.courseId === courseId && k.id > oldMaxKp) mark(effectiveNodeOf(k, newChapters));
+  }
+  for (const c of addedChapters) mark(c.id);
+
+  // 章节结构变更 → 思源章文档操作（await，聚合提示）；再调度知识点区写回
+  if (
+    addedChapters.length > 0 ||
+    preview.diff.chaptersRemoved.length > 0 ||
+    preview.diff.chaptersUpdated.length > 0
+  ) {
+    await syncChapterStructure(courseId, preview.diff, addedChapters);
+  }
+  for (const key of affected) {
+    void scheduleKpRegionSync(courseId, key === "course" ? null : Number(key));
+  }
 }

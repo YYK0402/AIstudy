@@ -6,7 +6,7 @@ import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/a
 import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
 import type { KpTreeDiff, ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
-import { createDoc, docsEnabled, ensureFolder } from "./docStore";
+import { createDoc, docsEnabled, ensureFolder, removeDocIfExists } from "./docStore";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { getBridge } from "@/bridge";
@@ -592,5 +592,103 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
       5000,
       "error",
     );
+  }
+}
+
+// ---------- md 导入的章文档操作 ----------
+
+/**
+ * md 导入确认后同步思源章文档：删（removeDoc 级联 + 清 docRegions）→ 补建课程文档 →
+ * 新建（createDoc + 回填 siyuanBlockId）→ 改名/换父（renameDoc/moveDoc）。
+ * fire-and-forget 语义的「聚合版」：await 完成 + 聚合 toast，不抛异常。
+ */
+export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, addedChapters: Chapter[]): Promise<void> {
+  if (!kpRegionSyncEnabled()) return;
+  const data = await getData();
+  const settings = await getSettings();
+  if (!settings.persistToSiyuan) return;
+  const course = data.courses.find((c) => c.id === courseId);
+  if (!course) return;
+  const errors: string[] = [];
+  const bridge = getBridge();
+  const notebook = await ensureFolder(settings.notebookName).catch((e: unknown) => {
+    console.error("笔记本初始化失败:", e);
+    return null;
+  });
+  if (!notebook) return;
+
+  // 1. 删除（级联幂等）+ 清 docRegions 状态
+  for (const r of diff.chaptersRemoved) {
+    const ch = data.chapters.find((c) => c.id === r.id);
+    if (ch?.siyuanBlockId) {
+      await removeDocIfExists(ch.siyuanBlockId).catch((e) => {
+        console.error("删除思源章节文档失败:", e);
+        errors.push(`章节「${ch.name}」文档删除失败`);
+      });
+      if (data.docRegions) delete data.docRegions[ch.siyuanBlockId];
+    }
+  }
+
+  // 2. 惰性补建课程顶层文档（课程包导入/开持久化前创建的课程）
+  if (!course.siyuanDocId) {
+    try {
+      const { id } = await createDoc(`# ${course.name}`, `/${course.name}`, notebook, null);
+      course.siyuanDocId = id;
+    } catch (e) {
+      console.error("创建课程顶层文档失败:", e);
+      errors.push(`课程「${course.name}」顶层文档创建失败`);
+    }
+  }
+
+  // 3. 新建章节（文件序：顶章先于节 → 节的 parentID 可解析；
+  //    新建章可能尚未进入 data.chapters（宿主引用语义），回退到 addedChapters 解析）
+  for (const ch of addedChapters) {
+    const parent =
+      ch.parentId !== null
+        ? data.chapters.find((c) => c.id === ch.parentId) ?? addedChapters.find((c) => c.id === ch.parentId)
+        : null;
+    const path = parent ? `/${course.name}/${parent.name}/${ch.name}` : `/${course.name}/${ch.name}`;
+    const parentID = parent?.siyuanBlockId ?? course.siyuanDocId;
+    try {
+      const { id } = await createDoc(`# ${ch.name}`, path, notebook, parentID);
+      ch.siyuanBlockId = id;
+    } catch (e) {
+      console.error("创建思源章节文档失败:", e);
+      errors.push(`章节「${ch.name}」文档创建失败`);
+    }
+  }
+
+  // 4. 改名 / 换父
+  for (const u of diff.chaptersUpdated) {
+    const ch = data.chapters.find((c) => c.id === u.id);
+    if (!ch?.siyuanBlockId) continue;
+    if (u.name !== undefined && u.name !== ch.name) {
+      await bridge.renameDoc(ch.siyuanBlockId, u.name).catch((e) => {
+        console.error("同步章节改名失败:", e);
+        errors.push(`章节「${u.name}」改名失败`);
+      });
+    }
+    const parentKey = u.parentKey;
+    if (parentKey !== undefined) {
+      let targetDocId: string | null = null;
+      if (parentKey === null) targetDocId = course.siyuanDocId;
+      else if (parentKey.startsWith("id:")) {
+        targetDocId = data.chapters.find((c) => c.id === Number(parentKey.slice(3)))?.siyuanBlockId ?? null;
+      } else {
+        const i = diff.chaptersAdded.findIndex((a) => a.key === parentKey);
+        targetDocId = addedChapters[i]?.siyuanBlockId ?? null;
+      }
+      if (targetDocId && targetDocId !== ch.siyuanBlockId) {
+        await bridge.moveDoc(ch.siyuanBlockId, targetDocId).catch((e) => {
+          console.error("同步章节移动失败:", e);
+          errors.push(`章节「${ch.name}」移动失败`);
+        });
+      }
+    }
+  }
+
+  await saveData(data);
+  if (errors.length) {
+    bridge.showMessage(`知识点树导入成功，但思源文档树未完全同步：${errors.join("；")}`, 5000, "error");
   }
 }

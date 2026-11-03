@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppData, Chapter, Course, KnowledgePoint } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
-import { computeKpTreeDiff } from "../../utils/kpTreeImport";
+import { computeKpTreeDiff, type KpTreeDiff } from "../../utils/kpTreeImport";
 import { setBridge } from "../../bridge";
 import type { StudyBridge } from "../../bridge/types";
 import {
@@ -525,5 +525,52 @@ describe("读回管道（bridge mock）", () => {
     await kpDocSync.applySiyuanKpSync(1, preview);
     expect(data.knowledgePoints[0].content).toBe("内容a"); // 读回态落盘
     expect(docs.get("docA")!).toContain("内容b"); // 期间新编辑未被覆盖
+  });
+});
+
+describe("syncChapterStructure（bridge mock）", () => {
+  it("新建章（章+节）→ createDoc 挂对父 + 回填 siyuanBlockId；删章 → removeDoc + 清 docRegions", async () => {
+    setup();
+    data.docRegions = { docDel: { h: "x", ids: [] } };
+    data.chapters.push({ id: 90, courseId: 1, parentId: null, siyuanBlockId: "docDel", name: "待删章", level: "chapter", sort: 5 });
+    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: "chapter", sort: 2 };
+    const addedUnit: Chapter = { id: 21, courseId: 1, parentId: 20, siyuanBlockId: null, name: "新节", level: "unit", sort: 1 };
+    const { syncChapterStructure } = await import("../kpDocSync");
+    const diff: KpTreeDiff = {
+      updated: [], added: [], removed: [], unchangedKps: 0,
+      chaptersUpdated: [],
+      chaptersAdded: [
+        { key: "new:0", name: "新章", level: "chapter", parentKey: null, sort: 2 },
+        { key: "new:1", name: "新节", level: "unit", parentKey: "new:0", sort: 1 },
+      ],
+      chaptersRemoved: [{ id: 90, name: "待删章" }],
+    };
+    await syncChapterStructure(1, diff, [addedTop, addedUnit]);
+    expect(calls.create).toHaveLength(2);
+    expect(calls.create[0].path).toBe("/测试课程/新章");
+    expect(calls.create[0].parent).toBe("doc-course");
+    expect(calls.create[1].path).toBe("/测试课程/新章/新节");
+    expect(calls.create[1].parent).toBe(addedTop.siyuanBlockId); // 新章刚回填的 docId
+    expect(addedTop.siyuanBlockId).toBe("doc-new-0");
+    expect(addedUnit.siyuanBlockId).toBe("doc-new-1");
+    expect(docs.has("docDel")).toBe(false);
+    expect(data.docRegions?.docDel).toBeUndefined();
+  });
+
+  it("课程顶层文档为 null：先补建课程文档再挂章", async () => {
+    setup();
+    data.courses[0].siyuanDocId = null;
+    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: "chapter", sort: 1 };
+    const { syncChapterStructure } = await import("../kpDocSync");
+    await syncChapterStructure(1, {
+      updated: [], added: [], removed: [], unchangedKps: 0,
+      chaptersUpdated: [],
+      chaptersAdded: [{ key: "new:0", name: "新章", level: "chapter", parentKey: null, sort: 1 }],
+      chaptersRemoved: [],
+    }, [addedTop]);
+    expect(calls.create.length).toBe(2); // 课程文档 + 章
+    expect(calls.create[0].path).toBe("/测试课程");
+    expect(data.courses[0].siyuanDocId).toBe("doc-new-0");
+    expect(calls.create[1].parent).toBe("doc-new-0");
   });
 });
