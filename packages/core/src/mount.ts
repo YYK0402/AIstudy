@@ -5,6 +5,7 @@ import router from "./router";
 import { useThemeStore } from "./stores/theme";
 import { setBridge, type StudyBridge } from "./bridge";
 import { installModalGlobals, uninstallModalGlobals } from "./utils/modals";
+import { maybeShowDailyReminder } from "./composables/useDailyReminder";
 import cssText from "./style.css?inline";
 
 let app: VueApp | null = null;
@@ -28,6 +29,9 @@ function findLiveRoot(): Element | null {
 // 前端入口：由宿主动态加载后，调用 mount 挂载到目标元素（bridge 由宿主直传，不挂 window 裸全局）
 export function mount(el: Element, bridge: StudyBridge): void {
   setBridge(bridge);
+  // 今日任务提醒：每次开页签都尝试（单实例 DOM 迁移时 onMounted 不重跑，必须挂这里）。
+  // 可见性守卫：内核恢复隐藏页签（0x0）时不触发，避免 toast 不可见却消费当日去重。
+  if (el.clientWidth > 0) void maybeShowDailyReminder();
   if (!document.getElementById("ai-study-style")) {
     const style = document.createElement("style");
     style.id = "ai-study-style";

@@ -55,6 +55,8 @@ const pendingSeenUpdate = ref<string | null>(null);
 
 onMounted(() => {
   // 移动端 Sidebar 不挂载：App 兜底首载课程列表（幂等）
+  // 注：今日任务提醒的触发点在 mount.ts（每次开页签都尝试，单实例 DOM 迁移时
+  // onMounted 不重跑；当日去重在 maybeShowDailyReminder 内部）
   void courseStore.ensureLoaded();
   const current = __APP_VERSION__;
   const seen = localStorage.getItem(SEEN_KEY);

@@ -394,6 +394,8 @@ export interface AppData {
    * 磁盘上分散在各 course-<id> 文件中，此处为内存合并视图
    */
   conversationsDocs?: Record<string, { docId: string; lastMarkdown?: string }>;
+  /** 今日任务提醒去重：上次提醒的自然日（YYYY-MM-DD）；缺失 = 从未提醒 */
+  reminders?: { lastReminderDate?: string };
 }
 
 export function createEmptyData(): AppData {

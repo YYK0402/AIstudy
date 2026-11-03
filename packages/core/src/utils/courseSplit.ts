@@ -60,6 +60,7 @@ export function splitAppData(data: AppData): SplitResult {
   global.settings = data.settings;
   global.promptTemplates = data.promptTemplates;
   global.cryptoKeyMaterial = data.cryptoKeyMaterial;
+  global.reminders = data.reminders;
 
   const courses = new Map<number, CourseData>();
   const courseOf = (courseId: number): CourseData | null => {

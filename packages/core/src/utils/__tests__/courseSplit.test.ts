@@ -19,6 +19,7 @@ function makeData(): AppData {
   data.providers = [{ id: 9, name: "p", baseUrl: "http://x", apiKey: "enc1:k", timeout: 60000, enabled: true, createTime: "2026-01-01T00:00:00Z" }];
   data.settings.persistToSiyuan = true;
   data.cryptoKeyMaterial = "abcd";
+  data.reminders = { lastReminderDate: "2026-01-02" };
 
   data.chapters = [
     { id: 10, courseId: 1, parentId: null, siyuanBlockId: null, name: "章A", level: "chapter", sort: 1 },
@@ -139,6 +140,7 @@ describe("splitAppData", () => {
     expect(global.courses).toEqual(data.courses);
     expect(global.settings).toEqual(data.settings);
     expect(global.cryptoKeyMaterial).toBe("abcd");
+    expect(global.reminders).toEqual(data.reminders);
     expect(courses.size).toBe(2);
   });
 });
@@ -169,6 +171,7 @@ describe("mergeAppData", () => {
     expect(merged.conversationsDocs).toEqual(original.conversationsDocs);
     expect(merged.courses).toEqual(original.courses);
     expect(merged.settings).toEqual(original.settings);
+    expect(merged.reminders).toEqual(original.reminders);
   });
 
   it("合并不修改入参数组", () => {

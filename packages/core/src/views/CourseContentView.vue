@@ -23,6 +23,7 @@
             <button v-if="!batchMode" class="btn sm ghost" title="批量删除章节" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           </template>
+          <button class="btn sm ghost" title="导出知识点树 Markdown（含掌握度/错题数选项）" :disabled="!currentCourseId()" @click="kpTreeExportOpen = true">导出知识点树</button>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
         <div v-if="!currentCourseId()" class="empty-state" style="padding:24px 0">
@@ -273,6 +274,12 @@
       :course-name="courseStore.currentCourse?.name ?? ''"
       @close="reviewChapter = null"
     />
+    <KpTreeExportModal
+      :open="kpTreeExportOpen"
+      :course-id="currentCourseId() ?? 0"
+      :course-name="courseStore.currentCourse?.name ?? ''"
+      @close="kpTreeExportOpen = false"
+    />
   </div>
 </template>
 
@@ -328,6 +335,7 @@ import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
 import ChapterReviewModal from "../components/ChapterReviewModal.vue";
 import MaterialPreviewModal from "../components/MaterialPreviewModal.vue";
+import KpTreeExportModal from "../components/KpTreeExportModal.vue";
 import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
@@ -351,6 +359,7 @@ function startOrganize(m: Material) {
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
 const materials = ref<Material[]>([]);
 const previewMaterial = ref<Material | null>(null);
+const kpTreeExportOpen = ref(false);
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
 const detailKp = ref<KnowledgePoint | null>(null);
