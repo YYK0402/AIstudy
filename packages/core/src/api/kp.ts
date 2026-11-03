@@ -10,6 +10,8 @@ import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { findChapterByTitle, normalizeChapterRef, normalizeKpName } from "./kpMatch";
 import { removeCsvIds } from "../utils/csvIds";
 import { getBridge } from "@/bridge";
+import { effectiveNodeOf } from "../utils/kpTreeImport";
+import { scheduleKpRegionSync } from "./kpDocSync";
 
 export async function queryKnowledgePoints(courseId: number): Promise<KnowledgePoint[]> {
   const data = await getData();
@@ -20,8 +22,12 @@ export async function updateKnowledgePoint(kp: KnowledgePoint): Promise<void> {
   const data = await getData();
   const idx = data.knowledgePoints.findIndex((k) => k.id === kp.id);
   if (idx >= 0) {
+    const old = data.knowledgePoints[idx];
     data.knowledgePoints[idx] = kp;
     await saveData(data);
+    // 思源知识点区写回：换章时新旧两节点都需刷新
+    const nodes = new Set([effectiveNodeOf(old, data.chapters), effectiveNodeOf(kp, data.chapters)]);
+    for (const n of nodes) void scheduleKpRegionSync(kp.courseId, n);
   }
 }
 
@@ -34,6 +40,7 @@ export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
   const data = await getData();
   const removed = new Set(ids);
+  const removedKps = data.knowledgePoints.filter((k) => removed.has(k.id));
   data.knowledgePoints = data.knowledgePoints.filter((k) => !removed.has(k.id));
   // 级联清理复习触点与讲解记录，避免悬挂引用
   data.reviewSchedules = data.reviewSchedules.filter((s) => s.kpId === null || !removed.has(s.kpId));
@@ -57,6 +64,9 @@ export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
     }
   }
   await saveData(data);
+  for (const kp of removedKps) {
+    void scheduleKpRegionSync(kp.courseId, effectiveNodeOf(kp, data.chapters));
+  }
 }
 
 export async function queryChapters(courseId: number): Promise<Chapter[]> {
@@ -101,6 +111,8 @@ export async function createChapter(input: {
   };
   data.chapters.push(chapter);
   await saveData(data);
+  // 思源知识点区写回：新章文档写入空区（siyuanBlockId 为 null 时顺带补建）
+  void scheduleKpRegionSync(input.courseId, chapter.id);
   return chapter;
 }
 
@@ -125,6 +137,7 @@ export async function importChapterTree(
   const persistOn = (await getSettings()).persistToSiyuan;
   let created = 0;
   let docFailed = 0;
+  const createdChapters: Chapter[] = [];
   for (const node of nodes) {
     const name = node.name.trim();
     if (!name) continue;
@@ -154,6 +167,7 @@ export async function importChapterTree(
     };
     data.chapters.push(chapter);
     existing.push(chapter);
+    createdChapters.push(chapter);
     created++;
   }
   // 新章节已在循环内按「同父 max sort + 1」追加到末尾（nodes 文档序）；
@@ -165,6 +179,13 @@ export async function importChapterTree(
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
   await saveData(data);
+  // 思源知识点区写回：新建章文档写空区 + 被重新绑定的 KP 的旧/新节点
+  for (const ch of createdChapters) void scheduleKpRegionSync(courseId, ch.id);
+  for (const id of relink.linkedIds) {
+    void scheduleKpRegionSync(courseId, null); // 原未归章 → 课程文档
+    const kp = data.knowledgePoints.find((k) => k.id === id);
+    if (kp) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, data.chapters));
+  }
   return { created, ...relink };
 }
 
@@ -172,6 +193,8 @@ export interface RelinkResult {
   linked: number;
   /** 标题与名称都匹配不上、无法自动挂钩的数量（含无标题信息的知识点） */
   stuck: number;
+  /** 被成功绑定的知识点 id（供落库后调度旧/新节点文档写回） */
+  linkedIds: number[];
 }
 
 /** 为单个未分配知识点找章节：先按块标题宽松匹配，再按知识点名归一化精确匹配（精确匹配防误挂） */
@@ -192,17 +215,19 @@ function relinkCourseKps(data: AppData, courseId: number): RelinkResult {
   const courseChapters = data.chapters.filter((c) => c.courseId === courseId);
   let linked = 0;
   let stuck = 0;
+  const linkedIds: number[] = [];
   for (const kp of data.knowledgePoints) {
     if (kp.courseId !== courseId || kp.chapterId !== null) continue;
     const ch = matchChapterForKp(kp, courseChapters);
     if (ch) {
       kp.chapterId = ch.id;
       linked++;
+      linkedIds.push(kp.id);
     } else {
       stuck++;
     }
   }
-  return { linked, stuck };
+  return { linked, stuck, linkedIds };
 }
 
 /** 将课程内未分配章节的知识点重新匹配绑定（章节后建/改名后使用），返回绑定数与无法自动挂钩数 */
@@ -211,6 +236,11 @@ export async function relinkUnassignedKps(courseId: number): Promise<RelinkResul
   const result = relinkCourseKps(data, courseId);
   if (result.linked > 0) {
     await saveData(data);
+    for (const id of result.linkedIds) {
+      void scheduleKpRegionSync(courseId, null);
+      const kp = data.knowledgePoints.find((k) => k.id === id);
+      if (kp) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, data.chapters));
+    }
   }
   return result;
 }
@@ -360,13 +390,18 @@ export async function applyChapterMoves(moves: Array<{ id: number; parentId: num
 export async function applyKnowledgePointSort(items: Array<{ id: number; sort: number }>): Promise<void> {
   const data = await getData();
   const map = new Map(items.map((it) => [it.id, it.sort]));
+  const byCourse = new Map<number, Set<number | null>>();
   for (const kp of data.knowledgePoints) {
     const s = map.get(kp.id);
-    if (s !== undefined) {
-      kp.sort = s;
-    }
+    if (s === undefined) continue;
+    kp.sort = s;
+    if (!byCourse.has(kp.courseId)) byCourse.set(kp.courseId, new Set());
+    byCourse.get(kp.courseId)!.add(effectiveNodeOf(kp, data.chapters));
   }
   await saveData(data);
+  for (const [courseId, nodes] of byCourse) {
+    for (const n of nodes) void scheduleKpRegionSync(courseId, n);
+  }
 }
 
 export async function deleteChapter(id: number): Promise<void> {
@@ -388,6 +423,11 @@ export async function deleteChapters(ids: number[]): Promise<void> {
       }
     }
   }
+  // 归属被删章节的 KP 将变为未归章 → 其课程顶层文档需要写回
+  const orphanedCourses = new Set<number>();
+  for (const kp of data.knowledgePoints) {
+    if (kp.chapterId !== null && removed.has(kp.chapterId)) orphanedCourses.add(kp.courseId);
+  }
   // 级联删除思源文档（await 以便聚合失败提示）
   const siyuanErrors: string[] = [];
   for (const c of data.chapters) {
@@ -398,6 +438,9 @@ export async function deleteChapters(ids: number[]): Promise<void> {
       } catch (e) {
         console.error("删除思源章节文档失败:", e);
         siyuanErrors.push(`章节「${c.name}」文档删除失败`);
+      }
+      if (c.siyuanBlockId && data.docRegions) {
+        delete data.docRegions[c.siyuanBlockId];
       }
     }
     // 学习对话文档：被删章/节的 conversationsDocs 条目一并清理
@@ -430,6 +473,7 @@ export async function deleteChapters(ids: number[]): Promise<void> {
     }
   }
   await saveData(data);
+  for (const cid of orphanedCourses) void scheduleKpRegionSync(cid, null);
   if (siyuanErrors.length) {
     getBridge().showMessage(
       `章节数据已删除，但思源文档清理不完整：${siyuanErrors.join("；")}`,
