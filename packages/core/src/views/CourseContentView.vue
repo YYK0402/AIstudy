@@ -23,8 +23,8 @@
             <button v-if="!batchMode" class="btn sm ghost" title="批量删除章节" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
           </template>
-          <button class="btn sm ghost" title="导出知识点树 Markdown（含掌握度/错题数选项）" :disabled="!currentCourseId()" @click="kpTreeExportOpen = true">导出知识点树</button>
-          <button class="btn sm ghost" v-if="!archived" title="导入导出过的知识点树 Markdown（编辑后更新课程）" :disabled="!currentCourseId()" @click="kpTreeImportOpen = true">导入知识点树</button>
+          <button v-if="!docsEnabled()" class="btn sm ghost" title="导出知识点树 Markdown（含掌握度/错题数选项）" :disabled="!currentCourseId()" @click="kpTreeExportOpen = true">导出知识点树</button>
+          <button v-if="!archived && !docsEnabled()" class="btn sm ghost" title="导入导出过的知识点树 Markdown（编辑后更新课程）" :disabled="!currentCourseId()" @click="kpTreeImportOpen = true">导入知识点树</button>
           <button v-if="siyuanKpSyncVisible" class="btn sm ghost" title="读取在思源章文档中编辑的知识点（预览确认后更新）" @click="siyuanKpSyncOpen = true"><AppIcon name="refresh" :size="14" /> 从思源同步</button>
           <button v-if="!archived" class="btn primary sm" :disabled="!currentCourseId()" @click="addTopChapter" style="margin-left:auto">＋ 添加章节</button>
         </h3>
