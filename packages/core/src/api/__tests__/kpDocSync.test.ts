@@ -5,12 +5,15 @@ import { applyKpTreeDiff, computeKpTreeDiff, parseKpTreeMarkdown, type KpTreeDif
 import { setBridge } from "../../bridge";
 import type { StudyBridge } from "../../bridge/types";
 import {
+  DOC_NOTE,
+  DOC_NOTE_MARKER,
   KP_REGION_BEGIN,
   KP_REGION_END,
   buildSiyuanParsedTree,
   canonicalRegion,
   djb2Hex,
   decideRegionWrite,
+  ensureDocNote,
   mergeKpRegion,
   parseKpRegion,
   renderKpRegion,
@@ -88,6 +91,22 @@ describe("mergeKpRegion", () => {
   it("无区：文末空行分隔追加；空文档：仅区", () => {
     expect(mergeKpRegion("# 章A\n\n已有内容", region)).toBe(`# 章A\n\n已有内容\n\n${region}\n`);
     expect(mergeKpRegion("", region)).toBe(`${region}\n`);
+  });
+});
+
+describe("ensureDocNote 顶部说明", () => {
+  it("插在首个标题行之后，正文保留", () => {
+    expect(ensureDocNote("# 章A\n\n正文")).toBe(`# 章A\n\n${DOC_NOTE}\n\n正文`);
+  });
+  it("幂等：标记已存在 → 原样返回", () => {
+    const once = ensureDocNote("# 章A\n\n正文");
+    expect(ensureDocNote(once)).toBe(once);
+  });
+  it("无标题行 → 置顶", () => {
+    expect(ensureDocNote("正文")).toBe(`${DOC_NOTE}\n\n正文`);
+  });
+  it("仅标题 → 说明紧跟标题", () => {
+    expect(ensureDocNote("# 章A")).toBe(`# 章A\n\n${DOC_NOTE}`);
   });
 });
 
@@ -366,13 +385,16 @@ afterEach(() => {
 const flush = () => vi.advanceTimersByTimeAsync(1000);
 
 describe("写回管道（bridge mock）", () => {
-  it("历史文档（无区无状态）：追加区 + 存状态", async () => {
+  it("历史文档（无区无状态）：追加区 + 顶部说明 + 存状态", async () => {
     await scheduleKpRegionSync(1, 10, 0);
     await flush();
     expect(calls.update).toHaveLength(1);
     expect(calls.update[0].id).toBe("docA");
     expect(calls.update[0].md).toContain("用户手写");
     expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+    // 说明在标题后、正文前（幂等标记）
+    expect(calls.update[0].md).toContain(DOC_NOTE_MARKER);
+    expect(calls.update[0].md.indexOf(DOC_NOTE_MARKER)).toBeLessThan(calls.update[0].md.indexOf("用户手写"));
     expect(data.docRegions?.docA?.ids).toEqual([1]);
   });
 
@@ -570,6 +592,143 @@ describe("读回管道（bridge mock）", () => {
     await kpDocSync.applySiyuanKpSync(1, preview);
     expect(data.knowledgePoints[0].content).toBe("内容a"); // 读回态落盘
     expect(docs.get("docA")!).toContain("内容b"); // 期间新编辑未被覆盖
+  });
+});
+
+describe("历史文档批量回填（bridge mock）", () => {
+  it("无区无状态 + 应用有 KP → 确认后区追加到文档末尾 + 存状态（无 diff 也执行）", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.diff.updated).toHaveLength(0); // 历史文档不产生 diff
+    expect(preview.backfillDocs).toBe(1); // 章A 有 KP；课程文档无直属 KP
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].id).toBe("docA");
+    expect(calls.update[0].md).toContain("用户手写"); // 已有内容保留
+    expect(calls.update[0].md.indexOf("用户手写")).toBeLessThan(calls.update[0].md.indexOf(KP_REGION_BEGIN)); // 区在文末
+    expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+    expect(data.docRegions?.docA?.ids).toEqual([1]);
+  });
+
+  it("文档缺失（docId=null）→ 补建文档含区 + 回填 siyuanBlockId", async () => {
+    setup();
+    data.chapters[0].siyuanBlockId = null;
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.backfillDocs).toBe(1);
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
+    expect(calls.create).toHaveLength(1);
+    expect(calls.create[0].path).toBe("/测试课程/章A");
+    expect(calls.create[0].parent).toBe("doc-course");
+    expect(calls.create[0].md).toContain("# 章A");
+    expect(calls.create[0].md).toContain(DOC_NOTE_MARKER); // 创建内容即含说明
+    expect(calls.create[0].md.indexOf(DOC_NOTE_MARKER)).toBeLessThan(calls.create[0].md.indexOf(KP_REGION_BEGIN)); // 说明在区前
+    expect(calls.create[0].md).toContain("<!-- kp:1 -->"); // 创建内容即含区
+    expect(data.chapters[0].siyuanBlockId).toBe("doc-new-0");
+    expect(data.docRegions?.["doc-new-0"]?.ids).toEqual([1]);
+  });
+
+  it("unit 文档缺失且父章文档也缺失 → 先建父章（不带区）再建 unit（带区）", async () => {
+    setup();
+    data.chapters.push({ id: 11, courseId: 1, parentId: 10, siyuanBlockId: null, name: "节A1", level: "unit", sort: 2 });
+    data.chapters[0].siyuanBlockId = null;
+    data.knowledgePoints[0].chapterId = 11; // KP 直属 unit
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.backfillDocs).toBe(1); // 仅 unit 有 KP
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.create).toHaveLength(2);
+    expect(calls.create[0].path).toBe("/测试课程/章A"); // 父章先建（链上补建不带区）
+    expect(calls.create[0].md).not.toContain(KP_REGION_BEGIN);
+    expect(calls.create[0].parent).toBe("doc-course");
+    expect(calls.create[1].path).toBe("/测试课程/章A/节A1");
+    expect(calls.create[1].parent).toBe("doc-new-0");
+    expect(calls.create[1].md).toContain("<!-- kp:1 -->");
+    expect(data.docRegions).toEqual({ "doc-new-1": { h: expect.any(String), ids: [1] } });
+  });
+
+  it("回填期间文档出现区 → 不覆盖", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    docs.set("docA", `# 章A\n\n${kpDocSync.renderKpRegion([data.knowledgePoints[0]])}`); // 期间他人写入
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
+    expect(data.docRegions?.docA).toBeUndefined();
+  });
+
+  it("删区确认（无区有状态）→ 不回填", async () => {
+    setup();
+    data.docRegions = { docA: { h: "x", ids: [1] } };
+    docs.set("docA", "# 章A\n\n区被删了");
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.backfillDocs).toBe(0); // 有状态 → 非回填对象
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
+    expect(data.docRegions?.docA).toBeUndefined(); // 状态条目已删（后续不回填，KP 已删无内容可写）
+  });
+
+  it("历史文档无 KP → 不回填（避免把用户删掉的空区又写回来）", async () => {
+    setup();
+    data.knowledgePoints = [];
+    const kpDocSync = await import("../kpDocSync");
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.backfillDocs).toBe(0);
+    expect(preview.historicalDocs).toBe(2); // 章A + 课程文档
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
+    expect(calls.create).toHaveLength(0);
+  });
+});
+
+describe("顶部说明回补（bridge mock）", () => {
+  it("有区无说明：preview 计 noteDocs；apply 仅插说明，区与状态不动", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const region = kpDocSync.renderKpRegion([data.knowledgePoints[0]]);
+    docs.set("docA", `# 章A\n\n${region}`);
+    const oldHash = kpDocSync.parseKpRegion(region).hash;
+    data.docRegions = { docA: { h: oldHash, ids: [1] } };
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.noteDocs).toBe(1);
+    expect(preview.diff.updated).toHaveLength(0); // 区一致 → 无 diff
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].id).toBe("docA");
+    const md = docs.get("docA")!;
+    expect(md).toContain(DOC_NOTE_MARKER);
+    expect(md.indexOf(DOC_NOTE_MARKER)).toBeLessThan(md.indexOf(KP_REGION_BEGIN)); // 说明在区前
+    expect(kpDocSync.parseKpRegion(md).hash).toBe(oldHash); // 区字节不变
+    expect(data.docRegions?.docA).toEqual({ h: oldHash, ids: [1] }); // 状态不变
+  });
+
+  it("期间区被删 → 不插说明（交由停写检测）", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const region = kpDocSync.renderKpRegion([data.knowledgePoints[0]]);
+    docs.set("docA", `# 章A\n\n${region}`);
+    data.docRegions = { docA: { h: kpDocSync.parseKpRegion(region).hash, ids: [1] } };
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.noteDocs).toBe(1);
+    docs.set("docA", "# 章A\n\n区没了"); // 读回后、确认前区被删
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
+    expect(docs.get("docA")).not.toContain(DOC_NOTE_MARKER);
+  });
+
+  it("已有说明 → 不计 noteDocs 不写", async () => {
+    setup();
+    const kpDocSync = await import("../kpDocSync");
+    const region = kpDocSync.renderKpRegion([data.knowledgePoints[0]]);
+    docs.set("docA", ensureDocNote(`# 章A\n\n${region}`));
+    data.docRegions = { docA: { h: kpDocSync.parseKpRegion(region).hash, ids: [1] } };
+    const preview = await kpDocSync.readSiyuanKpSync(1);
+    expect(preview.noteDocs).toBe(0);
+    await kpDocSync.applySiyuanKpSync(1, preview);
+    expect(calls.update).toHaveLength(0);
   });
 });
 

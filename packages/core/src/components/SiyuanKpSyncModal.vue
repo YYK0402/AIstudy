@@ -56,7 +56,9 @@ const changeCount = computed(
     (preview.value?.diff.updated.length ?? 0) +
     (preview.value?.diff.added.length ?? 0) +
     (preview.value?.diff.removed.length ?? 0) +
-    chCount.value,
+    chCount.value +
+    (preview.value?.backfillDocs ?? 0) +
+    (preview.value?.noteDocs ?? 0),
 );
 const noChanges = computed(() => preview.value !== null && changeCount.value === 0);
 
@@ -64,9 +66,12 @@ const notices = computed(() => {
   const p = preview.value;
   if (!p) return [];
   const out: string[] = [];
-  if (p.deletedDocs > 0) out.push(`${p.deletedDocs} 个课程/章节文档已在思源中删除，对应知识点本次未同步`);
-  if (p.historicalDocs > 0) out.push(`${p.historicalDocs} 个课程/章节文档尚无知识点区，本次未同步`);
-  if (p.retained > 0) out.push(`${p.retained} 个应用侧新增知识点尚未写入思源，已保留并将写回对应区`);
+    if (p.deletedDocs > 0) out.push(`${p.deletedDocs} 个课程/章节文档已在思源中删除，对应知识点本次未同步`);
+    if (p.backfillDocs > 0) out.push(`${p.backfillDocs} 个章节文档尚无知识点区，确认后将写入应用侧知识点（不改动文档已有内容）`);
+    if (p.noteDocs > 0) out.push(`${p.noteDocs} 个文档缺少顶部说明，确认后补充（仅插入说明，不改其他内容）`);
+    const restHistorical = p.historicalDocs - p.backfillDocs;
+    if (restHistorical > 0) out.push(`${restHistorical} 个课程/章节文档尚无知识点区且无知识点，无需同步`);
+    if (p.retained > 0) out.push(`${p.retained} 个应用侧新增知识点尚未写入思源，已保留并将写回对应区`);
   return out;
 });
 

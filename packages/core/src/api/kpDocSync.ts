@@ -16,6 +16,26 @@ import { getBridge } from "@/bridge";
 export const KP_REGION_BEGIN = "<!-- ai-study:kps:begin -->";
 export const KP_REGION_END = "<!-- ai-study:kps:end -->";
 
+/** 章/课程文档顶部说明（幂等标记注释 + 可见引用块；插在标题行之后） */
+export const DOC_NOTE_MARKER = "<!-- ai-study:doc-note -->";
+const DOC_NOTE_TEXT = [
+  "> 本文档末尾的知识点区由 AI 智能学习插件自动维护（应用数据镜像）。",
+  "> 区内知识点名称/内容可直接编辑，回插件页点「从思源同步」合并；整区删除或改动锚点标记将停写本文档。区外手写内容不受影响，掌握度、题目、闪卡、复习排期等学习记录也不因同步改动。",
+].join("\n");
+export const DOC_NOTE = `${DOC_NOTE_MARKER}\n${DOC_NOTE_TEXT}`;
+
+/** 确保文档顶部说明存在（标记在 = 原样返回）；插在首个标题行之后，无标题则置顶 */
+export function ensureDocNote(md: string): string {
+  if (md.includes(DOC_NOTE_MARKER)) return md;
+  const lines = md.split("\n");
+  if (lines[0]?.startsWith("# ")) {
+    const rest = lines.slice(1).join("\n").replace(/^\n+/, "");
+    return rest ? `${lines[0]}\n\n${DOC_NOTE}\n\n${rest}` : `${lines[0]}\n\n${DOC_NOTE}`;
+  }
+  const rest = md.replace(/^\n+/, "");
+  return rest ? `${DOC_NOTE}\n\n${rest}` : DOC_NOTE;
+}
+
 /** djb2 哈希（32 位 hex）；用于区变更检测，非密码学用途 */
 export function djb2Hex(str: string): string {
   let h = 5381;
@@ -390,7 +410,7 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     // 补建/重建文档并回填数据 id；返回新 docId（闭包内改外层变量 TS 不收窄，直接返回）
     const createFresh = async (): Promise<string> => {
       const notebook = await ensureFolder(settings.notebookName);
-      const { id } = await createDoc(`${target.titleLine}\n\n${region}`, target.path, notebook, target.parentID);
+      const { id } = await createDoc(`${ensureDocNote(target.titleLine)}\n\n${region}`, target.path, notebook, target.parentID);
       assignDocId(id);
       return id;
     };
@@ -454,7 +474,7 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     }
     if (decision.action === "skip") return;
 
-    await bridge.updateDoc(docId, mergeKpRegion(md, region));
+    await bridge.updateDoc(docId, ensureDocNote(mergeKpRegion(md, region)));
     if (!data.docRegions) data.docRegions = {};
     data.docRegions[docId] = { h: renderedHash, ids: kps.map((k) => k.id) };
     await saveData(data);
@@ -477,6 +497,8 @@ export interface SiyuanReadCtxNode {
   storedExisted: boolean;
   /** 存储态的 ids（读时快照） */
   storedIds: number[];
+  /** 文档含顶部说明（读时） */
+  hasNote: boolean;
 }
 
 export interface SiyuanReadCtx {
@@ -490,6 +512,10 @@ export interface SiyuanKpSyncPreview {
   diff: KpTreeDiff;
   deletedDocs: number;
   historicalDocs: number;
+  /** 无区无状态且应用侧有知识点的历史文档数（确认后批量回填写入区） */
+  backfillDocs: number;
+  /** 有区但缺顶部说明的文档数（确认后仅插入说明，不动区与状态） */
+  noteDocs: number;
   retained: number;
   readCtx: SiyuanReadCtx;
 }
@@ -532,14 +558,23 @@ export async function readSiyuanKpSync(courseId: number): Promise<SiyuanKpSyncPr
         markedIds: region.kps.filter((k) => k.id !== null).map((k) => k.id!),
         storedExisted: stored !== undefined,
         storedIds: stored?.ids ?? [],
+        hasNote: md !== null && md.includes(DOC_NOTE_MARKER),
       };
     }),
   };
+  // 批量回填对象：无区 + 无写入状态 + 应用侧该节点有知识点（区不存在 = 无编辑可冲突，追加安全）
+  const backfillDocs = readCtx.nodes.filter(
+    (n) => !n.hadRegion && !n.storedExisted && kps.some((k) => effectiveNodeOf(k, chapters) === n.node),
+  ).length;
+  // 缺顶部说明对象：有区但文档无说明标记（确认后仅插说明）
+  const noteDocs = readCtx.nodes.filter((n) => n.docId !== null && n.hadRegion && !n.hasNote).length;
   return {
     tree: built.tree,
     diff,
     deletedDocs: built.deletedDocs,
     historicalDocs: built.historicalDocs,
+    backfillDocs,
+    noteDocs,
     retained: built.retained,
     readCtx,
   };
@@ -593,19 +628,128 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
   const bridge = getBridge();
   const writeErrors: string[] = [];
 
+  // 历史文档批量回填（读时无区 + 无写入状态 + 应用侧有 KP）：
+  // 区不存在 = 无编辑可冲突，区追加到文档末尾安全；缺失文档补建（与写回管道自愈同口径）。
+  let courseDocId: string | null = nextData.courses.find((c) => c.id === courseId)?.siyuanDocId ?? null;
+  let notebook: string | null = null;
+  const getNotebook = async (): Promise<string | null> => {
+    if (notebook) return notebook;
+    notebook = await ensureFolder(settings.notebookName).catch((e: unknown) => {
+      console.error("笔记本初始化失败:", e);
+      return null;
+    });
+    return notebook;
+  };
+  // 补建缺失节点文档（unit 先递归补父章/课程文档），回填 id 就地写入（随 nextData 落盘）；
+  // regionMd 非空时创建内容即含区（仅回填节点自身传，链上补建的父文档不带区 → 不记状态）
+  const ensureNodeDocId = async (node: number | null, regionMd: string | null): Promise<string | null> => {
+    // 带区创建的文档同时带顶部说明；链上补建的父文档（无区）不带
+    const mdOf = (title: string, region: string | null): string =>
+      region ? `${ensureDocNote(title)}\n\n${region}` : title;
+    if (node === null) {
+      if (courseDocId) return courseDocId;
+      const courseRow = nextData.courses.find((c) => c.id === courseId);
+      if (!courseRow) return null;
+      const nb = await getNotebook();
+      if (!nb) return null;
+      try {
+        const { id } = await createDoc(mdOf(`# ${courseRow.name}`, regionMd), `/${courseRow.name}`, nb, null);
+        courseRow.siyuanDocId = id;
+        courseDocId = id;
+        return id;
+      } catch (e) {
+        console.error("补建课程顶层文档失败:", e);
+        return null;
+      }
+    }
+    const ch = chapters.find((c) => c.id === node);
+    if (!ch) return null;
+    if (ch.siyuanBlockId) return ch.siyuanBlockId;
+    const nb = await getNotebook();
+    if (!nb) return null;
+    const parentID =
+      ch.level === "unit" && ch.parentId !== null
+        ? await ensureNodeDocId(ch.parentId, null)
+        : await ensureNodeDocId(null, null);
+    if (!parentID) return null;
+    const target = nodeDocTarget(preview.readCtx.course, chapters, node);
+    try {
+      const { id } = await createDoc(mdOf(`# ${ch.name}`, regionMd), target.path, nb, parentID);
+      ch.siyuanBlockId = id;
+      return id;
+    } catch (e) {
+      console.error(`补建章节文档失败：${ch.name}`, e);
+      return null;
+    }
+  };
+  const recordRegionState = (docId: string, nodeKps: KnowledgePoint[]): void => {
+    // 与写回管道同口径：用渲染区解析哈希（renderKpRegion 内部按 sort 排序）
+    nextData.docRegions![docId] = {
+      h: parseKpRegion(renderKpRegion(nodeKps)).hash,
+      ids: nodeKps.map((k) => k.id),
+    };
+  };
+
   for (const n of preview.readCtx.nodes) {
-    if (!changedNodes.has(n.node === null ? "course" : String(n.node))) continue;
-    if (n.docId === null) continue;
-    const label = nodeDocTarget(preview.readCtx.course, preview.readCtx.chapters, n.node).label;
-    if (!n.hadRegion && n.storedExisted) {
+    const nodeKey = n.node === null ? "course" : String(n.node);
+    const inChanges = changedNodes.has(nodeKey);
+    const nodeKps = kpsNow.filter((k) => effectiveNodeOf(k, chapters) === n.node);
+    const isBackfill = !n.hadRegion && !n.storedExisted && nodeKps.length > 0;
+    // 有区但缺顶部说明（确认后仅插说明；变更节点走下方合并写回顺带补）
+    const needNote = n.hadRegion && !n.hasNote;
+
+    if (inChanges && !n.hadRegion && n.storedExisted && n.docId !== null) {
       // 用户删了整个区并确认全章删除 → 删除状态条目（此后按历史文档处理，避免停写死循环）
       delete nextData.docRegions![n.docId];
       continue;
     }
-    if (!n.hadRegion || !canWrite) continue;
+    if (!inChanges && !isBackfill && !needNote) continue;
+    if (!canWrite) continue;
+    const label = nodeDocTarget(preview.readCtx.course, preview.readCtx.chapters, n.node).label;
 
-    // 用应用当前渲染重写该节点区（合并写回：用户编辑/新增/保留待写 KP 一次性落定）
-    const nodeKps = kpsNow.filter((k) => effectiveNodeOf(k, chapters) === n.node);
+    if (isBackfill) {
+      const region = renderKpRegion(nodeKps);
+      if (n.docId === null) {
+        const newId = await ensureNodeDocId(n.node, region);
+        if (newId === null) writeErrors.push(label);
+        else recordRegionState(newId, nodeKps); // 补建内容即含区（见 ensureNodeDocId）
+        continue;
+      }
+      const freshMd = await bridge.getDocMarkdown(n.docId).catch(() => null);
+      if (freshMd === null) {
+        // 期间文档被删 → 补建自愈（含区）
+        const newId = await ensureNodeDocId(n.node, region);
+        if (newId === null) writeErrors.push(label);
+        else recordRegionState(newId, nodeKps);
+        continue;
+      }
+      if (parseKpRegion(freshMd).hasRegion) continue; // 期间出现区（他人写入）：不覆盖，交由写回管道停写检测
+      try {
+        await bridge.updateDoc(n.docId, ensureDocNote(mergeKpRegion(freshMd, renderKpRegion(nodeKps))));
+        recordRegionState(n.docId, nodeKps);
+      } catch (e) {
+        console.error("知识点区回填失败:", e);
+        writeErrors.push(label);
+      }
+      continue;
+    }
+
+    if (n.docId === null) continue;
+
+    if (needNote && !inChanges) {
+      // 仅补顶部说明：区与写入状态不动
+      const freshMd = await bridge.getDocMarkdown(n.docId).catch(() => null);
+      if (freshMd === null || freshMd.includes(DOC_NOTE_MARKER)) continue;
+      if (!parseKpRegion(freshMd).hasRegion) continue; // 期间区被删：不动，交由停写检测
+      try {
+        await bridge.updateDoc(n.docId, ensureDocNote(freshMd));
+      } catch (e) {
+        console.error("补顶部说明失败:", e);
+        writeErrors.push(label);
+      }
+      continue;
+    }
+
     const region = renderKpRegion(nodeKps);
     const freshMd = await bridge.getDocMarkdown(n.docId).catch(() => null);
     if (freshMd === null) continue; // 期间文档被删：跳过写回，下次写回自愈重建
@@ -614,8 +758,7 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
       continue; // 期间区又有新编辑：不覆盖，保留读时状态（下次写回停写提示）
     }
     try {
-      await bridge.updateDoc(n.docId, mergeKpRegion(freshMd, region));
-      // 与写回管道同口径：用渲染区解析哈希（renderKpRegion 内部按 sort 排序）
+      await bridge.updateDoc(n.docId, ensureDocNote(mergeKpRegion(freshMd, region)));
       nextData.docRegions![n.docId] = { h: parseKpRegion(region).hash, ids: nodeKps.map((k) => k.id) };
     } catch (e) {
       console.error("知识点区合并写回失败:", e);
