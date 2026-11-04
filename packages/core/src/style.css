@@ -1180,6 +1180,16 @@
 .cl-item { position: relative; padding-left: 14px; font-size: 13px; color: var(--as-text-dim); line-height: 1.65; margin-bottom: 5px; }
 .cl-item::before { content: ""; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--as-accent); opacity: .7; }
 .cl-empty { font-size: 13px; color: var(--as-text-faint); }
+/* 更新日志底部：交流群卡片 */
+.cl-community {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 20px; padding: 12px;
+  border: 1px solid var(--as-border); border-radius: var(--as-radius);
+  background: var(--as-bg-elev);
+}
+.cl-community img { width: 104px; height: 102px; flex: none; border: 1px solid var(--as-border); border-radius: var(--as-radius-sm); background: #fff; }
+.cl-community-text { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--as-text-dim); line-height: 1.5; }
+.cl-community-text b { font-size: 13.5px; color: var(--as-text); }
 
 /* 组卷面板 */
 .qset-row { display: flex; flex-wrap: wrap; gap: 6px; }
