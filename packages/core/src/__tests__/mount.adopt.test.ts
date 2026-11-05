@@ -107,4 +107,24 @@ describe("mount 单实例（adopt）", () => {
     expect(document.querySelectorAll(".ai-study-app")).toHaveLength(1);
     expect(panel.querySelector(".ai-study-app")).not.toBeNull();
   });
+
+  it("反向时序：新页签先挂（可见），内核后恢复隐藏页签 → 实例不被拖进隐藏面板", () => {
+    const visible = makePanel("panel-visible");
+    const hidden = makePanel("panel-hidden");
+    // jsdom 无布局：手工标记可见性
+    Object.defineProperty(visible, "clientWidth", { configurable: true, value: 985 });
+    Object.defineProperty(visible, "clientHeight", { configurable: true, value: 600 });
+    Object.defineProperty(hidden, "clientWidth", { configurable: true, value: 0 });
+    Object.defineProperty(hidden, "clientHeight", { configurable: true, value: 0 });
+
+    mount(visible, makeBridge());
+    expect(visible.querySelector(".ai-study-app")).not.toBeNull();
+
+    // 内核延迟恢复隐藏页签，对新面板再次触发 mount
+    mount(hidden, makeBridge());
+    // 活实例留在可见面板，隐藏面板保持空（不产生第二实例）
+    expect(visible.querySelector(".ai-study-app")).not.toBeNull();
+    expect(hidden.querySelector(".ai-study-app")).toBeNull();
+    expect(document.querySelectorAll(".ai-study-app")).toHaveLength(1);
+  });
 });

@@ -7,6 +7,7 @@ import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpLine } from
 import type { KpTreeDiff, ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
 import { createDoc, docsEnabled, ensureFolder, removeDocIfExists } from "./docStore";
+import { sanitizeDocSegment } from "../utils/docPath";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { getBridge } from "@/bridge";
@@ -304,15 +305,17 @@ export interface NodeDocTarget {
 
 /** 节点区域目标文档：null = 课程顶层文档；章/节 = siyuanBlockId 文档；幽灵节点回退课程文档 */
 export function nodeDocTarget(course: Course, chapters: Chapter[], node: number | null): NodeDocTarget {
+  // 路径段逐段转全角斜杠：名内含 / 时防内核按分隔符建出幽灵层级（标题/展示名保持原样）
+  const cp = sanitizeDocSegment(course.name);
   if (node === null) {
-    return { docId: course.siyuanDocId, path: `/${course.name}`, parentID: null, titleLine: `# ${course.name}`, label: course.name };
+    return { docId: course.siyuanDocId, path: `/${cp}`, parentID: null, titleLine: `# ${course.name}`, label: course.name };
   }
   const ch = chapters.find((c) => c.id === node);
   if (!ch) return nodeDocTarget(course, chapters, null);
   if (ch.level === "chapter" || ch.parentId === null) {
     return {
       docId: ch.siyuanBlockId,
-      path: `/${course.name}/${ch.name}`,
+      path: `/${cp}/${sanitizeDocSegment(ch.name)}`,
       parentID: course.siyuanDocId,
       titleLine: `# ${ch.name}`,
       label: ch.name,
@@ -321,7 +324,7 @@ export function nodeDocTarget(course: Course, chapters: Chapter[], node: number 
   const parent = ch.parentId !== null ? chapters.find((c) => c.id === ch.parentId) : null;
   return {
     docId: ch.siyuanBlockId,
-    path: parent ? `/${course.name}/${parent.name}/${ch.name}` : `/${course.name}/${ch.name}`,
+    path: parent ? `/${cp}/${sanitizeDocSegment(parent.name)}/${sanitizeDocSegment(ch.name)}` : `/${cp}/${sanitizeDocSegment(ch.name)}`,
     parentID: parent?.siyuanBlockId ?? course.siyuanDocId,
     titleLine: `# ${ch.name}`,
     label: parent ? `${parent.name} · ${ch.name}` : ch.name,
@@ -371,7 +374,7 @@ async function ensureCourseDoc(courseId: number, notebookName: string): Promise<
     if (!course) return null;
     if (course.siyuanDocId) return course.siyuanDocId;
     const notebook = await ensureFolder(notebookName);
-    const { id } = await createDoc(`# ${course.name}`, `/${course.name}`, notebook, null);
+    const { id } = await createDoc(`# ${course.name}`, `/${sanitizeDocSegment(course.name)}`, notebook, null);
     course.siyuanDocId = id;
     await saveData(data);
     return id;
@@ -653,7 +656,7 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
       const nb = await getNotebook();
       if (!nb) return null;
       try {
-        const { id } = await createDoc(mdOf(`# ${courseRow.name}`, regionMd), `/${courseRow.name}`, nb, null);
+        const { id } = await createDoc(mdOf(`# ${courseRow.name}`, regionMd), `/${sanitizeDocSegment(courseRow.name)}`, nb, null);
         courseRow.siyuanDocId = id;
         courseDocId = id;
         return id;
@@ -816,7 +819,7 @@ export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, a
   // 2. 惰性补建课程顶层文档（课程包导入/开持久化前创建的课程）
   if (!course.siyuanDocId) {
     try {
-      const { id } = await createDoc(`# ${course.name}`, `/${course.name}`, notebook, null);
+      const { id } = await createDoc(`# ${course.name}`, `/${sanitizeDocSegment(course.name)}`, notebook, null);
       course.siyuanDocId = id;
     } catch (e) {
       console.error("创建课程顶层文档失败:", e);
@@ -831,7 +834,9 @@ export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, a
       ch.parentId !== null
         ? data.chapters.find((c) => c.id === ch.parentId) ?? addedChapters.find((c) => c.id === ch.parentId)
         : null;
-    const path = parent ? `/${course.name}/${parent.name}/${ch.name}` : `/${course.name}/${ch.name}`;
+    const path = parent
+      ? `/${sanitizeDocSegment(course.name)}/${sanitizeDocSegment(parent.name)}/${sanitizeDocSegment(ch.name)}`
+      : `/${sanitizeDocSegment(course.name)}/${sanitizeDocSegment(ch.name)}`;
     const parentID = parent?.siyuanBlockId ?? course.siyuanDocId;
     try {
       const { id } = await createDoc(`# ${ch.name}`, path, notebook, parentID);
@@ -847,7 +852,7 @@ export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, a
     const ch = data.chapters.find((c) => c.id === u.id);
     if (!ch?.siyuanBlockId) continue;
     if (u.name !== undefined && u.name !== ch.name) {
-      await bridge.renameDoc(ch.siyuanBlockId, u.name).catch((e) => {
+      await bridge.renameDoc(ch.siyuanBlockId, sanitizeDocSegment(u.name)).catch((e) => {
         console.error("同步章节改名失败:", e);
         errors.push(`章节「${u.name}」改名失败`);
       });

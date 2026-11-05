@@ -7,6 +7,7 @@ const calls: { remove: string[]; exists: string[]; removeFails: Set<string> } = 
   exists: [],
   removeFails: new Set(),
 };
+const created: Array<{ markdown: string; path: string; parentID?: string | null }> = [];
 let stillExisting = new Set<string>();
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => {},
@@ -22,9 +23,13 @@ setBridge({
       calls.exists.push(id);
       return stillExisting.has(id);
     },
+    createDoc: async (markdown: string, path: string, _folder: string, parentRef?: string | null) => {
+      created.push({ markdown, path, parentID: parentRef ?? null });
+      return { id: "new-doc" };
+    },
   } as unknown as StudyBridge);
 
-const { removeDocIfExists } = await import("../docStore");
+const { removeDocIfExists, createDoc } = await import("../docStore");
 
 describe("removeDocIfExists 幂等删除", () => {
   beforeEach(() => {
@@ -50,5 +55,29 @@ describe("removeDocIfExists 幂等删除", () => {
     calls.removeFails.add("doc-c");
     stillExisting = new Set(["doc-c"]);
     await expect(removeDocIfExists("doc-c")).rejects.toThrow("doc not found");
+  });
+});
+
+describe("createDoc 首行标题斜杠防护（路径段由构建点逐段转全角）", () => {
+  it("markdown 首行标题中的 / 转全角，正文不动", async () => {
+    created.length = 0;
+    await createDoc(
+      "# 12.2 项目采购规划与自制/外购决策\n\n正文含 / 不改",
+      "/课程/12.2 项目采购规划与自制／外购决策",
+      "AI 研习",
+    );
+    expect(created[0].markdown).toBe("# 12.2 项目采购规划与自制／外购决策\n\n正文含 / 不改");
+  });
+
+  it("单行标题（无换行）也能清洗", async () => {
+    created.length = 0;
+    await createDoc("# 重点/难点/考点", "/课程/重点／难点／考点", "AI 研习");
+    expect(created[0].markdown).toBe("# 重点／难点／考点");
+  });
+
+  it("非 # 开头的 markdown 原样透传", async () => {
+    created.length = 0;
+    await createDoc("无标题正文", "/课程/A", "AI 研习");
+    expect(created[0].markdown).toBe("无标题正文");
   });
 });

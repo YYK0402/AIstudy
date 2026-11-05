@@ -812,3 +812,28 @@ describe("syncChapterStructure（bridge mock）", () => {
     expect(calls.create[1].parent).toBe("doc-new-0");
   });
 });
+
+import { nodeDocTarget } from "../kpDocSync";
+
+describe("nodeDocTarget 斜杠路径", () => {
+  const course: Course = {
+    id: 1, siyuanDocId: "dc", name: "自学/项目管理", description: "", target: "",
+    totalCycle: "", status: "active", createTime: "", modelId: null,
+  };
+  const ch: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "dc1", name: "第08章 项目风险管理", level: "chapter", sort: 1 };
+  const unit: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "dc2", name: "重点/难点/考点", level: "unit", sort: 1 };
+
+  it("节名含 /：path 段全角，titleLine/label 保持原样", () => {
+    const t = nodeDocTarget(course, [ch, unit], 11);
+    expect(t.path).toBe("/自学／项目管理/第08章 项目风险管理/重点／难点／考点");
+    expect(t.titleLine).toBe("# 重点/难点/考点");
+    expect(t.label).toBe("第08章 项目风险管理 · 重点/难点/考点");
+    expect(t.parentID).toBe("dc1");
+  });
+
+  it("章名含 /：path 段全角", () => {
+    const ch2: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: "dc3", name: "12.2 自制/外购决策", level: "chapter", sort: 2 };
+    const t = nodeDocTarget(course, [ch, ch2], 12);
+    expect(t.path).toBe("/自学／项目管理/12.2 自制／外购决策");
+  });
+});

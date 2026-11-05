@@ -44,6 +44,13 @@ export function mount(el: Element, bridge: StudyBridge): void {
   const live = findLiveRoot();
   if (live) {
     if (live.parentElement === el) return;
+    // 反向时序防御：内核先开新页签（实例落在可见面板）后延迟恢复隐藏页签（init 重跑）时，
+    // 不能把活实例从可见面板拖进隐藏面板（用户正看的页签会空白）。
+    // jsdom 下所有面板 clientWidth 恒 0（视同「可见性相同」，走常规 adopt，单测不受影响）
+    const elVisible = el.clientWidth > 0 && el.clientHeight > 0;
+    const liveHost = live.parentElement;
+    const liveVisible = !!liveHost && liveHost.clientWidth > 0 && liveHost.clientHeight > 0;
+    if (!elVisible && liveVisible) return;
     el.appendChild(live);
     return;
   }

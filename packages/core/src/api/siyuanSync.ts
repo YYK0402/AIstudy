@@ -2,6 +2,7 @@ import type { Chapter, Course, ExplainRecord, KnowledgePoint } from "../types/ap
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { createDoc, ensureFolder } from "./docStore";
+import { sanitizeDocSegment } from "../utils/docPath";
 import { getBridge } from "@/bridge";
 
 const CONV_BEGIN = "<!-- ai-study:conversations:begin -->";
@@ -10,12 +11,13 @@ const CONV_END = "<!-- ai-study:conversations:end -->";
 export const CONV_MAX_ROUNDS = 50;
 
 /** 按 KP 挂载节点定位对话文档：章 → /课程/章/学习对话；节 → /课程/章/节/学习对话；未挂载 → 课程级兜底 */
-function convDocTarget(
+export function convDocTarget(
   course: Course,
   chapters: Chapter[],
   kp: KnowledgePoint,
 ): { path: string; key: string; label: string; parentID: string | null } {
-  const base = `/${course.name}`;
+  // 路径段逐段转全角斜杠：名内含 / 时防内核按分隔符建出幽灵层级（label 保持原样）
+  const base = `/${sanitizeDocSegment(course.name)}`;
   const fallback = {
     path: `${base}/学习对话`,
     key: `course-${course.id}`,
@@ -26,14 +28,14 @@ function convDocTarget(
   const node = chapters.find((c) => c.id === kp.chapterId);
   if (!node) return fallback;
   if (node.level === "chapter" || node.parentId == null) {
-    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
+    return { path: `${base}/${sanitizeDocSegment(node.name)}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
   }
   const parent = chapters.find((c) => c.id === node.parentId);
   if (!parent) {
-    return { path: `${base}/${node.name}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
+    return { path: `${base}/${sanitizeDocSegment(node.name)}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
   }
   return {
-    path: `${base}/${parent.name}/${node.name}/学习对话`,
+    path: `${base}/${sanitizeDocSegment(parent.name)}/${sanitizeDocSegment(node.name)}/学习对话`,
     key: String(node.id),
     label: `${parent.name} · ${node.name}`,
     parentID: node.siyuanBlockId,

@@ -145,3 +145,28 @@ describe("buildConvMarkdown 轮数上限", () => {
     expect(md).not.toContain("仅显示最近");
   });
 });
+
+import { convDocTarget } from "../siyuanSync";
+import type { Course, Chapter } from "../../types/appData";
+
+describe("convDocTarget 斜杠路径", () => {
+  const course: Course = {
+    id: 1, siyuanDocId: "dc", name: "自学/项目管理", description: "", target: "",
+    totalCycle: "", status: "active", createTime: "", modelId: null,
+  };
+  const ch: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "dc1", name: "第08章 项目风险管理", level: "chapter", sort: 1 };
+  const unit: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "dc2", name: "8.3.5 度量【多选题/简答题】", level: "unit", sort: 1 };
+  const kp = { id: 1, courseId: 1, chapterId: 11, blockId: null, name: "KP1", content: "", mastery: "unlearn" as const, sourceAssetIds: "", prevKpIds: "", chapterName: "", sort: 0, createTime: "" };
+
+  it("课程名与节名含 /：路径段全角，label 原样", () => {
+    const t = convDocTarget(course, [ch, unit], kp);
+    expect(t.path).toBe("/自学／项目管理/第08章 项目风险管理/8.3.5 度量【多选题／简答题】/学习对话");
+    expect(t.label).toBe("第08章 项目风险管理 · 8.3.5 度量【多选题/简答题】");
+    expect(t.parentID).toBe("dc2");
+  });
+
+  it("未挂章 → 课程级兜底路径（课程名全角）", () => {
+    const t = convDocTarget(course, [ch, unit], { ...kp, chapterId: null });
+    expect(t.path).toBe("/自学／项目管理/学习对话");
+  });
+});

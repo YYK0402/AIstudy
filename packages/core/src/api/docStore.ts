@@ -1,6 +1,6 @@
 import { getSettings } from "./settings";
 import { getBridge } from "@/bridge";
-import { validateDocPath } from "../utils/docPath";
+import { sanitizeDocSegment, validateDocPath } from "../utils/docPath";
 
 // 落库（经宿主桥接写入平台文档体系）
 /** 宿主是否有落库文档体系（docs=none 的宿主 core 已隐藏入口，此函数短路兜底） */
@@ -42,8 +42,19 @@ export async function createDoc(
   folder: string,
   parentRef?: string | null,
 ): Promise<{ id: string }> {
+  // 名称含半角 / 的路径由路径构建点逐段转全角（字符串层面无法区分结构分隔符与名内斜杠）；
+  // 首行标题在此统一转全角兜底，与路径段口径一致
+  const cleanMd = markdown.startsWith("# ") ? sanitizeLeadingH1(markdown) : markdown;
   validateDocPath(path);
-  return getBridge().createDoc(markdown, path, folder, parentRef);
+  return getBridge().createDoc(cleanMd, path, folder, parentRef);
+}
+
+/** 仅对 markdown 首行 `# 标题` 的标题文本做斜杠清洗，其余内容原样保留 */
+function sanitizeLeadingH1(markdown: string): string {
+  const nl = markdown.indexOf("\n");
+  const head = nl === -1 ? markdown : markdown.slice(0, nl);
+  const tail = nl === -1 ? "" : markdown.slice(nl);
+  return `# ${sanitizeDocSegment(head.slice(2))}${tail}`;
 }
 
 export async function removeDoc(id: string): Promise<void> {

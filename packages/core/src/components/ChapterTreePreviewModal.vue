@@ -127,6 +127,7 @@ async function confirm() {
       const courseId = modalStore.chapterPreviewCourseId;
       const res = await importChapterTree(courseId, nodes);
       let msg = `已生成目录：新增 ${res.created} 个章节`;
+      if (res.moved > 0) msg += `，${res.moved} 个小节调整到正确父章`;
       if (res.linked > 0) msg += `，自动挂钩 ${res.linked} 个知识点`;
       if (res.stuck > 0) msg += `；${res.stuck} 个知识点无法自动挂钩（无标题或标题与章节名差异过大），可逐个「编辑」指定章节`;
       // 目录确认后：所有尚无知识点的资料一起抽取（知识点基于完整目录分析，而非只抽触发本次预览的资料）

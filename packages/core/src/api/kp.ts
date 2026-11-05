@@ -7,6 +7,7 @@ import { findTaskBinding, callAi } from "./ai";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
+import { sanitizeDocSegment } from "../utils/docPath";
 import { findChapterByTitle, normalizeChapterRef, normalizeKpName } from "./kpMatch";
 import { removeCsvIds } from "../utils/csvIds";
 import { getBridge } from "@/bridge";
@@ -91,10 +92,10 @@ export async function createChapter(input: {
     throw new Error(`已存在同名章节「${dup.name}」，请换一个名称（知识点按章节名匹配，重名会导致归属混乱）`);
   }
   const parentChapter = input.parentId ? data.chapters.find((c) => c.id === input.parentId) : null;
-  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名）
+  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名；名称段斜杠转全角防幽灵层级）
   const path = parentChapter
-    ? `/${course?.name ?? "课程"}/${parentChapter.name}/${name}`
-    : `/${course?.name ?? "课程"}/${name}`;
+    ? `/${sanitizeDocSegment(course?.name ?? "课程")}/${sanitizeDocSegment(parentChapter.name)}/${sanitizeDocSegment(name)}`
+    : `/${sanitizeDocSegment(course?.name ?? "课程")}/${sanitizeDocSegment(name)}`;
   // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
   const parentID = parentChapter ? parentChapter.siyuanBlockId : (course?.siyuanDocId ?? null);
   const docId = await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`, parentID);
@@ -123,14 +124,20 @@ export interface ChapterTreeNode {
   parentName: string | null;
 }
 
-/** 从标题结构批量导入章节树（幂等：同名章节不重复创建，新章节追加到末尾，已有章节顺序不变）。nodes 需保证父章在子节之前。 */
+/**
+ * 从标题结构批量导入章节树（幂等）：
+ * - 同名章节/小节不重复创建（新章节追加到末尾，已有章节顺序不变）
+ * - 改挂：已有小节若预览父章 ≠ 当前父章，改挂到新父章（追加新父末尾）并同步移动思源文档；
+ *   不改名、不删除、不动同父下的兄弟顺序
+ * nodes 需保证父章在子节之前。
+ */
 export async function importChapterTree(
   courseId: number,
   nodes: ChapterTreeNode[],
-): Promise<{ created: number; linked: number; stuck: number }> {
+): Promise<{ created: number; moved: number; linked: number; stuck: number; linkedIds: number[] }> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === courseId);
-  const coursePath = `/${course?.name ?? "课程"}`;
+  const coursePath = `/${sanitizeDocSegment(course?.name ?? "课程")}`;
   const existing = data.chapters.filter((c) => c.courseId === courseId);
   // 去空白归一化比较：AI 目录矫正可能只改空格/标点（如「第一章X」→「第一章 X」），避免误判为新章节重复建章
   const norm = (s: string) => s.replace(/\s+/g, "");
@@ -150,8 +157,10 @@ export async function importChapterTree(
       data.chapters
         .filter((c) => c.courseId === courseId && c.parentId === (parent?.id ?? null))
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
-    // 落库思源：章作为课程子文档，节作为父章子文档（path 含文档名）
-    const path = parent ? `${coursePath}/${parent.name}/${name}` : `${coursePath}/${name}`;
+    // 落库思源：章作为课程子文档，节作为父章子文档（path 含文档名；名称段斜杠转全角防幽灵层级）
+    const path = parent
+      ? `${coursePath}/${sanitizeDocSegment(parent.name)}/${sanitizeDocSegment(name)}`
+      : `${coursePath}/${sanitizeDocSegment(name)}`;
     // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
     const parentID = parent ? parent.siyuanBlockId : (course?.siyuanDocId ?? null);
     const docId = await persistDocIfEnabled(`# ${name}`, path, undefined, parentID);
@@ -172,10 +181,21 @@ export async function importChapterTree(
   }
   // 新章节已在循环内按「同父 max sort + 1」追加到末尾（nodes 文档序）；
   // 已有章节一律不动，避免分册合并时打乱全书顺序、覆盖用户手动拖拽的顺序
-  // 批量导入不逐条弹窗，聚合提示一次（章节数据本身已落库，仅思源文档缺失）
-  if (docFailed > 0) {
-    getBridge().showMessage(`章节树导入：${docFailed} 个章节文档未落库到思源（章节数据不受影响）`, 5000, "error");
+  // 改挂：已有小节若预览父章 ≠ 当前父章则纠正（重新识别目录的核心价值）；
+  // 预览父章不存在（用户在预览里删了该行）时不动，防误挂
+  const reparents: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }> = [];
+  for (const node of nodes) {
+    const parentName = node.parentName;
+    if (node.level !== "unit" || !parentName) continue;
+    const name = node.name.trim();
+    if (!name) continue;
+    const dup = existing.find((c) => norm(c.name) === norm(name));
+    if (!dup || dup.level !== "unit") continue;
+    const target = existing.find((c) => c.level === "chapter" && norm(c.name) === norm(parentName));
+    if (!target || dup.parentId === target.id) continue;
+    reparents.push({ chapter: dup, newParentId: target.id, newSort: null });
   }
+  const moveErrors = reparents.length > 0 ? await applyParentAndSort(data, reparents) : [];
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
   await saveData(data);
@@ -186,7 +206,52 @@ export async function importChapterTree(
     const kp = data.knowledgePoints.find((k) => k.id === id);
     if (kp) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, data.chapters));
   }
-  return { created, ...relink };
+  // 批量导入不逐条弹窗，聚合提示一次（章节数据本身已落库，仅思源文档缺失/移动失败）
+  const warns = [
+    ...(docFailed > 0 ? [`${docFailed} 个章节文档未落库到思源（章节数据不受影响）`] : []),
+    ...moveErrors,
+  ];
+  if (warns.length) {
+    getBridge().showMessage(`章节树导入：${warns.join("；")}`, 5000, "error");
+  }
+  return { created, moved: reparents.length, ...relink };
+}
+
+/**
+ * 批量应用章节 parentId/sort 变更：换父时同步移动思源文档（目标文档缺失/移动失败 → 数据先行、错误聚合返回）。
+ * newSort=null 表示「追加到 newParent 末尾」（应用时按当时兄弟 max sort + 1 计算，支持连续改挂不撞号）。
+ * 返回移动失败的章节名列表。
+ */
+async function applyParentAndSort(
+  data: AppData,
+  items: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }>,
+): Promise<string[]> {
+  const errors: string[] = [];
+  for (const it of items) {
+    const { chapter, newParentId } = it;
+    if (chapter.parentId !== newParentId && chapter.siyuanBlockId) {
+      const targetDocId = newParentId
+        ? data.chapters.find((c) => c.id === newParentId)?.siyuanBlockId
+        : data.courses.find((c) => c.id === chapter.courseId)?.siyuanDocId;
+      if (targetDocId) {
+        try {
+          await getBridge().moveDoc(chapter.siyuanBlockId, targetDocId);
+        } catch (e) {
+          console.error("同步章节移动失败:", e);
+          errors.push(`章节「${chapter.name}」文档移动失败`);
+        }
+      }
+    }
+    // sort 必须在换父前按「新父现有兄弟」计算（换父后再算会把自己算进 max）
+    const newSort =
+      it.newSort ??
+      data.chapters
+        .filter((c) => c.courseId === chapter.courseId && c.parentId === newParentId)
+        .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
+    chapter.parentId = newParentId;
+    chapter.sort = newSort;
+  }
+  return errors;
 }
 
 export interface RelinkResult {
@@ -338,10 +403,10 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
     const old = data.chapters[idx];
     data.chapters[idx] = chapter;
     await saveData(data);
-    // 落库思源：改名时同步章节文档名（失败不阻塞主流程）
+    // 落库思源：改名时同步章节文档名（斜杠转全角与落库口径一致；失败不阻塞主流程）
     if (chapter.name !== old.name && old.siyuanBlockId && getBridge().isValidDocRef(old.siyuanBlockId)) {
       try {
-        await getBridge().renameDoc(old.siyuanBlockId, chapter.name);
+        await getBridge().renameDoc(old.siyuanBlockId, sanitizeDocSegment(chapter.name));
       } catch (e) {
         console.error("同步章节名到思源失败:", e);
       }
@@ -352,30 +417,13 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
 /** 批量应用章节 sort/parentId 变更（拖拽排序），单次保存；换父级时同步移动思源树对应文档 */
 export async function applyChapterMoves(moves: Array<{ id: number; parentId: number | null; sort: number }>): Promise<void> {
   const data = await getData();
-  const moveErrors: string[] = [];
-  for (const mv of moves) {
-    const idx = data.chapters.findIndex((c) => c.id === mv.id);
-    if (idx < 0) continue;
-    const cur = data.chapters[idx];
-    if (cur.parentId !== mv.parentId) {
-      // 仅换父级需要移动文档（同父换序不同步，减少内核调用）
-      const docId = cur.siyuanBlockId;
-      if (docId) {
-        const targetDocId = mv.parentId
-          ? data.chapters.find((c) => c.id === mv.parentId)?.siyuanBlockId
-          : data.courses.find((c) => c.id === cur.courseId)?.siyuanDocId;
-        if (targetDocId) {
-          try {
-            await getBridge().moveDoc(docId, targetDocId);
-          } catch (e) {
-            console.error("同步章节移动失败:", e);
-            moveErrors.push(`章节「${cur.name}」文档移动失败`);
-          }
-        }
-      }
-    }
-    data.chapters[idx] = { ...cur, parentId: mv.parentId, sort: mv.sort };
-  }
+  const items = moves
+    .map((mv) => {
+      const chapter = data.chapters.find((c) => c.id === mv.id);
+      return chapter ? { chapter, newParentId: mv.parentId, newSort: mv.sort as number | null } : null;
+    })
+    .filter((x): x is { chapter: Chapter; newParentId: number | null; newSort: number | null } => x !== null);
+  const moveErrors = await applyParentAndSort(data, items);
   await saveData(data);
   if (moveErrors.length) {
     getBridge().showMessage(

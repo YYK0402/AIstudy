@@ -2,6 +2,7 @@ import type { Course } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now } from "./format";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
+import { sanitizeDocSegment } from "../utils/docPath";
 import { removeAssetIfUnused } from "./material";
 import { getBridge } from "@/bridge";
 
@@ -18,8 +19,8 @@ export async function createCourse(input: {
   modelId?: number | null;
 }): Promise<Course> {
   const data = await getData();
-  // 落库思源：开启持久化时建课程顶层文档（path 含文档名）；未开启或失败为 null（不阻塞主流程）
-  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${input.name}`, `课程「${input.name}」文档`);
+  // 落库思源：开启持久化时建课程顶层文档（path 含文档名；名称段斜杠转全角防幽灵层级）；未开启或失败为 null（不阻塞主流程）
+  const docId = await persistDocIfEnabled(`# ${input.name}`, `/${sanitizeDocSegment(input.name)}`, `课程「${input.name}」文档`);
   const course: Course = {
     id: nextId(data.courses),
     siyuanDocId: docId,
@@ -58,7 +59,7 @@ export async function updateCourse(id: number, input: {
   // 落库思源：改名时同步课程顶层文档名（失败不阻塞主流程）
   if (nameChanged && course.siyuanDocId && getBridge().isValidDocRef(course.siyuanDocId)) {
     try {
-      await getBridge().renameDoc(course.siyuanDocId, input.name);
+      await getBridge().renameDoc(course.siyuanDocId, sanitizeDocSegment(input.name));
     } catch (e) {
       console.error("同步课程名到思源失败:", e);
     }

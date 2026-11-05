@@ -12,6 +12,7 @@ import { startBgTask } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
 import { useModalStore } from "../stores/modal";
 import { createDoc, ensureFolder, removeDoc, persistDocIfEnabled } from "./docStore";
+import { sanitizeDocSegment } from "../utils/docPath";
 import { getBridge } from "@/bridge";
 
 // 删除资料的源文件（思源资源目录）：其他资料仍引用同一文件时跳过；
@@ -39,12 +40,12 @@ export async function createMaterial(input: {
 }): Promise<Material> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === input.courseId);
-  // 绑定已有文档时直接用其 docId；否则按设置决定是否落库思源（资料文档放课程文档下「资料库」目录）
+  // 绑定已有文档时直接用其 docId；否则按设置决定是否落库思源（资料文档放课程文档下「资料库」目录；名称段斜杠转全角防幽灵层级）
   const docId =
     input.siyuanDocId ??
     (await persistDocIfEnabled(
       `# ${input.name}\n\n${input.contentText}`,
-      `/${course?.name ?? "课程"}/资料库/${input.name}`,
+      `/${sanitizeDocSegment(course?.name ?? "课程")}/资料库/${sanitizeDocSegment(input.name)}`,
       `资料「${input.name}」文档`,
     ));
   const material: Material = {

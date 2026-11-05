@@ -2,6 +2,11 @@
 // 须防 `..` 段越出插件笔记本、`/` 注入额外层级、控制字符导致内核行为异常。
 const MAX_SEGMENT_LENGTH = 128;
 
+/** 名称中的 `/` 转全角 `／`：内核建文档按路径段切分，半角斜杠会被当成层级分隔符自动建出中间文档。须在路径拼接前对每个名称段调用 */
+export function sanitizeDocSegment(name: string): string {
+  return name.replace(/\//g, "／");
+}
+
 /** 校验落库文档路径格式；非法时抛错。格式：`/段/段/...`（绝对形式，段间单斜杠） */
 export function validateDocPath(path: string): void {
   if (typeof path !== "string" || path.length === 0) {
