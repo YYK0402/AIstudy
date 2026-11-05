@@ -837,3 +837,96 @@ describe("nodeDocTarget 斜杠路径", () => {
     expect(t.path).toBe("/自学／项目管理/12.2 自制／外购决策");
   });
 });
+
+import {
+  RELATED_REGION_BEGIN,
+  RELATED_REGION_END,
+  extractRelatedSection,
+  mergeRelatedSection,
+  renderRelatedSection,
+} from "../kpDocSync";
+
+describe("相关知识点区（块引用）", () => {
+  const course: Course = {
+    id: 1, siyuanDocId: "doc-course", name: "测试课程", description: "", target: "",
+    totalCycle: "", status: "active", createTime: "", modelId: null,
+  };
+  const ch1: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-ch1", name: "第一章", level: "chapter", sort: 1 };
+  const ch2: Chapter = { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-ch2", name: "第二章", level: "chapter", sort: 2 };
+  const chNoDoc: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: null, name: "未落库章", level: "chapter", sort: 3 };
+  const unit1: Chapter = { id: 13, courseId: 1, parentId: 10, siyuanBlockId: "doc-unit1", name: "第一节", level: "unit", sort: 1 };
+  const chapters = [ch1, ch2, chNoDoc, unit1];
+
+  it("前置 KP 在章文档：生成指向该章文档的块引用", () => {
+    const kps = [
+      makeKp({ id: 1, name: "KP甲", chapterId: 10, prevKpIds: "2" }),
+      makeKp({ id: 2, name: "KP乙", chapterId: 11 }),
+    ];
+    const block = renderRelatedSection(course, chapters, [kps[0]], kps, "doc-ch1");
+    expect(block).toBe(`${RELATED_REGION_BEGIN}\n## 相关知识点\n\n- ((doc-ch2 "KP乙"))\n${RELATED_REGION_END}`);
+  });
+
+  it("未归章 KP 在课程文档：引用其章文档；同文档目标跳过", () => {
+    const kps = [
+      makeKp({ id: 1, name: "KP甲", chapterId: null, prevKpIds: "2,3" }),
+      makeKp({ id: 2, name: "KP乙", chapterId: 10 }),
+      makeKp({ id: 3, name: "KP丙", chapterId: null }),
+    ];
+    const block = renderRelatedSection(course, chapters, [kps[0]], kps, "doc-course");
+    // 丙与甲同在课程文档 → 自引用跳过；乙在第一章 → 引用
+    expect(block).toBe(`${RELATED_REGION_BEGIN}\n## 相关知识点\n\n- ((doc-ch1 "KP乙"))\n${RELATED_REGION_END}`);
+  });
+
+  it("目标章未落库（docId 为空）跳过；无任何引用 → null", () => {
+    const kps = [
+      makeKp({ id: 1, name: "KP甲", chapterId: 10, prevKpIds: "2" }),
+      makeKp({ id: 2, name: "KP乙", chapterId: 12 }),
+    ];
+    expect(renderRelatedSection(course, chapters, [kps[0]], kps, "doc-ch1")).toBeNull();
+    expect(renderRelatedSection(course, chapters, [makeKp({ id: 1, chapterId: 10 })], [makeKp({ id: 1, chapterId: 10 })], "doc-ch1")).toBeNull();
+  });
+
+  it("节直属 KP 的前置在另一章：引用章文档（unit 口径与节点区一致）", () => {
+    const kps = [
+      makeKp({ id: 1, name: "KP甲", chapterId: 13, prevKpIds: "2" }),
+      makeKp({ id: 2, name: "KP乙", chapterId: 11 }),
+    ];
+    const block = renderRelatedSection(course, chapters, [kps[0]], kps, "doc-unit1");
+    expect(block).toContain("- ((doc-ch2 \"KP乙\"))");
+  });
+
+  it("重复 (文档, KP) 去重；名称内双引号转全角", () => {
+    const kps = [
+      makeKp({ id: 1, name: "KP甲", chapterId: 10, prevKpIds: "2,2,3" }),
+      makeKp({ id: 2, name: 'KP"乙', chapterId: 11 }),
+      makeKp({ id: 3, name: "KP丙", chapterId: 11 }),
+    ];
+    const block = renderRelatedSection(course, chapters, [kps[0]], kps, "doc-ch1");
+    expect(block).toContain("- ((doc-ch2 \"KP”乙\"))");
+    expect(block!.match(/\(\(/g)!.length).toBe(2);
+  });
+
+  it("extract ↔ merge 往返：追加 / 替换 / 删除（KP 区与锚点外内容保留）", () => {
+    const base = `# 第一章\n\n手写内容\n\n${KP_REGION_BEGIN}\n- KP甲 [未学习] <!-- kp:1 -->\n${KP_REGION_END}`;
+    const block = `${RELATED_REGION_BEGIN}\n## 相关知识点\n\n- ((doc-ch2 "KP乙"))\n${RELATED_REGION_END}`;
+    // 追加
+    const added = mergeRelatedSection(base, block);
+    expect(added).toContain("手写内容");
+    expect(added.trimEnd()).toBe(base + "\n\n" + block.trimEnd());
+    // 替换
+    const replaced = mergeRelatedSection(added, null);
+    expect(replaced).not.toContain(RELATED_REGION_BEGIN);
+    expect(replaced).toContain("手写内容");
+    expect(replaced.trimEnd()).toBe(base.trimEnd());
+    // 再追加另一个
+    const block2 = `${RELATED_REGION_BEGIN}\n## 相关知识点\n\n- ((doc-ch1 "KP丙"))\n${RELATED_REGION_END}`;
+    const added2 = mergeRelatedSection(replaced, block2);
+    const replaced2 = mergeRelatedSection(added2, block);
+    expect(replaced2).toContain("- ((doc-ch2 \"KP乙\"))");
+    expect(replaced2).not.toContain("KP丙");
+    expect(extractRelatedSection(replaced2)).toBe(block);
+    expect(extractRelatedSection(base)).toBeNull();
+    // 无区且 block 为 null → 原样
+    expect(mergeRelatedSection(base, null)).toBe(base);
+  });
+});

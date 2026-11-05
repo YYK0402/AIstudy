@@ -6,6 +6,7 @@ import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/a
 import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
 import type { KpTreeDiff, ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
+import { parseKpPrevIds } from "./format";
 import { createDoc, docsEnabled, ensureFolder, removeDocIfExists } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
 import { getData, saveData } from "./storage";
@@ -147,6 +148,66 @@ export function mergeKpRegion(oldMd: string, newRegion: string): string {
   }
   const base = oldMd.trimEnd();
   return `${base ? base + "\n\n" : ""}${newRegion}\n`;
+}
+
+// ---------- 相关知识点区（块引用，点亮思源反链/关系图） ----------
+
+export const RELATED_REGION_BEGIN = "<!-- ai-study:related:begin -->";
+export const RELATED_REGION_END = "<!-- ai-study:related:end -->";
+
+/**
+ * 渲染指定文档的「相关知识点」整块（null = 不写区）：
+ * 本文档直属 KP 的 prevKpIds 前置 → 目标 KP 所在文档（nodeDocTarget 口径）写块引用。
+ * 跳过：同文档目标（自引用）、未落库章节（docId 为空）、重复 (文档, KP)；名称内双引号转全角防引用语法断裂
+ */
+export function renderRelatedSection(
+  course: Course,
+  chapters: Chapter[],
+  docKps: KnowledgePoint[],
+  allKps: KnowledgePoint[],
+  selfDocId: string | null,
+): string | null {
+  const byId = new Map(allKps.map((k) => [k.id, k]));
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const k of docKps) {
+    for (const prevId of parseKpPrevIds(k)) {
+      const t = byId.get(prevId);
+      if (!t) continue;
+      const tDocId = nodeDocTarget(course, chapters, effectiveNodeOf(t, chapters)).docId;
+      if (!tDocId || tDocId === selfDocId) continue;
+      const key = `${tDocId}:${t.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`- ((${tDocId} "${t.name.replace(/"/g, "”")}"))`);
+    }
+  }
+  if (lines.length === 0) return null;
+  return [RELATED_REGION_BEGIN, "## 相关知识点", "", ...lines, RELATED_REGION_END].join("\n");
+}
+
+/** 提取文档中的相关知识点整块（含标题与锚点；null = 无区或锚点未闭合） */
+export function extractRelatedSection(md: string): string | null {
+  const beginIdx = md.indexOf(RELATED_REGION_BEGIN);
+  const endIdx = md.indexOf(RELATED_REGION_END);
+  if (beginIdx < 0 || endIdx < 0 || endIdx <= beginIdx) return null;
+  return md.slice(beginIdx, endIdx + RELATED_REGION_END.length);
+}
+
+/** 相关区合并：有区 → 整块替换；无区且 block 非空 → 文末追加；block 为 null → 删除旧区（区由应用全权生成，用户手改会在下次写回时覆盖） */
+export function mergeRelatedSection(md: string, block: string | null): string {
+  const beginIdx = md.indexOf(RELATED_REGION_BEGIN);
+  const endIdx = md.indexOf(RELATED_REGION_END);
+  const hasBlock = beginIdx >= 0 && endIdx > beginIdx;
+  if (hasBlock) {
+    const before = md.slice(0, beginIdx);
+    const after = md.slice(endIdx + RELATED_REGION_END.length);
+    if (!block) return (before.replace(/\n+$/, "") + "\n" + after.replace(/^\n+/, "")).trimEnd() + "\n";
+    return before.trimEnd() + "\n\n" + block + "\n" + after.replace(/^\n+/, "");
+  }
+  if (!block) return md;
+  const base = md.trimEnd();
+  return `${base ? base + "\n\n" : ""}${block}\n`;
 }
 
 export type RegionWriteDecision =
@@ -403,6 +464,8 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     const bridge = getBridge();
 
     const docId = target.docId;
+    const courseKps = data.knowledgePoints.filter((k) => k.courseId === courseId);
+    const related = renderRelatedSection(course, chapters, kps, courseKps, docId);
     const assignDocId = (id: string): void => {
       if (node === null) course.siyuanDocId = id;
       else {
@@ -413,7 +476,8 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     // 补建/重建文档并回填数据 id；返回新 docId（闭包内改外层变量 TS 不收窄，直接返回）
     const createFresh = async (): Promise<string> => {
       const notebook = await ensureFolder(settings.notebookName);
-      const { id } = await createDoc(`${ensureDocNote(target.titleLine)}\n\n${region}`, target.path, notebook, target.parentID);
+      const body = `${ensureDocNote(target.titleLine)}\n\n${region}${related ? `\n\n${related}` : ""}`;
+      const { id } = await createDoc(body, target.path, notebook, target.parentID);
       assignDocId(id);
       return id;
     };
@@ -475,9 +539,9 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
       bridge.showMessage(msg, 5000, "error");
       return;
     }
-    if (decision.action === "skip") return;
+    if (decision.action === "skip" && extractRelatedSection(md) === related) return;
 
-    await bridge.updateDoc(docId, ensureDocNote(mergeKpRegion(md, region)));
+    await bridge.updateDoc(docId, ensureDocNote(mergeRelatedSection(mergeKpRegion(md, region), related)));
     if (!data.docRegions) data.docRegions = {};
     data.docRegions[docId] = { h: renderedHash, ids: kps.map((k) => k.id) };
     await saveData(data);

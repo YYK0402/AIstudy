@@ -6,6 +6,8 @@ import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { getSettings } from "./settings";
 import { ensureFolder, createDoc } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
+import { effectiveNodeOf } from "../utils/kpTreeImport";
+import { scheduleKpRegionSync } from "./kpDocSync";
 
 const GRAPH_BATCH_SIZE = 30;
 
@@ -70,6 +72,10 @@ export async function inferGraphRelations(courseId: number, reset = true): Promi
     }
     await saveData(data);
   }
+  // 关系变更 → 刷新受影响文档的「相关知识点」区（区由应用全权生成，KP 区哈希不变也能穿透 skip）
+  const chapters = data.chapters.filter((c) => c.courseId === courseId);
+  const nodes = new Set<number | null>(kps.map((k) => effectiveNodeOf(k, chapters)));
+  for (const node of nodes) scheduleKpRegionSync(courseId, node);
   return totalEdges;
 }
 
@@ -87,6 +93,8 @@ export async function addKpEdge(kpId: number, prevKpId: number): Promise<void> {
   if (!ids.includes(String(prevKpId))) {
     kp.prevKpIds = [...ids, String(prevKpId)].join(",");
     await saveData(data);
+    const chapters = data.chapters.filter((c) => c.courseId === kp.courseId);
+    scheduleKpRegionSync(kp.courseId, effectiveNodeOf(kp, chapters));
   }
 }
 
@@ -97,12 +105,16 @@ export async function removeKpEdge(kpId: number, prevKpId: number): Promise<void
   if (!kp) {
     throw new Error("知识点不存在，可能已被删除");
   }
-  kp.prevKpIds = kp.prevKpIds
+  const next = kp.prevKpIds
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s && s !== String(prevKpId))
     .join(",");
+  if (next === kp.prevKpIds) return;
+  kp.prevKpIds = next;
   await saveData(data);
+  const chapters = data.chapters.filter((c) => c.courseId === kp.courseId);
+  scheduleKpRegionSync(kp.courseId, effectiveNodeOf(kp, chapters));
 }
 
 /** 将课程知识图谱写为思源文档（课程文档下的「知识图谱」子文档，已存在时带日期后缀），返回文档名 */
