@@ -21,7 +21,7 @@
 - **双端同发**：每次发版/打包，只要改动涉及 `packages/core`（两端共享）就必须两端一起打包——思源 `npm run build:web && npm run build:plugin && node scripts/make_install.js` + 飞牛 `npm run pack:fnos`，禁止只发一端导致两端包内 core 版本不一致。
 
 ## 发版策略（2026-11-03 起）
-- **功能迭代不发版、不推远端**：功能开发只做本地提交（commit 不 push origin），不 bump 版本、不打包/Release——版本停留在当前已发布版本（当前 v0.5.2），集市同步停留；本地 dist 照常构建供自己的思源使用。
+- **功能迭代不发版、不推远端**：功能开发只做本地提交（commit 不 push origin），不 bump 版本、不打包/Release——版本停留在当前已发布版本（当前 v0.5.7），集市同步停留；本地 dist 照常构建供自己的思源使用。
 - **BUG 修复走完整发版**：按下方「发布（集市上架）」标准流程执行（patch bump → 修复提交与版本 bump 分开提交 → 构建 → push main + tag → GitHub Release → 集市复验）。
 - **功能批量发版**：时机由用户明确指定（如某功能批次完成后说「发版」），届时一次性执行标准流程；release notes 必须覆盖自上一 Release 以来的全部变更。
 

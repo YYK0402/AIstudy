@@ -37,6 +37,17 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.7",
+    date: "2026-11-05",
+    intro: "新增：侧栏底部「交流群」常驻入口，弹窗展示 QQ 群二维码",
+    items: [
+      {
+        head: "交流群入口",
+        text: "侧栏底部（模型配置旁）新增「交流群」入口，点开弹窗展示 AIstudy 交流群二维码（QQ 群 1134484439）；「更新日志」底部的社区卡片改为与弹窗共用同一组件",
+      },
+    ],
+  },
+  {
     version: "0.5.6",
     date: "2026-11-05",
     intro: "修复模型配置页添加模型表单溢出裁切、确定按钮不可点的问题",
