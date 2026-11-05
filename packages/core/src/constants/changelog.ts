@@ -37,6 +37,17 @@ function resolveIntro(intro: ChangelogEntry["intro"], host: ChangelogHost | null
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.5.6",
+    date: "2026-11-05",
+    intro: "修复模型配置页添加模型表单溢出裁切、确定按钮不可点的问题",
+    items: [
+      {
+        head: "模型配置：添加/编辑模型表单溢出裁切（修复）",
+        text: "窄版式下添加模型一行需容纳全部输入框，行宽由最长模型 ID 撑开导致溢出，「确定」按钮被容器裁掉、不可见也不可点（表现为选中模型后无法保存）；现在表单行窄屏自动换行、确定按钮恒可见，「暂无模型」占位也不再与添加表单同时显示",
+      },
+    ],
+  },
+  {
     version: "0.5.5",
     date: "2026-11-05",
     intro: {
