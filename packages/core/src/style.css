@@ -607,6 +607,9 @@
 .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .model-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .model-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: var(--as-bg-elev2); border-radius: var(--as-radius-sm); font-size: 12.5px; }
+/* 模型表单行（添加/编辑）：窄容器下自动换行，保证「确定」按钮不被 overflow:hidden 裁掉 */
+.model-form { flex-wrap: wrap; row-gap: 8px; }
+.model-form select, .model-form input { min-width: 0; }
 .model-item .m-name { font-weight: 500; }
 .model-item .m-id { color: var(--as-text-faint); font-family: var(--as-font-mono); font-size: 11px; }
 .model-item .m-del { margin-left: auto; cursor: pointer; color: var(--as-text-faint); opacity: .6; transition: all .15s; }

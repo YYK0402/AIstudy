@@ -41,8 +41,8 @@
             </div>
             <div v-if="expandedId === p.id" class="provider-models">
               <div class="model-list">
-                <div v-if="modelsOf(p.id).length === 0" class="s t-faint">暂无模型</div>
-                <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item">
+                <div v-if="modelsOf(p.id).length === 0 && addingModelId !== p.id" class="s t-faint">暂无模型</div>
+                <div v-for="m in modelsOf(p.id)" :key="m.id" class="model-item" :class="{ 'model-form': editingModelId === m.id }">
                   <template v-if="editingModelId === m.id">
                     <input v-model="editModel.modelId" aria-label="模型 ID" placeholder="模型 ID" style="flex:1" />
                     <input v-model="editModel.displayName" aria-label="模型显示名" placeholder="显示名" style="flex:0.8" />
@@ -64,7 +64,7 @@
                 </div>
                 <div v-if="fetchingModels" class="s t-faint">获取模型列表中…</div>
                 <template v-else-if="addingModelId === p.id && !modelUseManual">
-                  <div class="model-item">
+                  <div class="model-item model-form">
                     <select v-model="newModel.modelId" aria-label="服务商模型" @change="pickModel(newModel.modelId)" style="flex:1">
                       <option value="">选择模型</option>
                       <option v-for="id in availableModels(p.id)" :key="id" :value="id">{{ id }}</option>
@@ -79,7 +79,7 @@
                 </template>
                 <template v-else-if="addingModelId === p.id">
                   <div v-if="modelFetchError" class="s t-danger" style="margin:2px 6px">自动获取失败：{{ modelFetchError }}</div>
-                  <div class="model-item">
+                  <div class="model-item model-form">
                     <input v-model="newModel.modelId" aria-label="模型 ID" placeholder="模型 ID" />
                     <input v-model="newModel.displayName" aria-label="模型显示名" placeholder="显示名" />
                     <input v-model="newModel.maxContext" aria-label="上下文长度" placeholder="上下文" type="number" />
