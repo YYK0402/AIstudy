@@ -17,6 +17,7 @@
     <UploadMaterialModal v-if="modalStore.uploadMaterialOpen" />
     <ChapterTreePreviewModal v-if="modalStore.chapterPreviewOpen" />
     <ChangelogModal v-if="modalStore.changelogOpen" />
+    <CommunityModal v-if="modalStore.communityOpen" />
     <ConfirmModal v-if="modalStore.confirmOpen" />
   </div>
 </template>
@@ -33,6 +34,7 @@ import NewProviderModal from "./components/NewProviderModal.vue";
 import UploadMaterialModal from "./components/UploadMaterialModal.vue";
 import ChapterTreePreviewModal from "./components/ChapterTreePreviewModal.vue";
 import ChangelogModal from "./components/ChangelogModal.vue";
+import CommunityModal from "./components/CommunityModal.vue";
 import ConfirmModal from "./components/ConfirmModal.vue";
 import { useModalStore } from "./stores/modal";
 import { useCourseStore } from "./stores/course";

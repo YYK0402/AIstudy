@@ -34,6 +34,8 @@ export const useModalStore = defineStore("modal", {
     // 更新说明 / 更新日志：seenVersion 为 null 显示全部历史（常驻入口），为版本号时只显示其后的增量
     changelogOpen: false,
     changelogSeenVersion: null as string | null,
+    // 交流群（QQ 群二维码）
+    communityOpen: false,
   }),
   actions: {
     openNewCourse() {
@@ -95,6 +97,12 @@ export const useModalStore = defineStore("modal", {
     closeChangelog() {
       this.changelogOpen = false;
       this.changelogSeenVersion = null;
+    },
+    openCommunity() {
+      this.communityOpen = true;
+    },
+    closeCommunity() {
+      this.communityOpen = false;
     },
   },
 });

@@ -17,14 +17,7 @@
           </div>
         </section>
         <p v-if="entries.length === 0" class="cl-empty">该版本暂无更新条目。</p>
-        <footer class="cl-community">
-          <img :src="qrUrl" alt="AIstudy 交流群二维码" />
-          <div class="cl-community-text">
-            <b>AIstudy 交流群</b>
-            <span>QQ 群号：1134484439</span>
-            <span>扫码加入，交流使用经验 / 反馈问题</span>
-          </div>
-        </footer>
+        <CommunityCard />
       </div>
       <div class="modal-actions">
         <button class="btn primary" @click="close">知道了</button>
@@ -38,7 +31,7 @@ import { computed } from "vue";
 import { useModalStore } from "../stores/modal";
 import { getBridge } from "../bridge";
 import { CHANGELOG, changelogForHost, changelogSince } from "../constants/changelog";
-import qrUrl from "../assets/qq-group-qr.png";
+import CommunityCard from "./CommunityCard.vue";
 
 const modalStore = useModalStore();
 

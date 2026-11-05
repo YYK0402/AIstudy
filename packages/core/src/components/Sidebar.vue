@@ -58,6 +58,18 @@
     </nav>
 
     <div class="sidebar-foot">
+      <div class="nav-item" role="button" tabindex="0" @click="openCommunity" @keydown.enter.prevent="openCommunity" @keydown.space.prevent="openCommunity">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          v-html="navIcons.community"
+        ></svg>
+        <span class="lbl">交流群</span>
+      </div>
       <router-link to="/settings" class="nav-item" active-class="active">
         <svg
           viewBox="0 0 24 24"
@@ -200,6 +212,10 @@ function selectCourse(course: Course) {
 function openNewCourse() {
   dropdownOpen.value = false;
   modalStore.openNewCourse();
+}
+
+function openCommunity() {
+  modalStore.openCommunity();
 }
 
 onMounted(async () => {
