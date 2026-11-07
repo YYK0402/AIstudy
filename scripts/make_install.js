@@ -93,6 +93,18 @@ if (distManifest.name !== manifest.name || distManifest.version !== manifest.ver
   errors.push(`dist/plugin.json（${distManifest.name}@${distManifest.version}）与根目录 plugin.json（${manifest.name}@${manifest.version}）不一致，请重新构建`);
 }
 
+// ---- 端隔离：dist 顶层白名单（dist 为思源端专用 staging，禁止他端产物混入集市包） ----
+const ALLOWED_DIST_ENTRIES = new Set([
+  "index.js", "index.css", "plugin.json", "icon.png", "preview.png",
+  "README.md", "README-siyuan.md", "web",
+]);
+for (const entry of readdirSync(distDir)) {
+  if (entry === ".DS_Store") continue;
+  if (!ALLOWED_DIST_ENTRIES.has(entry)) {
+    errors.push(`dist 顶层出现非思源端条目: ${entry}（dist 是思源端专用 staging，其他端产物禁止输出到 dist，请检查对应端打包脚本的输出路径）`);
+  }
+}
+
 if (errors.length > 0) {
   console.error("校验未通过:");
   for (const e of errors) console.error(`  - ${e}`);

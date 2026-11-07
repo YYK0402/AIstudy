@@ -22,7 +22,6 @@
     "dev": "vite build --watch --config packages/siyuan/vite.config.ts",
     "dev:web": "vite build --watch --config packages/core/vite.config.ts",
     "make-install": "npm run build && node scripts/make_install.js",
-    "make-link": "node scripts/make_dev_link.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

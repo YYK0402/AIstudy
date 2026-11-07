@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-# fnpack 生成 .fpk 并输出到 dist/
+# fnpack 生成 .fpk 并输出到本端包目录 packages/fnos/dist/（端隔离：禁止输出到共享的仓库根 dist/，那是思源端专用 staging）
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE_DIR="${ROOT_DIR}/.fnos-build/package"
-DIST_DIR="${ROOT_DIR}/../../dist/fnos"
+DIST_DIR="${ROOT_DIR}/dist"
 
 FNPACK_BIN="${ROOT_DIR}/../tools/fnpack"
 

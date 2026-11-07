@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 打包前静态校验：manifest 字段、图标、脚本可执行性（发布检查清单的子集）
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
@@ -83,6 +83,19 @@ try {
 } catch {
   // sips 不可用（非 macOS）时跳过
 }
+
+// 端隔离：包内禁止出现他端（思源）产物标记文件
+const FOREIGN_MARKERS = new Set(["plugin.json", "README-siyuan.md"]);
+function walkForeign(dir) {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) walkForeign(full);
+    else if (FOREIGN_MARKERS.has(entry)) {
+      check(false, `包内发现他端产物: ${relative(packageDir, full)}（端隔离：飞牛包禁止混入思源端文件）`);
+    }
+  }
+}
+walkForeign(packageDir);
 
 if (errors.length > 0) {
   console.error(`包校验失败（${errors.length} 项）:`);

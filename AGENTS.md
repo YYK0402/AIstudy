@@ -19,6 +19,12 @@
   - **内核 petal 缓存优先于磁盘**：直改 `~/SiYuan/data/storage/petal/AIstudy/` 文件插件不可见，整页刷新也不读盘（内核仅进程启动时读盘）；`/api/petal/*` HTTP API 空响应不可用。注入测试数据用 UI：首页「试一试示例课」一键导入完整课程（含 12 章 186 知识点/题目 + 自动生成 14 天计划，含一次小规模真实 gen_plan AI 调用），清理走「课程主页 → 编辑课程信息 → 删除课程」；需要磁盘级注入时只能重启思源进程。
 - 前端样式统一写在 `packages/core/src/style.css`：`mount.ts` 只把该文件内联注入，组件 `<style scoped>` 会被抽到未被加载的 `dist/web/style.css`，样式不生效。
 - **双端同发**：每次发版/打包，只要改动涉及 `packages/core`（两端共享）就必须两端一起打包——思源 `npm run build:web && npm run build:plugin && node scripts/make_install.js` + 飞牛 `npm run pack:fnos`，禁止只发一端导致两端包内 core 版本不一致。
+- **端严格分离（不同展示端禁止互相携带产物，2026-11-07 事故教训）**：
+  - `dist/` 是**思源端专用 staging**，其他端产物（如飞牛 `.fpk`）禁止输出到 `dist/` 下任何位置；`make_install.js` 对 dist 顶层做白名单硬校验，出现非思源条目即打包失败。
+  - 各端打包产物只进本端目录：飞牛 `.fpk` → `packages/fnos/dist/ai-study.fpk`（`pack-fpk.sh` 已固定）；未来新端同理（`packages/<端>/dist/`）。
+  - 各端打包器必须自带严格校验，fail-loud：思源 `make_install.js`（dist 顶层白名单）；飞牛 `validate-package.mjs`（包内禁止出现思源标记文件 `plugin.json`/`README-siyuan.md`）。新增端时同步补上对应端的隔离校验。
+  - 部署到宿主工作空间（如 `~/SiYuan/data/plugins/AIstudy`）只拷贝本端产物；`rsync -a --delete dist/ ~/SiYuan/data/plugins/AIstudy/` 部署的就是纯思源 staging，无需 exclude。
+  - core 三端共享的是**源码**（`packages/core`），不是产物目录；共享产物只允许单向引用（如飞牛 UI 复用 `dist/web/index.js` core bundle 作为输入）。
 
 ## 发版策略（2026-11-03 起）
 - **功能迭代不发版、不推远端**：功能开发只做本地提交（commit 不 push origin），不 bump 版本、不打包/Release——版本停留在当前已发布版本（当前 v0.5.7），集市同步停留；本地 dist 照常构建供自己的思源使用。
