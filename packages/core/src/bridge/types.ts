@@ -85,4 +85,10 @@ export interface StudyBridge {
   pickNasFiles(accept?: string[]): Promise<NasFileRef[]>;
   /** OCR（capabilities.ocr === "kernel" 时由 core 调用；vision 模式 core 自行走 callAi） */
   ocrAsset?(path: string): Promise<string>;
+  /**
+   * 列举宿主存储目录中已存在的课程文件 id（course-<id>，含删课遗留的孤儿文件）。
+   * 建课/导入课程分配新 id 时参与 max 计算，防 id 碰撞覆盖孤儿文件；
+   * 宿主不支持或列举失败时返回空数组（退化为仅按注册表分配）。
+   */
+  listCourseFileIds?(): Promise<number[]>;
 }

@@ -324,6 +324,23 @@ describe("remapCoursePackage", () => {
     expect(r.knowledgePoints).toEqual([]);
     expect(r.materials).toEqual([]);
   });
+
+  it("注册表空但磁盘有孤儿课程文件：新 id 按磁盘最大 id 分配（防覆盖孤儿文件）", () => {
+    const src = makeData({
+      courses: [course({ id: 10, name: "历史" })],
+      chapters: [],
+      knowledgePoints: [],
+      materials: [],
+      materialChapters: [],
+      questions: [],
+      examPapers: [],
+      flashCards: [],
+    });
+    const pkg = buildCoursePackageData(src, 10);
+    const empty: AppData = { ...makeData(), courses: [], chapters: [], knowledgePoints: [], materials: [], materialChapters: [], questions: [], examPapers: [], flashCards: [] };
+    const r = remapCoursePackage(pkg, empty, [1, 2, 3, 4]);
+    expect(r.courseId).toBe(5);
+  });
 });
 
 describe("applyImportToData", () => {

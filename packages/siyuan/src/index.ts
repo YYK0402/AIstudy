@@ -16,6 +16,7 @@ import {
 import { runWithRetry } from "../../core/src/aiRetry";
 import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { shouldRejectEmptyOverwrite } from "../../core/src/utils/emptyGuard";
+import { parseCourseFileIds } from "../../core/src/utils/courseFileIds";
 import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
 import { safeJsonParse, syTreeToMarkdown } from "./syMarkdown";
@@ -119,6 +120,8 @@ export default class AiStudyPlugin extends Plugin {
   async onDataChanged(reason?: TPluginDataChangeReason): Promise<void> {
     if (!this.dataReady) return;
     if (reason === "sync") {
+      // 同步合并已发生：新环境窗口结束（远端数据已落本地或本就不存在）
+      this.freshEnv = false;
       await this.refreshFromExternalChange("sync");
       return;
     }
@@ -127,14 +130,14 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
-  /** 逐文件比对磁盘内容与已写盘基线；任一不符（或读取失败无法判定）视为存在外部变更 */
+  /** 逐文件比对磁盘内容与已写盘基线；任一不符（或读取失败无法判定）视为存在外部变更。
+   *  用 readPetalFileRaw 原始读盘：loadData 会把读到的原始文件内容回填进 this.data 缓存，
+   *  "data" 文件回填的是仅全局视图（无课程实体），回显判定为"无外部变更"时缓存即被污染 */
   private async hasExternalChange(): Promise<boolean> {
     for (const [name, baseline] of Array.from(this.writtenBaselines.entries())) {
       let disk: unknown;
       try {
-        // 强制真实读盘：loadData 默认直接返回内存缓存，比对将失去意义
-        delete this.data[name];
-        disk = await this.withTimeout(this.loadData(name));
+        disk = await this.readPetalFileRaw(name);
       } catch {
         return true;
       }
@@ -150,26 +153,19 @@ export default class AiStudyPlugin extends Plugin {
       if (!merged) return;
       if (JSON.stringify(merged) === JSON.stringify(this.getData())) return;
       console.info(`[siyuan-ai-study] 检测到外部数据变更（${source}），内存视图已刷新`);
-      this.data[DATA_STORAGE] = merged;
+      this.setMergedView(merged);
       this.initBaselines();
       window.dispatchEvent(new Event(DATA_EXTERNAL_EVENT));
     });
   }
 
-  /** 强制读盘：全局文件 + 各课程文件合并为内存视图；失败返回 null（恢复现有内存，避免读空） */
+  /** 强制读盘：全局文件 + 各课程文件合并为内存视图；失败返回 null（保留现有内存，避免读空） */
   private async rebuildMergedFromDisk(): Promise<AppData | null> {
-    const prev = this.data[DATA_STORAGE];
     try {
-      // 强制真实读盘：loadData 默认直接返回内存缓存，须先移除
-      delete this.data[DATA_STORAGE];
-      const disk = (await this.withTimeout(this.loadData(DATA_STORAGE))) as AppData | null;
-      if (!disk || typeof disk !== "object") {
-        if (prev) this.data[DATA_STORAGE] = prev;
-        return null;
-      }
+      const disk = (await this.readPetalFileRaw(DATA_STORAGE)) as AppData | null;
+      if (!disk || typeof disk !== "object") return null;
       return await this.loadMergedData({ ...createEmptyData(), ...disk });
     } catch {
-      if (prev) this.data[DATA_STORAGE] = prev;
       return null;
     }
   }
@@ -190,13 +186,25 @@ export default class AiStudyPlugin extends Plugin {
       /** 本次插件加载实例 id：构建热重载/重启插件后变化，前端据此发现进行中的调用已被杀死（僵尸任务） */
       pluginInstanceId: PLUGIN_INSTANCE_ID,
       capabilities: { host: "siyuan", ocr: "kernel", nasFiles: false, docs: "siyuan" },
-      getData: () => this.data[DATA_STORAGE] ?? createEmptyData(),
+      getData: () => this.getData(),
       saveData: async (data: AppData) => {
         try {
           const dirty = await this.commitData(data);
           return { code: 0, msg: "", dirty };
         } catch (e) {
           return { code: -1, msg: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      listCourseFileIds: async () => {
+        try {
+          const res = (await this.withTimeout(
+            fetchSyncPost("/api/file/readDir", { path: `/data/storage/petal/${this.name}` }),
+          )) as { code?: number; data?: Array<{ name: string }> } | null;
+          if (!res || (typeof res.code === "number" && res.code !== 0) || !Array.isArray(res.data)) return [];
+          return parseCourseFileIds(res.data.map((e) => e.name));
+        } catch {
+          // 列举失败退化为空（core 按仅注册表分配 id，保持可用）
+          return [];
         }
       },
       callAi: async (input: CallAiInput) => {
@@ -431,8 +439,48 @@ export default class AiStudyPlugin extends Plugin {
     return res.data?.text ?? "";
   }
 
+  /** 内存合并视图（唯一事实来源）。
+   *  绝不从 this.data 缓存读取：内核 loadData/saveData 会把 this.data[name] 回填为
+   *  原始文件内容（"data" 文件=仅全局视图，不含课程实体），任何回填/删除都会让
+   *  getData() 返回污染视图，core 的 getData()+saveData 随即以空课程文件覆盖真数据
+   *  （2026-11-08 course-1 事故根因）。 */
+  private mergedView: AppData | null = null;
+
+  private setMergedView(view: AppData | null): void {
+    this.mergedView = view;
+    // this.data 同步维护仅为调试可见性；正确性不依赖它
+    if (view) this.data[DATA_STORAGE] = view;
+    else delete this.data[DATA_STORAGE];
+  }
+
   private getData(): AppData {
-    return this.data[DATA_STORAGE] ?? createEmptyData();
+    return this.mergedView ?? createEmptyData();
+  }
+
+  /** 原始读盘（不触碰 this.data 缓存）。
+   *  成功返回文件内容（JSON 文件为解析后的值）；文件缺失（404）返回 null；
+   *  读失败/超时时抛出（由调用方决定 fail-closed 语义）。 */
+  private async readPetalFileRaw(name: string): Promise<unknown> {
+    const resp = await this.withTimeout(
+      fetch("/api/file/getFile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: `/data/storage/petal/${this.name}/${name}` }),
+      }),
+    );
+    if (resp.status !== 200) {
+      // 缺失与非缺失错误都是非 200（内核以 202 + {code:404,...} 报告文件不存在）
+      const env = (await resp.json().catch(() => null)) as { code?: number; msg?: string } | null;
+      if (env?.code === 404) return null;
+      throw new Error(`读取数据文件 ${name} 失败：${env?.msg ?? `HTTP ${resp.status}`}`);
+    }
+    const text = await resp.text();
+    if (text === "") return "";
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return text;
+    }
   }
 
   /** 内核数据读写统一超时包装；超时抛 DataIoTimeoutError */
@@ -491,6 +539,41 @@ export default class AiStudyPlugin extends Plugin {
     const { global, courses } = splitAppData(data);
     const dirty: { global: boolean; courseIds: number[] } = { global: false, courseIds: [] };
     try {
+      // 新环境状态复核：data 文件现已存在（其他窗口写入 / 手动拷入 / 同步已送达）→ 空态已不存在
+      if (this.freshEnv) {
+        const diskGlobal = await this.forceReadStorage(DATA_STORAGE);
+        if (diskGlobal && typeof diskGlobal === "object") this.freshEnv = false;
+      }
+      // 新环境门控：data 文件启动时缺失且远端持有本插件数据 → 首同步未完成前禁止写盘
+      if (this.freshEnv && (await this.isFreshEnvGateActive())) {
+        // 先恢复空态内存（丢弃本次未落盘的变更，防"幽灵课程"残留），再通知前端刷新
+        this.setMergedView(createEmptyData());
+        this.initBaselines();
+        showMessage(
+          "AI 学习：首同步尚未完成，保存已暂停（防止覆盖其他设备数据）。同步完成后自动放行；10 分钟未同步则自动放行",
+          10000,
+          "error",
+        );
+        window.dispatchEvent(new Event(DATA_EXTERNAL_EVENT));
+        throw new Error("首同步未完成，保存已暂停");
+      }
+      // 乐观并发：对每个将真实写盘的文件强制读盘与基线比对，检测到其他窗口的外部变更
+      // 则整个 commit 原子中止（不写任何文件），从磁盘重建内存并通知前端刷新后重试
+        const external = await this.detectExternalModifications(global, courses);
+        if (external.length > 0) {
+          const merged = await this.rebuildMergedFromDisk();
+          if (merged && JSON.stringify(merged) !== JSON.stringify(this.getData())) {
+            this.setMergedView(merged);
+            this.initBaselines();
+            window.dispatchEvent(new Event(DATA_EXTERNAL_EVENT));
+          }
+        showMessage(
+          `AI 学习：数据刚被其他窗口修改（${external.length} 个文件有外部变更），内存已刷新，请重试`,
+          10000,
+          "error",
+        );
+        throw new Error("数据被其他窗口并发修改，本次保存已中止");
+      }
       // "空覆盖非空"守卫：新状态是纯空结构而最后一次已知的磁盘状态非空 → 拒绝写盘。
       // 合法操作永远产不出纯空结构（settings 恒存在），此情形必为异常路径
       // （如内存态被意外重置）；拦截后经 catch 回滚内存，防止空态落盘后
@@ -503,7 +586,7 @@ export default class AiStudyPlugin extends Plugin {
       for (const [id, cd] of courses) {
         if (await this.writeStorageIfChanged(courseStorageName(id), cd)) dirty.courseIds.push(id);
       }
-      this.data[DATA_STORAGE] = data;
+      this.setMergedView(data);
       return dirty;
     } catch (e) {
       await this.restoreFromDisk();
@@ -524,20 +607,108 @@ export default class AiStudyPlugin extends Plugin {
     return true;
   }
 
-  /** 保存失败后把内存缓存恢复到磁盘版本（best-effort） */
+  /**
+   * 乐观并发检查：对本次将真实写盘（内容与基线不同）的每个文件强制读盘与基线比对，
+   * 任一不符 = 存在外部变更（其他窗口 / 文件接口写入）。基线缺失的新课程文件必须
+   * 磁盘不存在（否则即将覆盖删课遗留的孤儿文件）。
+   */
+  private async detectExternalModifications(global: AppData, courses: Map<number, CourseData>): Promise<string[]> {
+    const changed: string[] = [];
+    const targets: Array<{ name: string; baseline: string | undefined; content: unknown }> = [
+      { name: DATA_STORAGE, baseline: this.writtenBaselines.get(DATA_STORAGE), content: global },
+    ];
+    for (const [id, cd] of courses) {
+      const name = courseStorageName(id);
+      targets.push({ name, baseline: this.writtenBaselines.get(name), content: cd });
+    }
+    for (const { name, baseline, content } of targets) {
+      const serialized = JSON.stringify(content);
+      if (baseline !== undefined && serialized === baseline) continue;
+      const disk = await this.forceReadStorage(name);
+      const diskJson = disk == null || disk === "" ? null : JSON.stringify(disk);
+      if (baseline === undefined) {
+        if (diskJson !== null) changed.push(name);
+      } else {
+        // 磁盘缺失按空结构处理（与首启空态基线登记一致，避免误报）
+        const comparable =
+          name === DATA_STORAGE && diskJson === null ? JSON.stringify(createEmptyData()) : diskJson;
+        if (comparable !== baseline) changed.push(name);
+      }
+    }
+    return changed;
+  }
+
+  /** 强制真实读盘（readPetalFileRaw 不经过 this.data 缓存）；读失败返回 ""（按缺失处理，fail-closed 由调用方判定） */
+  private async forceReadStorage(name: string): Promise<unknown> {
+    try {
+      return await this.readPetalFileRaw(name);
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * 新环境门控是否生效。放行条件：
+   * - 10 分钟兜底时间已过（同步未配置/长期失败，不无限阻塞）
+   * - 本次启动后已有成功同步（synced > 启动时间：远端有本插件数据则已落本地，
+   *   无数据则本就无覆盖风险）
+   * 拦截条件：本设备曾同步成功但本次启动后尚未同步（远端很可能持有历史数据，
+   * 含数据文件被抹除的恢复场景），或从未同步但云端同步目录非空（其他设备已同步）
+   */
+  private async isFreshEnvGateActive(): Promise<boolean> {
+    if (Date.now() - this.startupTime > AiStudyPlugin.FRESH_ENV_GRACE_MS) return false;
+    let synced = 0;
+    try {
+      const info = (await this.withTimeout(fetchSyncPost("/api/sync/getSyncInfo", {}))) as
+        | { code?: number; data?: { synced?: number } }
+        | null;
+      synced = info?.data?.synced ?? 0;
+    } catch {
+      // 查询失败按"曾同步"保守处理（getSyncInfo 是本地调用，失败极罕见）
+      synced = Number.MAX_SAFE_INTEGER;
+    }
+    if (synced > this.startupTime) return false;
+    if (synced > 0) return true;
+    return await this.cloudSyncDirHasData();
+  }
+
+  /** 云端同步目录是否非空（30s 缓存）；查询失败按无数据处理，不阻塞纯新用户 */
+  private async cloudSyncDirHasData(): Promise<boolean> {
+    const now = Date.now();
+    if (now - this.freshEnvRemoteCheck.at < AiStudyPlugin.FRESH_ENV_CHECK_TTL_MS) {
+      return this.freshEnvRemoteCheck.hasRemoteData;
+    }
+    let hasRemoteData = false;
+    try {
+      const dirs = (await this.withTimeout(fetchSyncPost("/api/sync/listCloudSyncDir", {}))) as
+        | { code?: number; data?: { syncDirs?: Array<{ size?: number }> } }
+        | null;
+      hasRemoteData = !!dirs?.data?.syncDirs?.some((d) => (d.size ?? 0) > 0);
+    } catch {
+      hasRemoteData = false;
+    }
+    this.freshEnvRemoteCheck = { at: now, hasRemoteData };
+    return hasRemoteData;
+  }
+
+  /** 保存失败后把内存恢复到磁盘版本（best-effort）。
+   *  readPetalFileRaw 不触碰 this.data 缓存：读失败时现有内存原样保留
+   *  （旧实现先 delete 缓存再读，读失败会让 getData() 回退空结构） */
   private async restoreFromDisk() {
     try {
-      // 强制真实读盘：commitData 已把完整合并视图缓存进 this.data，loadData 默认
-      // 直接返回缓存（读盘失败也回退缓存），不 delete 的话"合并视图 + 课程文件"
-      // 二次 merge 会使课程实体翻倍并写回磁盘
-      delete this.data[DATA_STORAGE];
-      const disk = (await this.withTimeout(this.loadData(DATA_STORAGE))) as AppData | null;
+      const disk = (await this.readPetalFileRaw(DATA_STORAGE)) as AppData | null;
       if (!disk || typeof disk !== "object") {
-        // 直读磁盘也失败（返回 ""/null）：保留现有内存，交由下一次成功保存覆盖
+        // 新环境（文件本就缺失）：缺失即真实空态而非读失败，恢复空结构，
+        // 丢弃失败保存留在内存里的变更（否则门控兜底放行后会把"幽灵课程"写盘）
+        if (this.freshEnv) {
+          this.setMergedView(createEmptyData());
+          this.initBaselines();
+        }
+        // 其余情况（读盘瞬时失败）：保留现有内存，交由下一次成功保存覆盖
         return;
       }
       const base = { ...createEmptyData(), ...disk };
-      this.data[DATA_STORAGE] = await this.loadMergedData(base);
+      this.setMergedView(await this.loadMergedData(base));
       this.initBaselines();
     } catch {
       // 读取磁盘也失败时保留现有内存，交由下一次成功保存覆盖
@@ -993,13 +1164,26 @@ export default class AiStudyPlugin extends Plugin {
   // 各数据文件的已写盘状态（序列化快照）；commitData 据此判断是否需要真实写盘
   private writtenBaselines = new Map<string, string>();
 
+  // 新环境判定：启动时 data 文件缺失（首次使用 / 数据文件丢失）。此状态下若远端持有
+  // 本插件数据（本设备曾同步成功，或云端同步目录非空），须先完成首同步才允许写盘，
+  // 否则空态写盘产生新 mtime，同步冲突空态胜出，其他设备的课程注册表被孤儿化
+  // （2026-11-07 事故的延伸场景：新设备首同步前建课）。
+  // 首同步完成（onDataChanged("sync")）清除；10 分钟兜底自动放行（同步未配置/长期失败场景）。
+  private freshEnv = false;
+  private readonly startupTime = Date.now();
+  private freshEnvRemoteCheck = { at: 0, hasRemoteData: false };
+  private static readonly FRESH_ENV_GRACE_MS = 10 * 60 * 1000;
+  private static readonly FRESH_ENV_CHECK_TTL_MS = 30 * 1000;
+
   // 加载持久化数据：全局文件 + 各课程文件合并为内存视图。
   // 首次使用（文件不存在）初始化为空结构；
   // 旧布局（实体混在全局文件里）做一次迁移：拆出 course-<id> 文件、全局文件只留全局配置。
   private async initData() {
     let loaded: unknown;
     try {
-      loaded = await this.withTimeout(this.loadData(DATA_STORAGE));
+      // readPetalFileRaw 不经过 this.data 缓存（loadData 会把全局文件原始内容
+      // 回填缓存，合并视图建成前 getData() 会读到仅全局视图）
+      loaded = await this.readPetalFileRaw(DATA_STORAGE);
     } catch (error) {
       // 磁盘读取失败：不进入"空数据可写"状态（见 dataReady），保持只读等待重启
       console.error("[siyuan-ai-study] 加载数据失败，保存已暂停（防止空数据覆盖磁盘）:", error);
@@ -1017,11 +1201,13 @@ export default class AiStudyPlugin extends Plugin {
       // - 存在但非对象（无效 JSON 被内核按文本返回）或空对象 → 损坏，fail-closed 保持只读，
       //   防止把"损坏但可人工恢复"的原文件用空结构覆盖
       if (!loaded || loaded === "") {
-        this.data[DATA_STORAGE] = createEmptyData();
+        this.setMergedView(createEmptyData());
+        this.freshEnv = true;
         this.initBaselines();
         this.dataReady = true;
         return;
       }
+      this.freshEnv = false;
       if (typeof loaded !== "object" || loaded === null || Array.isArray(loaded) || Object.keys(loaded).length === 0) {
         console.error(
           "[siyuan-ai-study] 数据文件损坏（内容不是有效非空对象），保存已暂停，请从备份恢复。文件开头:",
@@ -1054,7 +1240,7 @@ export default class AiStudyPlugin extends Plugin {
         await this.writeStorageIfChanged(DATA_STORAGE, global);
       }
 
-      this.data[DATA_STORAGE] = await this.loadMergedData(global);
+      this.setMergedView(await this.loadMergedData(global));
       this.initBaselines();
       this.dataReady = true;
     } catch (error) {
@@ -1078,22 +1264,23 @@ export default class AiStudyPlugin extends Plugin {
     return merged;
   }
 
-  /** 读取单个课程文件；文件不存在 / 损坏返回 null（按空课程处理，不阻塞其他课程）。
-   *  读超时向外抛（fail-closed）：防止瞬时超时被当作"空课程"、下次保存以空内容覆盖 */
+  /** 读取单个课程文件；文件缺失返回 null（合法空课程，不阻塞其他课程）。
+   *  读超时/读失败/损坏向外抛（fail-closed）：瞬时失败被当作"空课程"会在下次保存
+   *  以空内容覆盖真数据，故一律拒绝加载而非降级 */
   private async loadCourseFile(courseId: number): Promise<CourseData | null> {
+    const name = courseStorageName(courseId);
     let raw: unknown;
     try {
-      raw = await this.withTimeout(this.loadData(courseStorageName(courseId)));
+      raw = await this.readPetalFileRaw(name);
     } catch (e) {
       if (e instanceof DataIoTimeoutError) throw e;
-      console.error(`[siyuan-ai-study] 读取课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
-      return null;
+      throw new Error(`读取课程数据文件 ${name} 失败，保存已暂停（防止空内容覆盖）`);
     }
     if (raw == null || raw === "") return null;
     if (typeof raw !== "object" || Array.isArray(raw)) {
       // 非空非对象 = 文件损坏：若按"空课程"处理，下次保存会以空内容覆盖损坏文件造成丢失，
       // 故向外抛错 fail-closed（initData 捕获后进入只读）
-      throw new Error(`课程数据文件 ${courseStorageName(courseId)} 损坏（内容不是有效对象），请从备份恢复`);
+      throw new Error(`课程数据文件 ${name} 损坏（内容不是有效对象），请从备份恢复`);
     }
     try {
       const cd = normalizeCourseData(raw);
@@ -1101,7 +1288,7 @@ export default class AiStudyPlugin extends Plugin {
       if (changed) {
         try {
           // 文章题一次性迁移（旧词形填空合并成篇）：写盘并登记基线
-          await this.writeStorageIfChanged(courseStorageName(courseId), migrated);
+          await this.writeStorageIfChanged(name, migrated);
         } catch (e2) {
           // 迁移写盘失败：内存保留迁移前结构，下次加载幂等重试
           console.error(`[siyuan-ai-study] 课程 ${courseId} 文章题迁移写盘失败，本次保留旧结构:`, e2);
@@ -1110,8 +1297,10 @@ export default class AiStudyPlugin extends Plugin {
       }
       return migrated;
     } catch (e) {
-      console.error(`[siyuan-ai-study] 解析课程数据文件 ${courseStorageName(courseId)} 失败（按空课程处理）:`, e);
-      return null;
+      // 解析失败 = 结构损坏或版本不兼容：降级"空课程"会在下次保存以空内容覆盖，
+      // 故向外抛错 fail-closed（调用方中止加载，进入只读等待人工处理）
+      console.error(`[siyuan-ai-study] 解析课程数据文件 ${name} 失败:`, e);
+      throw new Error(`课程数据文件 ${name} 解析失败，保存已暂停（防止空内容覆盖）`);
     }
   }
 
@@ -1121,7 +1310,7 @@ export default class AiStudyPlugin extends Plugin {
 
   /** 用内存状态重建各文件的已写盘基线（加载完成后调用） */
   private initBaselines() {
-    const { global, courses } = splitAppData(this.data[DATA_STORAGE] ?? createEmptyData());
+    const { global, courses } = splitAppData(this.getData());
     this.writtenBaselines = new Map([[DATA_STORAGE, JSON.stringify(global)]]);
     for (const [id, cd] of courses) {
       this.writtenBaselines.set(courseStorageName(id), JSON.stringify(cd));

@@ -19,6 +19,7 @@ import { getData, saveData } from "./storage";
 import { uploadAsset } from "./material";
 import { getBridgeSafe } from "@/bridge";
 import { isSafeAssetPath } from "../utils/assetPath";
+import { nextCourseId } from "../utils/courseFileIds";
 
 export const PACKAGE_FORMAT = "ai-study-course";
 export const PACKAGE_VERSION = 1;
@@ -146,8 +147,9 @@ function remapCsv(csv: string, map: Record<number, number>): string {
 }
 
 /** 重映射：分配新 id、重写所有外键、规避同名（纯，接收方数据为 existing） */
-export function remapCoursePackage(pkg: CoursePackageData, existing: AppData): RemappedCoursePackage {
-  const courseId = nextId(existing.courses);
+export function remapCoursePackage(pkg: CoursePackageData, existing: AppData, diskCourseIds: number[] = []): RemappedCoursePackage {
+  // 课程 id 同时考虑磁盘孤儿课程文件（防注册表丢失/重置后 id 重排覆盖孤儿文件）
+  const courseId = nextCourseId(existing.courses, diskCourseIds);
   const chapterIdMap = buildIdMap(pkg.chapters.map((c) => c.id), nextId(existing.chapters));
   const kpIdMap = buildIdMap(pkg.knowledgePoints.map((k) => k.id), nextId(existing.knowledgePoints));
   const materialIdMap = buildIdMap(pkg.materials.map((m) => m.id), nextId(existing.materials));
@@ -359,7 +361,8 @@ export async function importCourseZip(file: File): Promise<ImportResult> {
   const pkg = await parseCoursePackageZip(zip);
 
   const existing = await getData();
-  const remapped = remapCoursePackage(pkg, existing);
+  const diskCourseIds = (await getBridgeSafe()?.listCourseFileIds?.()) ?? [];
+  const remapped = remapCoursePackage(pkg, existing, diskCourseIds);
 
   // 上传原始资料（若包内带 assets/）；失败则保留文本、清空 assetPath
   let assetFiles = 0;

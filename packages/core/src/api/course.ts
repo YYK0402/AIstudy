@@ -1,6 +1,7 @@
 import type { Course } from "../types/appData";
 import { getData, saveData } from "./storage";
-import { nextId, now } from "./format";
+import { now } from "./format";
+import { nextCourseId } from "../utils/courseFileIds";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
 import { removeAssetIfUnused } from "./material";
@@ -19,10 +20,12 @@ export async function createCourse(input: {
   modelId?: number | null;
 }): Promise<Course> {
   const data = await getData();
+  // id 分配同时考虑磁盘课程文件（删课遗留孤儿文件）：注册表丢失/重置后 id 序列重排会覆盖孤儿文件
+  const diskIds = (await getBridge().listCourseFileIds?.()) ?? [];
   // 落库思源：开启持久化时建课程顶层文档（path 含文档名；名称段斜杠转全角防幽灵层级）；未开启或失败为 null（不阻塞主流程）
   const docId = await persistDocIfEnabled(`# ${input.name}`, `/${sanitizeDocSegment(input.name)}`, `课程「${input.name}」文档`);
   const course: Course = {
-    id: nextId(data.courses),
+    id: nextCourseId(data.courses, diskIds),
     siyuanDocId: docId,
     name: input.name,
     description: input.description ?? "",
