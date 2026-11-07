@@ -15,6 +15,7 @@ import {
 } from "../../core/src/utils/courseSplit";
 import { runWithRetry } from "../../core/src/aiRetry";
 import type { AiRetryFailInfo } from "../../core/src/aiRetry";
+import { shouldRejectEmptyOverwrite } from "../../core/src/utils/emptyGuard";
 import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
 import { applyRetention } from "./retention";
 import { safeJsonParse, syTreeToMarkdown } from "./syMarkdown";
@@ -490,6 +491,14 @@ export default class AiStudyPlugin extends Plugin {
     const { global, courses } = splitAppData(data);
     const dirty: { global: boolean; courseIds: number[] } = { global: false, courseIds: [] };
     try {
+      // "空覆盖非空"守卫：新状态是纯空结构而最后一次已知的磁盘状态非空 → 拒绝写盘。
+      // 合法操作永远产不出纯空结构（settings 恒存在），此情形必为异常路径
+      // （如内存态被意外重置）；拦截后经 catch 回滚内存，防止空态落盘后
+      // 随同步以新 mtime 覆盖其他设备的真数据
+      if (shouldRejectEmptyOverwrite(global, this.writtenBaselines.get(DATA_STORAGE))) {
+        showMessage("AI 学习：检测到空状态异常写入，已拦截（你的数据未被修改），请重启思源后重试", 8000, "error");
+        throw new Error("空状态写盘已被拦截（防止覆盖已有数据）");
+      }
       if (await this.writeStorageIfChanged(DATA_STORAGE, global)) dirty.global = true;
       for (const [id, cd] of courses) {
         if (await this.writeStorageIfChanged(courseStorageName(id), cd)) dirty.courseIds.push(id);
@@ -999,14 +1008,17 @@ export default class AiStudyPlugin extends Plugin {
     }
     try {
       // 全局文件状态判定：
-      // - 缺失（""/null）→ 首次使用，写入空结构
+      // - 缺失（""/null）→ 首次使用，空结构只留内存不写盘（dataReady 照常置位）。
+      //   关键：多设备同步按 mtime 判胜，若首启立即写空结构，新设备的空文件必然比
+      //   旧设备的真数据 mtime 新 → 同步冲突空态胜出 → 存量数据被清空（2026-11-07 事故）。
+      //   不写盘后：本地无文件 + 云端有文件 = 同步干净下载真数据（onDataChanged("sync")
+      //   自愈刷新内存）；用户首次真实操作才落盘，内容直接是真数据。
+      //   基线登记为空结构：空态期间的 save 因内容无变化被 writeStorageIfChanged 跳过。
       // - 存在但非对象（无效 JSON 被内核按文本返回）或空对象 → 损坏，fail-closed 保持只读，
       //   防止把"损坏但可人工恢复"的原文件用空结构覆盖
       if (!loaded || loaded === "") {
         this.data[DATA_STORAGE] = createEmptyData();
-        // 经 writeStorageIfChanged 写盘：校验内核返回 code 并登记基线，
-        // 失败则抛错保持只读（dataReady 不置位），避免基线谎报"已写盘"
-        await this.writeStorageIfChanged(DATA_STORAGE, this.data[DATA_STORAGE]);
+        this.initBaselines();
         this.dataReady = true;
         return;
       }
