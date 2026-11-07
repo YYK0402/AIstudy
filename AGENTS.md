@@ -10,8 +10,8 @@
 - 根 `package.json` 是 private 容器（版本号的唯一来源）；`packages/siyuan/plugin.json` 是思源插件清单。
 
 ## 构建与部署
-- 插件目录是符号链接 `~/SiYuan/data/plugins/AIstudy -> <repo>/dist`（目录名须与 `plugin.json` 的 name 一致，reloadPlugin 按此名匹配）。
-- **日常迭代用 `npm run build:web && npm run build:plugin`（不 clean）**；`npm run build` 含 `clean` 会删 dist，思源内核会把插件当卸载（petal 掉线，需重启思源才恢复）。
+- 插件目录是**真实目录** `~/SiYuan/data/plugins/AIstudy`（内容 = `<repo>/dist` 的拷贝，目录名须与 `plugin.json` 的 name 一致，reloadPlugin 按此名匹配）。**禁止改回符号链接**：思源 S3 同步的 dejavu 快照 walk 不跟随符号链接目录，本地快照看不到插件文件而云端有 → 每轮恢复前检查必报 `file changed during recovery` 整轮同步中止（2026-11-07 事故根因）。
+- **日常迭代用 `npm run build:web && npm run build:plugin && rsync -a --delete dist/ ~/SiYuan/data/plugins/AIstudy/`（不 clean）**；`npm run build` 含 `clean` 会删 dist，思源内核会把插件当卸载（petal 掉线，需重启思源才恢复）。rsync 后 reloadPlugin 生效。
 - 改动后验证顺序：`npx vue-tsc --noEmit -p packages/siyuan/tsconfig.json && npx vue-tsc --noEmit -p packages/core/tsconfig.json` → `npx vitest run`（纯函数 + 组件测试，`packages/core/src/**/__tests__` 与 `packages/siyuan/src/__tests__`）→ 上述构建 → 浏览器冒烟（涉真实思源能力的需真机确认）。
 - **冒烟由 agent 用 ego-browser 自动完成**（用户要求，不用 Google Chrome）：打开 `http://127.0.0.1:6806` → **整页刷新（page.reload）** → 点顶栏 `div[aria-label="AI 智能学习"]` 开页签 → 验证 `.ai-study-app` 挂载与课程数据 → 数据注入/业务路径走应用 UI → 测完清理测试数据。
   - 整页刷新是 fresh-mount 的唯一可靠方式：web bundle 每页会话只加载一次；**关页签重开 ≠ 重新挂载**——应用是单实例 + DOM 迁移（`mount.ts` 的 `findLiveRoot` 把活实例 adopt 到新面板），`onMounted` 不重跑，验证挂载期逻辑（如今日提醒）必须整页刷新；合成事件关页签可能不触发内核 destroy，实例会以隐藏 DOM 存活（判别法：`$pinia.state.value.notify.tasks` 里的历史条目仍在 = 旧实例）。
