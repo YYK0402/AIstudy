@@ -112,7 +112,8 @@ export async function createChapter(input: {
   };
   data.chapters.push(chapter);
   await saveData(data);
-  // 思源知识点区写回：新章文档写入空区（siyuanBlockId 为 null 时顺带补建）
+  // 思源知识点区写回：新章文档写入空区（siyuanBlockId 为 null 时顺带补建）；
+  // level≥3 的小节不建文档，写回落点由管道归一化到最近 level≤2 祖先文档（只刷新该文档区）
   void scheduleKpRegionSync(input.courseId, chapter.id);
   return chapter;
 }

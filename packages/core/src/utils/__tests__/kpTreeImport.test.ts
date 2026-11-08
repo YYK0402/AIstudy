@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppData, Chapter, KnowledgePoint, Mastery } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
 import { buildKpTreeMarkdown } from "../kpTreeExport";
-import { applyKpTreeDiff, computeKpTreeDiff, parseKpTreeMarkdown } from "../kpTreeImport";
+import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpTreeMarkdown } from "../kpTreeImport";
 
 function chapter(id: number, level: number, parentId: number | null, sort: number, name: string): Chapter {
   return { id, courseId: 1, parentId, siyuanBlockId: null, name, level, sort };
@@ -150,6 +150,33 @@ describe("parseKpTreeMarkdown", () => {
     const res = parseKpTreeMarkdown(text);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.line).toBeGreaterThan(0);
+  });
+});
+
+describe("effectiveNodeOf（KP 归属节点 = 思源区域同步落点）", () => {
+  const top = chapter(10, 1, null, 1, "第一章");
+  const unit = chapter(11, 2, 10, 1, "第一节");
+  const sub = chapter(12, 3, 11, 1, "1.1 小节");
+  const deep = chapter(13, 4, 12, 1, "1.1.1 更深层");
+  const all = [top, unit, sub, deep];
+
+  it("level≤2 语义不变：顶章/节直属自身，孤儿节与幽灵章节回退 null", () => {
+    const orphan = chapter(14, 2, 99, 1, "孤儿节");
+    const list = [...all, orphan];
+    expect(effectiveNodeOf({ chapterId: 10 }, list)).toBe(10);
+    expect(effectiveNodeOf({ chapterId: 11 }, list)).toBe(11);
+    expect(effectiveNodeOf({ chapterId: 14 }, list)).toBeNull();
+    expect(effectiveNodeOf({ chapterId: null }, list)).toBeNull();
+    expect(effectiveNodeOf({ chapterId: 99 }, list)).toBeNull();
+  });
+
+  it("level>2 落最近 level≤2 祖先：L3 → 节，L4 上溯两级 → 节", () => {
+    expect(effectiveNodeOf({ chapterId: 12 }, all)).toBe(11);
+    expect(effectiveNodeOf({ chapterId: 13 }, all)).toBe(11);
+  });
+
+  it("断链（父节点已删）回退自身，不抛错", () => {
+    expect(effectiveNodeOf({ chapterId: 12 }, [top, sub])).toBe(12);
   });
 });
 

@@ -34,7 +34,7 @@ setBridge({
     },
   } as unknown as StudyBridge);
 
-const { createChapter, importChapterTree, deleteChapters } = await import("../kp");
+const { createChapter, importChapterTree, deleteChapters, relinkUnassignedKps } = await import("../kp");
 
 describe("createChapter 判重口径（与知识点章节匹配一致的归一化）", () => {
   it("仅「第X章/节」前缀或空格差异 → 视为重名，拒绝创建", async () => {
@@ -192,5 +192,37 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     const top = dataRef.data.chapters.find((c) => c.name === "第一章")!;
     await deleteChapters([top.id]);
     expect(dataRef.data.tocMappings).toHaveLength(0);
+  });
+});
+
+describe("relinkUnassignedKps 章节匹配（matchChapterForKp）", () => {
+  beforeEach(() => {
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      showMessage: () => {},
+    } as unknown as StudyBridge);
+    seedCleanCourse();
+  });
+
+  it("归一化同名同时存在于 level1/level2 时取最深：KP 挂到 level2", async () => {
+    dataRef.data.chapters = [
+      { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章 鸦片战争", level: 1, sort: 1 },
+      { id: 2, courseId: 1, parentId: 1, siyuanBlockId: null, name: "1.1 鸦片战争", level: 2, sort: 1 },
+    ];
+    dataRef.data.knowledgePoints = [
+      {
+        id: 1, courseId: 1, chapterId: null, blockId: null, name: "鸦片战争", content: "",
+        mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "", sort: 1,
+        createTime: "2026-01-01T00:00:00Z",
+      },
+    ];
+    const res = await relinkUnassignedKps(1);
+    expect(res.linked).toBe(1);
+    expect(res.stuck).toBe(0);
+    expect(dataRef.data.knowledgePoints[0].chapterId).toBe(2); // 最深命中：1.1 节（L2）而非第一章（L1）
   });
 });

@@ -1,4 +1,5 @@
 import type { AppData, Chapter, KnowledgePoint } from "../types/appData";
+import { nearestDocAncestorId } from "./outline";
 
 /**
  * 知识点树往返导入（纯函数）：parse → diff → apply。
@@ -303,14 +304,16 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
   return { ok: true, tree };
 }
 
-/** 现有 KP 的归属节点（顶章 id / 小节 id / null），与导出 nodeOf 一致 */
+/** 现有 KP 的归属节点（顶章 id / 节 id / 深节点的最近 level≤2 祖先 / null），与导出 nodeOf 的两级语义一致，
+ *  另增深节点路由：level>2 节点本身不建文档，区域同步落最近 level≤2 有文档祖先（断链回退自身） */
 export function effectiveNodeOf(kp: Pick<KnowledgePoint, "chapterId">, chapters: Chapter[]): number | null {
   if (kp.chapterId === null) return null;
   const topIds = new Set(chapters.filter((c) => c.level === 1).map((c) => c.id));
   if (topIds.has(kp.chapterId)) return kp.chapterId;
-  const unit = chapters.find((c) => c.level === 2 && c.id === kp.chapterId);
-  if (unit && unit.parentId !== null && topIds.has(unit.parentId)) return unit.id;
-  return null;
+  const ch = chapters.find((c) => c.id === kp.chapterId);
+  const unit = ch && ch.level === 2 && ch.parentId !== null && topIds.has(ch.parentId) ? ch : null;
+  if (unit) return unit.id;
+  return ch && ch.level > 2 ? nearestDocAncestorId(chapters, ch.id) : null;
 }
 
 /** 解析 KP 的目标节点：带标记章节 → id；新增章节 → key 哨兵；未归章 → null */

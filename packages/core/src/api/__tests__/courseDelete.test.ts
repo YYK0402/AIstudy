@@ -20,6 +20,11 @@ const baseData = (): AppData => ({
     "doc-ch-1": { h: "h2", ids: [11] },
     "doc-other-course": { h: "h3", ids: [12] },
   },
+  tocMappings: [
+    { id: 1, materialId: 1, courseId: 1, materialPath: "第一章", chapterId: 1 },
+    { id: 2, materialId: 2, courseId: 1, materialPath: "第一章>1.1", chapterId: 1 },
+    { id: 3, materialId: 3, courseId: 2, materialPath: "第二章", chapterId: 9 },
+  ],
 });
 
 const dataRef: { data: AppData } = { data: baseData() };
@@ -63,5 +68,13 @@ describe("deleteCourse 级联清理 docRegions（读回删除消歧对全部课�
     expect(dataRef.data.courses).toHaveLength(0);
     expect(removedDocs).toEqual(["doc-ch-1"]);
     expect(dataRef.data.docRegions).toEqual({});
+  });
+
+  it("级联清理 tocMappings：被删课程的映射清空，他课程映射保留", async () => {
+    dataRef.data = baseData();
+    await deleteCourse(1);
+    expect(dataRef.data.tocMappings).toEqual([
+      { id: 3, materialId: 3, courseId: 2, materialPath: "第二章", chapterId: 9 },
+    ]);
   });
 });

@@ -1,4 +1,6 @@
-import type { Chapter, Material } from "../api";
+// 直接引 types（不经 api barrel）：utils 被 siyuan 端程序跨包引入时，barrel 会把 core 全部 API 图
+// （含 documentParser 的 mammoth/pdfjs 声明缺失）拖进程序导致类型检查失败
+import type { Chapter, Material } from "../types/appData";
 
 /** outline 扁平节点（文档序） */
 export interface OutlineNode {

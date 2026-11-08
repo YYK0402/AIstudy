@@ -466,6 +466,41 @@ describe("写回管道（bridge mock）", () => {
     expect(calls.update[0].md).toContain("<!-- kp:1 -->");
   });
 
+  it("level>2 节点的 KP 区域同步落最近有文档祖先（L3 → L2 文档，不为 L3 建文档）", async () => {
+    // 章A(L1, docA) → 节B(L2, docB) → 小节C(L3, siyuanBlockId=null)
+    data.chapters.push(
+      { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "docB", name: "节B", level: 2, sort: 2 },
+      { id: 12, courseId: 1, parentId: 11, siyuanBlockId: null, name: "小节C", level: 3, sort: 1 },
+    );
+    data.knowledgePoints[0] = { ...data.knowledgePoints[0], chapterId: 12, chapterName: "小节C" };
+    docs.set("docB", "# 节B");
+    // 以深节点 id 直接调度（与 createChapter 调用形态一致），落点应归一到 L2 文档
+    await scheduleKpRegionSync(1, 12, 0);
+    await flush();
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].id).toBe("docB");
+    expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+    expect(data.docRegions?.docB?.ids).toEqual([1]);
+    expect(calls.create).toEqual([]); // level≥3 不建思源文档
+    expect(calls.update.every((u) => u.id !== "doc-course")).toBe(true); // 也不再落课程顶层文档
+  });
+
+  it("更深层节点（L4）同样上溯到最近 level≤2 祖先文档", async () => {
+    data.chapters.push(
+      { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "docB", name: "节B", level: 2, sort: 2 },
+      { id: 12, courseId: 1, parentId: 11, siyuanBlockId: null, name: "小节C", level: 3, sort: 1 },
+      { id: 13, courseId: 1, parentId: 12, siyuanBlockId: null, name: "小小节D", level: 4, sort: 1 },
+    );
+    data.knowledgePoints[0] = { ...data.knowledgePoints[0], chapterId: 13, chapterName: "小小节D" };
+    docs.set("docB", "# 节B");
+    await scheduleKpRegionSync(1, 13, 0);
+    await flush();
+    expect(calls.update).toHaveLength(1);
+    expect(calls.update[0].id).toBe("docB");
+    expect(calls.update[0].md).toContain("<!-- kp:1 -->");
+    expect(calls.create).toEqual([]);
+  });
+
   it("persistToSiyuan 关闭：不写不提示", async () => {
     data.settings.persistToSiyuan = false;
     await scheduleKpRegionSync(1, 10, 0);

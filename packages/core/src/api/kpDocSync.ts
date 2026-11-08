@@ -6,6 +6,7 @@ import type { Chapter, Course, DocRegionState, KnowledgePoint } from "../types/a
 import { applyKpTreeDiff, computeKpTreeDiff, effectiveNodeOf, parseKpLine } from "../utils/kpTreeImport";
 import type { KpTreeDiff, ParsedChapter, ParsedKp, ParsedKpTree } from "../utils/kpTreeImport";
 import { MASTERY_LABEL } from "../utils/kpTreeExport";
+import { nearestDocAncestorId } from "../utils/outline";
 import { parseKpPrevIds } from "./format";
 import { createDoc, docsEnabled, ensureFolder, removeDocIfExists } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
@@ -452,11 +453,13 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     const course = data.courses.find((c) => c.id === courseId);
     if (!course) return;
     let chapters = data.chapters.filter((c) => c.courseId === courseId);
-    const target = nodeDocTarget(course, chapters, node);
+    // 深节点（level>2）不建文档：区域落点归一化为最近 level≤2 有文档祖先（断链回退自身）
+    const docNode = node !== null ? nearestDocAncestorId(chapters, node) : null;
+    const target = nodeDocTarget(course, chapters, docNode);
     const kps = data.knowledgePoints.filter(
-      (k) => k.courseId === courseId && effectiveNodeOf(k, chapters) === node,
+      (k) => k.courseId === courseId && effectiveNodeOf(k, chapters) === docNode,
     );
-    const label = node === null ? `课程「${course.name}」` : `章节「${target.label}」`;
+    const label = docNode === null ? `课程「${course.name}」` : `章节「${target.label}」`;
     const region = renderKpRegion(kps);
     // 渲染态哈希必须与「实际写入区的解析哈希」同源（renderKpRegion 内部按 sort 排序，
     // 直接对未排序 kps 算 canonicalRegion 会因顺序不同永不匹配 → 恒停写误报）
@@ -467,9 +470,9 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
     const courseKps = data.knowledgePoints.filter((k) => k.courseId === courseId);
     const related = renderRelatedSection(course, chapters, kps, courseKps, docId);
     const assignDocId = (id: string): void => {
-      if (node === null) course.siyuanDocId = id;
+      if (docNode === null) course.siyuanDocId = id;
       else {
-        const ch = chapters.find((c) => c.id === node);
+        const ch = chapters.find((c) => c.id === docNode);
         if (ch) ch.siyuanBlockId = id;
       }
     };
@@ -486,14 +489,14 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
       // 写回竞态自愈：章文档缺失但课程顶层文档也缺失 → 先经课程级串行链确保课程文档存在
       //（防并行章同步重复创建），再从最新数据重新查找 course/刷新 chapters 引用（跨宿主防御：
       // fnos 端 getData 返回新对象，也避免旧对象 saveData 覆盖刚回填的课程 docId）
-      if (node !== null && course.siyuanDocId === null) {
+      if (docNode !== null && course.siyuanDocId === null) {
         await ensureCourseDoc(courseId, settings.notebookName);
         const fresh = await getData();
         const freshCourse = fresh.courses.find((c) => c.id === courseId);
         if (!freshCourse) return;
         data = fresh;
         chapters = fresh.chapters.filter((c) => c.courseId === courseId);
-        const ch = chapters.find((c) => c.id === node);
+        const ch = chapters.find((c) => c.id === docNode);
         if (!ch) return; // 幽灵节点（章已删）：目标回退课程文档且已确保存在，无可建内容
         if (ch.level === 1 || ch.parentId === null) {
           target.parentID = freshCourse.siyuanDocId; // 顶章父文档；unit 级保持现有 parent 回退
