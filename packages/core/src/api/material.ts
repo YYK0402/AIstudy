@@ -1,5 +1,4 @@
 import type { AppData, Material } from "../types/appData";
-import type { ParsedHeading } from "../utils/documentParser";
 import { isSafeAssetPath } from "../utils/assetPath";
 import { getData, saveData } from "./storage";
 import { removeCsvIds } from "../utils/csvIds";
@@ -10,8 +9,7 @@ import { stripThinkBlocks } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
-import { useModalStore } from "../stores/modal";
-import { createDoc, ensureFolder, removeDoc, persistDocIfEnabled } from "./docStore";
+import { removeDoc, persistDocIfEnabled } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
 import { getBridge } from "@/bridge";
 
@@ -266,19 +264,15 @@ async function runOrganizeTask(
     if (res.failedChunks > 0) msg += `；${res.failedChunks} 段输出异常已保留原文`;
     if (siyuanSyncFailed) msg += "；同步思源文档失败";
     orgTask?.done(msg);
-    // 自动目录模式：弹目录预览。目录从课程全部资料聚合识别（而非只弹本份），
-    // 多份资料并行梳理时等全部梳理完（本份是最后一个）再弹，保证聚合目录完整
+    // 自动目录模式：梳理完自动触发结构识别（outline 缺失时补跑）+ 语义合并，
+    // 完成后由 toc-merged 事件打开预览弹窗；多份资料并行梳理时等全部梳理完
+    //（本份是最后一个）再触发，保证合并目录完整
     const otherOrganizing = [...organizingMaterialIds].some((id) => id !== materialId);
-    if (latest.settings.chapterMode === "auto" && headings.length > 0 && !otherOrganizing) {
-      const { aggregateCourseToc } = await import("./kp");
-      const agg = await aggregateCourseToc(courseId);
-      if (agg.headings.length === 0) return;
-      if (agg.corrected) {
-        getBridge().showMessage("已用 AI 矫正目录，请在预览中核对后确认");
-      } else if (agg.failed) {
-        getBridge().showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
-      }
-      useModalStore().openChapterPreview(courseId, agg.headings, materialId, agg.materialCount);
+    if (latest.settings.chapterMode === "auto" && !otherOrganizing) {
+      // 动态 import：tocMerge 反向依赖本模块的 queryMaterials，静态导入成环
+      const { startTocMergeTask } = await import("./tocMerge");
+      startTocMergeTask(courseId, [materialId]);
+      return;
     }
   } catch (e) {
     orgTask?.fail(e, "AI 梳理失败");
@@ -461,8 +455,9 @@ export async function deleteMaterial(id: number): Promise<void> {
   const data = await getData();
   const material = data.materials.find((m) => m.id === id);
   data.materials = data.materials.filter((m) => m.id !== id);
-  // 级联清理资料-章节关联与知识点的来源资料引用，避免悬挂引用
+  // 级联清理资料-章节关联、资料 outline 节点映射与知识点的来源资料引用，避免悬挂引用
   data.materialChapters = data.materialChapters.filter((mc) => mc.materialId !== id);
+  data.tocMappings = data.tocMappings.filter((m) => m.materialId !== id);
   const removedMaterialIds = new Set([id]);
   for (const k of data.knowledgePoints) {
     k.sourceAssetIds = removeCsvIds(k.sourceAssetIds, removedMaterialIds);

@@ -168,6 +168,7 @@ export async function deleteCourse(id: number): Promise<void> {
   data.flashCards = data.flashCards.filter((c) => c.courseId !== id);
   data.materials = data.materials.filter((m) => m.courseId !== id);
   data.materialChapters = data.materialChapters.filter((mc) => !materialIds.has(mc.materialId));
+  data.tocMappings = data.tocMappings.filter((m) => m.courseId !== id);
   data.questions = data.questions.filter((q) => q.courseId !== id);
   data.answerRecords = data.answerRecords.filter((r) => !questionIds.has(r.qId));
   data.wrongQuestions = data.wrongQuestions.filter((w) => !questionIds.has(w.qId));

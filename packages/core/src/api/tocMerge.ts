@@ -6,9 +6,9 @@ import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { queryMaterials } from "./material";
 import { runOutlineRecognition } from "./outlineExtract";
-import { buildChapterTree, type OutlineNode } from "../utils/outline";
+import { buildChapterTree, outlineOf, type OutlineNode } from "../utils/outline";
 import { stripThinkBlocks } from "../utils/aiJson";
-import type { Chapter, Material } from "../types/appData";
+import type { Chapter } from "../types/appData";
 
 /** 单次合并调用可携带的 outline 节点上限（超过按顶层边界拆片顺序合） */
 const MAX_OUTLINE_PER_CALL = 150;
@@ -154,19 +154,6 @@ export function splitOutlineForMerge(outline: OutlineNode[]): { start: number; n
   return parts;
 }
 
-/** 资料 outline 字段（JSON 字符串）→ OutlineNode[]；缺失/损坏返回空 */
-function outlineToJson(material: Material): OutlineNode[] {
-  if (!material.outline) return [];
-  try {
-    const v: unknown = JSON.parse(material.outline);
-    return Array.isArray(v)
-      ? v.filter((x): x is OutlineNode => typeof x === "object" && x !== null && typeof (x as OutlineNode).text === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 /** 节点层级（沿 parent 链计深，与 prompt 的 L 前缀一致） */
 function levelOf(nodes: MergeNode[], id: number): number {
   let d = 1;
@@ -208,7 +195,7 @@ export async function mergeCourseToc(
     onProgress?.(i, mats.length);
     const mat = mats[i];
     try {
-      let outline = outlineToJson(mat);
+      let outline = outlineOf(mat);
       if (outline.length === 0) {
         const r = await runOutlineRecognition(mat.id, courseId, undefined, isAborted);
         if (isAborted?.()) throw new AiCanceledError();
@@ -239,7 +226,7 @@ export async function mergeCourseToc(
       }
     } catch (e) {
       if (e instanceof AiCanceledError) throw e;
-      failed.push({ materialName: mat.name, reason: e instanceof Error ? e.message : String(e), outline: outlineToJson(mat) });
+      failed.push({ materialName: mat.name, reason: e instanceof Error ? e.message : String(e), outline: outlineOf(mat) });
     }
   }
   onProgress?.(mats.length, mats.length);

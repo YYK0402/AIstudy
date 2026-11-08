@@ -58,11 +58,11 @@
 import { computed, ref, watch } from "vue";
 import { useModalStore } from "../stores/modal";
 import {
-  aggregateCourseToc,
   createMaterial,
   getSettings,
   uploadAsset,
   startOrganizeTask,
+  startTocMergeTask,
   docsEnabled,
   type Material,
   type SiyuanDocSelection,
@@ -306,9 +306,8 @@ async function save() {
         4000,
       );
     } else if (settings.chapterMode === "auto") {
-      // 未启用 AI 梳理时，立即弹目录预览（聚合课程全部资料的标题）
-      const agg = await aggregateCourseToc(courseId);
-      if (agg.headings.length > 0) modalStore.openChapterPreview(courseId, agg.headings, null, agg.materialCount);
+      // 未启用 AI 梳理时，立即触发结构识别 + 语义合并（完成后由 toc-merged 事件统一弹预览）
+      startTocMergeTask(courseId);
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);

@@ -17,8 +17,8 @@
       <div class="card">
         <h3>目录结构
           <template v-if="!archived">
-            <button class="btn sm ghost" :disabled="!currentCourseId() || reidentifying" @click="reidentifyChapters">
-              <AppIcon name="refresh" :size="14" /> {{ reidentifying ? "识别中…" : "重新识别目录" }}
+            <button class="btn sm ghost" :disabled="!currentCourseId()" @click="reidentifyChapters">
+              <AppIcon name="refresh" :size="14" /> 重新识别目录
             </button>
             <button v-if="!batchMode" class="btn sm ghost" title="批量删除章节" :disabled="!currentCourseId() || chapters.length === 0" @click="enterBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
             <button v-else class="btn sm ghost" @click="exitBatchMode">取消</button>
@@ -323,7 +323,7 @@ import { useCourseStore } from "../stores/course";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import {
-  aggregateCourseToc,
+  startTocMergeTask,
   queryMaterials,
   deleteMaterial,
   extractKnowledgePoints,
@@ -421,7 +421,6 @@ const relinking = ref(false);
 const kpBatchMode = ref(false);
 const selectedKpIds = ref<Set<number>>(new Set());
 const deletingKps = ref(false);
-const reidentifying = ref(false);
 const searchKeyword = ref("");
 const currentPage = ref(1);
 const PAGE_SIZE = 10;
@@ -786,26 +785,10 @@ function addTopChapter() {
   chapterModal.value = "top";
 }
 
-// 聚合所有资料的标题结构，重新识别目录（后续资料多了可重新生成完整目录）
-async function reidentifyChapters() {
-  if (!currentCourseId() || reidentifying.value) return;
-  reidentifying.value = true;
-  try {
-    const agg = await aggregateCourseToc(currentCourseId());
-    if (agg.headings.length === 0) {
-      getBridge().showMessage("未识别到标题结构，请先上传资料", 4000, "error");
-      return;
-    }
-    // AI 矫正提示（aggregateCourseToc 内已完成矫正）
-    if (agg.corrected) {
-      getBridge().showMessage("已用 AI 矫正目录，请在预览中核对后确认");
-    } else if (agg.failed) {
-      getBridge().showMessage("AI 目录矫正失败或结果不可用，已显示原始识别结果", 4000, "error");
-    }
-    modalStore.openChapterPreview(currentCourseId(), agg.headings, null, agg.materialCount);
-  } finally {
-    reidentifying.value = false;
-  }
+// 重新识别目录：触发结构识别 + 语义合并（后台任务，进度见铃铛；完成后由 toc-merged 事件统一弹预览）
+function reidentifyChapters() {
+  if (!currentCourseId()) return;
+  startTocMergeTask(currentCourseId());
 }
 
 function addUnit(ch: Chapter) {

@@ -15,6 +15,7 @@ const ARRAY_KEYS = [
   "knowledgePoints",
   "materials",
   "materialChapters",
+  "tocMappings",
   "questions",
   "examPapers",
   "answerRecords",

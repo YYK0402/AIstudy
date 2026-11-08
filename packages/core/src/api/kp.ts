@@ -1,18 +1,16 @@
 import type { AppData, Chapter, KnowledgePoint, Material } from "../types/appData";
-import type { ParsedHeading } from "../utils/documentParser";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { nextId, now } from "./format";
-import { findTaskBinding, callAi } from "./ai";
-import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
-import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
-import { findChapterByTitle, normalizeChapterRef, normalizeKpName } from "./kpMatch";
+import { findDeepestChapterByTitle, normalizeChapterRef, normalizeKpName, pickDeepestChapter } from "./kpMatch";
 import { removeCsvIds } from "../utils/csvIds";
 import { getBridge } from "@/bridge";
 import { effectiveNodeOf } from "../utils/kpTreeImport";
 import { scheduleKpRegionSync } from "./kpDocSync";
+import { nodePathOf, outlineOf } from "../utils/outline";
+import type { MergeResult } from "./tocMerge";
 
 export async function queryKnowledgePoints(courseId: number): Promise<KnowledgePoint[]> {
   const data = await getData();
@@ -92,13 +90,14 @@ export async function createChapter(input: {
     throw new Error(`已存在同名章节「${dup.name}」，请换一个名称（知识点按章节名匹配，重名会导致归属混乱）`);
   }
   const parentChapter = input.parentId ? data.chapters.find((c) => c.id === input.parentId) : null;
-  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名；名称段斜杠转全角防幽灵层级）
+  // 落库思源：章作为课程文档的子文档，节作为章文档的子文档（path 含文档名；名称段斜杠转全角防幽灵层级）；
+  // 文档策略：level≥3 的小节不建思源文档（siyuanBlockId=null，KP 区落最近 level≤2 祖先文档）
   const path = parentChapter
     ? `/${sanitizeDocSegment(course?.name ?? "课程")}/${sanitizeDocSegment(parentChapter.name)}/${sanitizeDocSegment(name)}`
     : `/${sanitizeDocSegment(course?.name ?? "课程")}/${sanitizeDocSegment(name)}`;
   // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
   const parentID = parentChapter ? parentChapter.siyuanBlockId : (course?.siyuanDocId ?? null);
-  const docId = await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`, parentID);
+  const docId = input.level <= 2 ? await persistDocIfEnabled(`# ${name}`, path, `章节「${name}」文档`, parentID) : null;
   const sort =
     data.chapters.filter((c) => c.courseId === input.courseId && c.parentId === input.parentId).reduce((m, c) => Math.max(m, c.sort), 0) + 1;
   const chapter: Chapter = {
@@ -127,13 +126,15 @@ export interface ChapterTreeNode {
 /**
  * 从标题结构批量导入章节树（幂等）：
  * - 同名章节/小节不重复创建（新章节追加到末尾，已有章节顺序不变）
- * - 改挂：已有小节若预览父章 ≠ 当前父章，改挂到新父章（追加新父末尾）并同步移动思源文档；
+ * - 改挂：已有小节若预览父节点 ≠ 当前父节点，改挂到新父（追加新父末尾）并同步移动思源文档；
  *   不改名、不删除、不动同父下的兄弟顺序
- * nodes 需保证父章在子节之前。
+ * - toc 传入时：导入后课程级替换式写入资料 outline 节点 → 章节映射（tocMappings）
+ * nodes 需保证父节点在子节点之前。
  */
 export async function importChapterTree(
   courseId: number,
   nodes: ChapterTreeNode[],
+  toc?: { result: MergeResult; materials: Material[] },
 ): Promise<{ created: number; moved: number; linked: number; stuck: number; linkedIds: number[] }> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === courseId);
@@ -145,13 +146,19 @@ export async function importChapterTree(
   let created = 0;
   let docFailed = 0;
   const createdChapters: Chapter[] = [];
-  for (const node of nodes) {
+  // 节点下标 → 章节 id（新建取新章、已有取既有章），供 toc 映射落库定位
+  const nodeIdToChapter = new Map<number, number>();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
     const name = node.name.trim();
     if (!name) continue;
     const dup = existing.find((c) => norm(c.name) === norm(name));
-    if (dup) continue;
+    if (dup) {
+      nodeIdToChapter.set(i, dup.id);
+      continue;
+    }
     const parent = node.parentName
-      ? existing.find((c) => c.level === 1 && norm(c.name) === norm(node.parentName!))
+      ? existing.find((c) => c.level === node.level - 1 && norm(c.name) === norm(node.parentName!))
       : null;
     const sort =
       data.chapters
@@ -163,8 +170,12 @@ export async function importChapterTree(
       : `${coursePath}/${sanitizeDocSegment(name)}`;
     // 直接父文档 id：消除 3.8.9 新标题模式下同名祖先的路径歧义
     const parentID = parent ? parent.siyuanBlockId : (course?.siyuanDocId ?? null);
-    const docId = await persistDocIfEnabled(`# ${name}`, path, undefined, parentID);
-    if (persistOn && !docId) docFailed++;
+    // 文档策略：level≥3 的小节不建思源文档（siyuanBlockId=null，KP 区落最近 level≤2 祖先文档）
+    let docId: string | null = null;
+    if (node.level <= 2) {
+      docId = await persistDocIfEnabled(`# ${name}`, path, undefined, parentID);
+      if (persistOn && !docId) docFailed++;
+    }
     const chapter: Chapter = {
       id: nextId(data.chapters),
       courseId,
@@ -177,25 +188,46 @@ export async function importChapterTree(
     data.chapters.push(chapter);
     existing.push(chapter);
     createdChapters.push(chapter);
+    nodeIdToChapter.set(i, chapter.id);
     created++;
   }
   // 新章节已在循环内按「同父 max sort + 1」追加到末尾（nodes 文档序）；
   // 已有章节一律不动，避免分册合并时打乱全书顺序、覆盖用户手动拖拽的顺序
-  // 改挂：已有小节若预览父章 ≠ 当前父章则纠正（重新识别目录的核心价值）；
-  // 预览父章不存在（用户在预览里删了该行）时不动，防误挂
+  // 改挂：已有小节若预览父节点 ≠ 当前父节点则纠正（重新识别目录的核心价值）；
+  // 预览父节点不存在（用户在预览里删了该行）时不动，防误挂
   const reparents: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }> = [];
   for (const node of nodes) {
     const parentName = node.parentName;
-    if (node.level !== 2 || !parentName) continue;
+    if (node.level < 2 || !parentName) continue;
     const name = node.name.trim();
     if (!name) continue;
     const dup = existing.find((c) => norm(c.name) === norm(name));
-    if (!dup || dup.level !== 2) continue;
-    const target = existing.find((c) => c.level === 1 && norm(c.name) === norm(parentName));
+    if (!dup || dup.level !== node.level) continue;
+    const target = existing.find((c) => c.level === node.level - 1 && norm(c.name) === norm(parentName));
     if (!target || dup.parentId === target.id) continue;
     reparents.push({ chapter: dup, newParentId: target.id, newSort: null });
   }
   const moveErrors = reparents.length > 0 ? await applyParentAndSort(data, reparents) : [];
+  // toc 映射落库：课程级替换（先删该课程旧映射），(materialId, materialPath) 幂等去重；
+  // materialPath = 资料 outline 节点路径（祖先 > 自身）
+  if (toc) {
+    const nextMappings = data.tocMappings.filter((m) => m.courseId !== courseId);
+    const seen = new Set<string>();
+    let mid = data.tocMappings.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
+    for (const rm of toc.result.mappings) {
+      const material = toc.materials[rm.materialIdx];
+      if (!material) continue;
+      const path = nodePathOf(outlineOf(material), rm.materialSeq);
+      if (!path) continue; // outline 损坏/节点缺失：无路径可记，跳过
+      const key = `${material.id}:${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const chapterId = nodeIdToChapter.get(rm.nodeId);
+      if (chapterId == null) continue; // 映射指向空名节点：跳过防悬挂引用
+      nextMappings.push({ id: mid++, materialId: material.id, courseId, materialPath: path, chapterId });
+    }
+    data.tocMappings = nextMappings;
+  }
   // 章节后建时，把未绑定的知识点按块标题 / 知识点名重新绑定到章节
   const relink = relinkCourseKps(data, courseId);
   await saveData(data);
@@ -262,16 +294,16 @@ export interface RelinkResult {
   linkedIds: number[];
 }
 
-/** 为单个未分配知识点找章节：先按块标题宽松匹配，再按知识点名归一化精确匹配（精确匹配防误挂） */
+/** 为单个未分配知识点找章节：先按块标题宽松匹配，再按知识点名归一化精确匹配（精确匹配防误挂）；N 级命中取最深 */
 function matchChapterForKp(kp: KnowledgePoint, chapters: Chapter[]): Chapter | undefined {
   if (kp.chapterName) {
-    const byTitle = findChapterByTitle(chapters, kp.chapterName);
+    const byTitle = findDeepestChapterByTitle(chapters, kp.chapterName);
     if (byTitle) return byTitle;
   }
   const name = normalizeChapterRef(kp.name);
   if (name.length >= 2) {
-    const byName = chapters.find((c) => normalizeChapterRef(c.name) === name);
-    if (byName) return byName;
+    const byName = chapters.filter((c) => normalizeChapterRef(c.name) === name);
+    if (byName.length > 0) return pickDeepestChapter(byName);
   }
   return undefined;
 }
@@ -308,92 +340,6 @@ export async function relinkUnassignedKps(courseId: number): Promise<RelinkResul
     }
   }
   return result;
-}
-
-/**
- * AI 矫正自动识别的标题列表（去噪 / 合并重复 / 修正层级），在目录预览前可选调用。
- * 未配置「recognize_toc」任务模型时原样返回；调用或解析失败时回退原列表（failed=true 供 UI 提示）。
- */
-export async function correctTocWithAi(
-  headings: ParsedHeading[],
-  courseId?: number,
-): Promise<{ headings: ParsedHeading[]; corrected: boolean; failed: boolean }> {
-  if (headings.length === 0) return { headings, corrected: false, failed: false };
-  const data = await getData();
-  const binding = findTaskBinding(data, "recognize_toc", courseId);
-  if (!binding) return { headings, corrected: false, failed: false };
-  try {
-    const lines = headings.map((h, i) => `${i + 1}. [L${h.level}] ${h.text}`).join("\n");
-    // prompt 上限：目录过长的文档不做 AI 矫正，直接回退原列表（非报错，矫正只是增强）
-    if (headings.length > 200 || lines.length > 60000) {
-      return { headings, corrected: false, failed: false };
-    }
-    const tocVars = { lines };
-    const tocTpl = resolvePromptTemplate(data, "recognize_toc");
-    const res = await callAi({
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      taskKey: "recognize_toc",
-      scope: courseId != null ? "course-" + courseId : undefined,
-      messages: [
-        { role: "system", content: renderPrompt(tocTpl.system, tocVars) },
-        { role: "user", content: renderPrompt(tocTpl.user, tocVars) },
-      ],
-    });
-    const arr = unwrapArray(parseJsonCandidates(extractJsonCandidates(res.content, "array")));
-    if (!arr) return { headings, corrected: false, failed: true };
-    const corrected: ParsedHeading[] = [];
-    for (const it of arr) {
-      const rec = (it ?? {}) as { text?: unknown; level?: unknown };
-      const text = typeof rec.text === "string" ? rec.text.trim() : "";
-      const level = Number(rec.level);
-      if (!text || text.length > 60 || (level !== 1 && level !== 2)) continue;
-      corrected.push({ level, text });
-    }
-    return corrected.length > 0 ? { headings: corrected, corrected: true, failed: false } : { headings, corrected: false, failed: true };
-  } catch (e) {
-    console.error("AI 目录矫正失败:", e);
-    return { headings, corrected: false, failed: true };
-  }
-}
-
-/**
- * 聚合课程全部资料的标题结构生成课程级目录（目录永远从所有资料一起识别，而非单份资料）：
- * 合并各资料 headings → 按「层级+标题」去重 → AI 矫正（可选）。
- */
-export interface AggregateTocResult {
-  headings: ParsedHeading[];
-  corrected: boolean;
-  failed: boolean;
-  materialCount: number;
-}
-
-export async function aggregateCourseToc(courseId: number): Promise<AggregateTocResult> {
-  const data = await getData();
-  const mats = data.materials.filter((m) => m.courseId === courseId);
-  const allHeadings: ParsedHeading[] = [];
-  for (const m of mats) {
-    try {
-      const hs = JSON.parse(m.headings || "[]") as Array<{ level: number; text: string }>;
-      for (const h of hs) {
-        if (h && typeof h.level === "number" && typeof h.text === "string" && h.text.trim()) {
-          allHeadings.push({ level: h.level, text: h.text.trim() });
-        }
-      }
-    } catch {
-      // 忽略无法解析的 headings
-    }
-  }
-  // 按「层级 + 标题」去重
-  const seen = new Set<string>();
-  const deduped = allHeadings.filter((h) => {
-    const key = `${h.level}:${h.text}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  const { headings, corrected, failed } = await correctTocWithAi(deduped, courseId);
-  return { headings, corrected, failed, materialCount: mats.length };
 }
 
 export async function updateChapter(chapter: Chapter): Promise<void> {
@@ -514,6 +460,8 @@ export async function deleteChapters(ids: number[]): Promise<void> {
   }
   // 清理资料-章节关联
   data.materialChapters = data.materialChapters.filter((mc) => !removed.has(mc.chapterId));
+  // 级联清理资料 outline 节点 → 章节映射（指向被删章节的条目）
+  data.tocMappings = data.tocMappings.filter((m) => !removed.has(m.chapterId));
   // 引用被删章节的知识点归属刷新为未分配
   for (const kp of data.knowledgePoints) {
     if (kp.chapterId !== null && removed.has(kp.chapterId)) {

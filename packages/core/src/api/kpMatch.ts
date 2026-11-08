@@ -25,3 +25,35 @@ export function findChapterByTitle(chapters: Chapter[], title: string): Chapter 
   }
   return best;
 }
+
+/** 候选中取层级最深者（level 越大层级越深，归属更精确）；同级取先出现者 */
+export function pickDeepestChapter(candidates: Chapter[]): Chapter | undefined {
+  let best: Chapter | undefined;
+  for (const c of candidates) {
+    if (!best || c.level > best.level) best = c;
+  }
+  return best;
+}
+
+/** 按标题找章节（N 级）：归一化后精确匹配取最深者；否则双向包含（短侧 ≥2 字），最深优先、同级取章节名最长者 */
+export function findDeepestChapterByTitle(chapters: Chapter[], title: string): Chapter | undefined {
+  const t = normalizeChapterRef(title);
+  if (!t) return undefined;
+  const exact = chapters.filter((c) => normalizeChapterRef(c.name) === t);
+  if (exact.length > 0) return pickDeepestChapter(exact);
+  let best: Chapter | undefined;
+  for (const c of chapters) {
+    const cn = normalizeChapterRef(c.name);
+    if (!cn || cn.length < 2) continue;
+    const hit = cn.includes(t) || t.includes(cn);
+    if (!hit) continue;
+    if (
+      !best ||
+      c.level > best.level ||
+      (c.level === best.level && cn.length > normalizeChapterRef(best.name).length)
+    ) {
+      best = c;
+    }
+  }
+  return best;
+}

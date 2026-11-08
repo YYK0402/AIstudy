@@ -1,9 +1,22 @@
-import type { Chapter } from "../api";
+import type { Chapter, Material } from "../api";
 
 /** outline 扁平节点（文档序） */
 export interface OutlineNode {
   text: string;
   level: number;
+}
+
+/** 资料 outline 字段（JSON 字符串）→ OutlineNode[]；缺失/损坏返回空 */
+export function outlineOf(material: Material): OutlineNode[] {
+  if (!material.outline) return [];
+  try {
+    const v: unknown = JSON.parse(material.outline);
+    return Array.isArray(v)
+      ? v.filter((x): x is OutlineNode => typeof x === "object" && x !== null && typeof (x as OutlineNode).text === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 /** outline 节点在干净文本中的定位范围（start=-1 未定位） */
