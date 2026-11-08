@@ -50,6 +50,24 @@ declare global {
 // 统一以超时兜底；超时按失败处理（写盘失败走回滚，读盘失败进入只读）
 export class DataIoTimeoutError extends Error {}
 
+/** 规范化序列化：对象键递归排序，用于 JSON 数据的语义等价比较（键序/空白差异不产生差异） */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(obj[key])}`).join(",")}}`;
+}
+
+/** 课程文件数据语义等价比较（键序差异不触发重写） */
+function isCourseDataEqual(a: unknown, b: unknown): boolean {
+  return canonicalJson(a) === canonicalJson(b);
+}
+
 interface ForwardProxyResponse {
   code: number;
   msg: string;
@@ -1284,14 +1302,28 @@ export default class AiStudyPlugin extends Plugin {
     }
     try {
       const cd = normalizeCourseData(raw);
+      // 空 conversationsDocs 对象视为缺失：课程文件规范形态（splitAppData 输出）仅非空时
+      // 才有该键；若把空对象写盘，initBaselines 按再拆分构建的基线会缺该键，
+      // 磁盘与基线永久不一致 → 误报「并发修改」
+      if (cd.conversationsDocs && Object.keys(cd.conversationsDocs).length === 0) {
+        delete cd.conversationsDocs;
+      }
       const { cd: migrated, changed } = migratePassageQuestions(cd);
-      if (changed) {
+      // 归一化一次性写盘（镜像全局文件启动时的同款处理）：旧课程文件缺新 schema 键
+      // （如 tocMappings）时 normalize 只在内存补齐，而基线（initBaselines）已取归一化
+      // 形态、磁盘仍是旧形态 → 首次真实编辑时 detectExternalModifications 比对磁盘与
+      // 基线永久不一致，「并发修改」拦截使保存永远被阻塞，磁盘永远无法归一化（死锁）。
+      // 故最终形态与磁盘原文语义内容不同（键序/空白差异不算）时把归一化内容写盘一次；
+      // changed 时最终形态必与磁盘不同，短路跳过深比较。
+      if (changed || !isCourseDataEqual(migrated, raw)) {
         try {
-          // 文章题一次性迁移（旧词形填空合并成篇）：写盘并登记基线
+          // 走既有安全通道：校验 code + 成功后登记基线。此刻 writtenBaselines 尚未被
+          // initBaselines 初始化（initData 末尾才调用）→ 恒真实写盘；随后 initBaselines
+          // 按内存合并视图重建基线——归一化内存形态与再拆分规范形态一致，基线与磁盘相符
           await this.writeStorageIfChanged(name, migrated);
         } catch (e2) {
-          // 迁移写盘失败：内存保留迁移前结构，下次加载幂等重试
-          console.error(`[siyuan-ai-study] 课程 ${courseId} 文章题迁移写盘失败，本次保留旧结构:`, e2);
+          // 写盘失败：磁盘保持旧形态，内存保留可用结构，下次加载幂等重试归一化写盘
+          console.error(`[siyuan-ai-study] 课程 ${courseId} 归一化数据写盘失败，本次保留旧结构:`, e2);
           return cd;
         }
       }

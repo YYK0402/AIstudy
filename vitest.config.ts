@@ -15,6 +15,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": `${repoRoot}packages/core/src`,
+      // siyuan npm 包是 types-only（运行时由思源内核注入）：插件单测经此桩解析
+      siyuan: `${repoRoot}packages/siyuan/src/__tests__/stubs/siyuan.ts`,
     },
   },
   test: {
