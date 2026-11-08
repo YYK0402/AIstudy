@@ -2015,7 +2015,7 @@ git commit -m "feat: 阶段④ 按规范节点抽取——映射挂接/兄弟边
 ### Task 8: 目录预览弹窗 N 级递归重写
 
 **Files:**
-- Modify: `packages/core/src/stores/modal.ts`（`chapterPreviewHeadings: ParsedHeading[]` → `chapterPreviewResult: MergeResult | null`）
+- Modify: `packages/core/src/stores/modal.ts`（`chapterPreviewHeadings: ParsedHeading[]` → `chapterPreviewResult: MergeResult | null`；**删除归属（Task 6 审查移交）**：旧两级预览链路——`openChapterPreview` 旧签名/`chapterPreviewHeadings` 状态、`App.vue` 里旧弹窗挂载——本任务重写时一并删净，不得悬空遗留）
 - Create: `packages/core/src/components/PreviewTreeNode.vue`（递归节点行）
 - Modify: `packages/core/src/components/ChapterTreePreviewModal.vue`（递归渲染 + meta + 确认落库带映射）
 - Modify: `packages/core/src/style.css`（新增 `tp-tree` 相关样式）
