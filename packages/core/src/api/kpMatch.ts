@@ -21,22 +21,6 @@ export function normalizeChapterRef(s: string): string {
   return n.replace(/^(第[0-9一二三四五六七八九十百零两]+[章节部分讲单元]|[0-9]+(\.[0-9]+)*[、.]?)+/, "");
 }
 
-/** 按标题找章节：归一化后精确匹配优先；否则双向包含（短侧 ≥2 字）且取章节名最长者 */
-export function findChapterByTitle(chapters: Chapter[], title: string): Chapter | undefined {
-  const t = normalizeChapterRef(title);
-  if (!t) return undefined;
-  const exact = chapters.find((c) => normalizeChapterRef(c.name) === t);
-  if (exact) return exact;
-  let best: Chapter | undefined;
-  for (const c of chapters) {
-    const cn = normalizeChapterRef(c.name);
-    if (!cn || cn.length < 2) continue;
-    const hit = cn.includes(t) || t.includes(cn);
-    if (hit && (!best || cn.length > normalizeChapterRef(best.name).length)) best = c;
-  }
-  return best;
-}
-
 /** 候选中取层级最深者（level 越大层级越深，归属更精确）；同级取先出现者 */
 export function pickDeepestChapter(candidates: Chapter[]): Chapter | undefined {
   let best: Chapter | undefined;

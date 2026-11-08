@@ -34,7 +34,7 @@ export function resolveExtractNodes(data: AppData, materialIds: number[]): numbe
     data.knowledgePoints.filter((k) => k.courseId === courseId).map((k) => k.chapterId),
   );
   const candidates = [...new Set(nodes)].filter((id) => !withKp.has(id));
-  // 章节树文档序（根序 + 子节点序），未入树的孤儿 id 排末尾
+  // 章节树文档序（根序 + 子节点序），未入树的异常 id 排序值按 0 处理
   const order = new Map<number, number>();
   let i = 0;
   const walk = (list: NestedChapter[]): void => {
