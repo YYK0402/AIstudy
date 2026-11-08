@@ -168,7 +168,7 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     await importChapterTree(1, [
       { name: "第一章", level: 1, parentName: null },
       { name: "1.1", level: 2, parentName: "第一章" },
-    ], { result: mergeFixture(), materials: [matFixture()] });
+    ], { result: mergeFixture() });
     const d = await getData();
     expect(d.tocMappings).toHaveLength(2);
     expect(d.tocMappings[0].materialPath).toBe("第一章");
@@ -177,7 +177,7 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     await importChapterTree(1, [
       { name: "第一章", level: 1, parentName: null },
       { name: "1.1", level: 2, parentName: "第一章" },
-    ], { result: mergeFixture(), materials: [matFixture()] });
+    ], { result: mergeFixture() });
     const d2 = await getData();
     expect(d2.tocMappings).toHaveLength(2);
   });
@@ -187,7 +187,7 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     await importChapterTree(1, [
       { name: "第一章", level: 1, parentName: null },
       { name: "1.1", level: 2, parentName: "第一章" },
-    ], { result: mergeFixture(), materials: [matFixture()] });
+    ], { result: mergeFixture() });
     expect(dataRef.data.tocMappings).toHaveLength(2);
     const top = dataRef.data.chapters.find((c) => c.name === "第一章")!;
     await deleteChapters([top.id]);

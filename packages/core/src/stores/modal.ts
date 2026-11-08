@@ -1,6 +1,5 @@
 import { defineStore } from "pinia";
-import type { AiProvider, Course } from "../api";
-import type { ParsedHeading } from "../utils/documentParser";
+import type { AiProvider, Course, MergeResult } from "../api";
 
 export const useModalStore = defineStore("modal", {
   state: () => ({
@@ -12,10 +11,10 @@ export const useModalStore = defineStore("modal", {
     uploadMaterialCourseId: 0,
     // 资料保存后递增，通知课程内容页刷新资料列表（App 层 modal 与 router-view 视图无父子关系，用信号传递）
     materialVersion: 0,
-    // 目录预览（上传资料后自动识别章节的确认弹窗）
+    // 目录预览（目录合并完成后的 N 级递归树确认弹窗）
     chapterPreviewOpen: false,
     chapterPreviewCourseId: 0,
-    chapterPreviewHeadings: [] as ParsedHeading[],
+    chapterPreviewResult: null as MergeResult | null,
     /** 目录来源资料 id（保留字段：课程级重新识别/聚合预览时为空） */
     chapterPreviewSourceMaterialId: null as number | null,
     /** 目录聚合的资料数（>1 时标题显示「全部 N 份资料」） */
@@ -73,9 +72,9 @@ export const useModalStore = defineStore("modal", {
     notifyMaterialSaved() {
       this.materialVersion++;
     },
-    openChapterPreview(courseId: number, headings: ParsedHeading[], sourceMaterialId?: number | null, materialCount?: number) {
+    openChapterPreview(courseId: number, result: MergeResult, sourceMaterialId?: number | null, materialCount?: number) {
       this.chapterPreviewCourseId = courseId;
-      this.chapterPreviewHeadings = headings;
+      this.chapterPreviewResult = result;
       this.chapterPreviewSourceMaterialId = sourceMaterialId ?? null;
       this.chapterPreviewMaterialCount = materialCount ?? 0;
       this.chapterPreviewOpen = true;
@@ -83,7 +82,7 @@ export const useModalStore = defineStore("modal", {
     closeChapterPreview() {
       this.chapterPreviewOpen = false;
       this.chapterPreviewCourseId = 0;
-      this.chapterPreviewHeadings = [];
+      this.chapterPreviewResult = null;
       this.chapterPreviewSourceMaterialId = null;
       this.chapterPreviewMaterialCount = 0;
     },

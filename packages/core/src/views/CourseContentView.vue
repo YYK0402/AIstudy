@@ -323,6 +323,7 @@ import { useCourseStore } from "../stores/course";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useModalStore } from "../stores/modal";
 import {
+  TOC_MERGED_EVENT,
   startTocMergeTask,
   queryMaterials,
   deleteMaterial,
@@ -346,7 +347,7 @@ import {
   docsEnabled,
   getSettings,
 } from "../api";
-import type { Material, KnowledgePoint, Mastery, Chapter } from "../api";
+import type { Material, KnowledgePoint, Mastery, Chapter, MergeResult } from "../api";
 import { useNotifyStore, materialTaskId } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
 import { expandChapterNodeIds, kpCountByNode } from "../utils/chapterScope";
@@ -791,6 +792,14 @@ function reidentifyChapters() {
   startTocMergeTask(currentCourseId());
 }
 
+// 目录合并完成（后台任务）→ 命中当前课程时打开目录预览（重新识别/顶栏查看目录/梳理完成自动触发，统一走这里）
+function onTocMerged(e: Event) {
+  const detail = (e as CustomEvent<{ courseId: number; result: MergeResult }>).detail;
+  if (detail.courseId === currentCourseId()) {
+    modalStore.openChapterPreview(detail.courseId, detail.result, null, materials.value.length);
+  }
+}
+
 function addUnit(ch: Chapter) {
   editingChapter.value = ch;
   chapterModal.value = "unit";
@@ -1058,10 +1067,12 @@ useDataSavedRefresh(() => {
 });
 onMounted(() => {
   document.addEventListener("click", closeRowMenu);
+  window.addEventListener(TOC_MERGED_EVENT, onTocMerged);
   void load();
   void refreshSiyuanPersist();
 });
 onBeforeUnmount(() => {
   document.removeEventListener("click", closeRowMenu);
+  window.removeEventListener(TOC_MERGED_EVENT, onTocMerged);
 });
 </script>

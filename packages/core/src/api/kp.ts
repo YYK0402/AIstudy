@@ -1,4 +1,4 @@
-import type { AppData, Chapter, KnowledgePoint, Material } from "../types/appData";
+import type { AppData, Chapter, KnowledgePoint } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { nextId, now } from "./format";
@@ -11,6 +11,7 @@ import { effectiveNodeOf } from "../utils/kpTreeImport";
 import { scheduleKpRegionSync } from "./kpDocSync";
 import { nodePathOf, outlineOf } from "../utils/outline";
 import type { MergeResult } from "./tocMerge";
+import { queryMaterials } from "./material";
 
 export async function queryKnowledgePoints(courseId: number): Promise<KnowledgePoint[]> {
   const data = await getData();
@@ -134,7 +135,7 @@ export interface ChapterTreeNode {
 export async function importChapterTree(
   courseId: number,
   nodes: ChapterTreeNode[],
-  toc?: { result: MergeResult; materials: Material[] },
+  toc?: { result: MergeResult },
 ): Promise<{ created: number; moved: number; linked: number; stuck: number; linkedIds: number[] }> {
   const data = await getData();
   const course = data.courses.find((c) => c.id === courseId);
@@ -214,8 +215,10 @@ export async function importChapterTree(
     const nextMappings = data.tocMappings.filter((m) => m.courseId !== courseId);
     const seen = new Set<string>();
     let mid = data.tocMappings.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
+    // 资料自然序（materialIdx 是 queryMaterials 列表下标，与合并侧同口径）
+    const materials = await queryMaterials(courseId);
     for (const rm of toc.result.mappings) {
-      const material = toc.materials[rm.materialIdx];
+      const material = materials[rm.materialIdx];
       if (!material) continue;
       const path = nodePathOf(outlineOf(material), rm.materialSeq);
       if (!path) continue; // outline 损坏/节点缺失：无路径可记，跳过
