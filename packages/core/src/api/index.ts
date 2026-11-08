@@ -21,6 +21,7 @@ export * from "./planSchedule";
 export * from "./bgTask";
 export * from "./extractState";
 export * from "./material";
+export * from "./outlineExtract";
 export * from "./kp";
 export * from "./kpMatch";
 export * from "./extract";

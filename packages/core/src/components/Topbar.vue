@@ -85,6 +85,8 @@ import {
   cancelOrganizeTask,
   startExtractTask,
   cancelExtractTask,
+  startOutlineTask,
+  cancelOutlineTask,
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useIsMobile } from "../composables/useIsMobile";
@@ -216,12 +218,14 @@ async function viewToc(t: BgTaskState) {
 function retryTask(t: BgTaskState) {
   if (t.materialId == null) return;
   if (t.taskType === "extract") startExtractTask(t.materialId, t.courseId);
+  else if (t.taskType === "outline") startOutlineTask(t.materialId, t.courseId);
   else startOrganizeTask(t.materialId, t.courseId);
 }
 
 function cancelTask(t: BgTaskState) {
   if (t.materialId == null) return;
   if (t.taskType === "extract") cancelExtractTask(t.materialId);
+  else if (t.taskType === "outline") cancelOutlineTask(t.materialId);
   else cancelOrganizeTask(t.materialId);
 }
 
