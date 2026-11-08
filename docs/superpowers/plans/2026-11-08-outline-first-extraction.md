@@ -265,13 +265,17 @@ describe("alignOutlineSpans", () => {
     const { unlocated } = alignOutlineSpans(t2, nodes.slice(0, 2));
     expect(unlocated).toEqual([]);
   });
-  it("单调约束：同名标题取后出现处（目录页在前不误匹配）", () => {
-    const t3 = "目录\n第1章 极限与连续\n第2章 导数\n\n正文\n第1章 极限与连续\n第一章内容\n第2章 导数\n第二章内容";
-    const { spans, unlocated } = alignOutlineSpans(t3, [{ text: "第1章 极限与连续", level: 1 }, { text: "第2章 导数", level: 1 }]);
+  it("单调约束：后一个同名标题必须在前一个标题之后找（不回溯）", () => {
+    const t3 = "第1章\n甲内容\n第2章\n乙内容\n第1章\n丙内容";
+    const { spans, unlocated } = alignOutlineSpans(t3, [
+      { text: "第1章", level: 1 },
+      { text: "第2章", level: 1 },
+      { text: "第1章", level: 1 },
+    ]);
     expect(unlocated).toEqual([]);
-    // 两个标题必须落在正文区（第二、三处出现），span(1).start 在 span(0).start 之后
-    expect(spans[1].start).toBeGreaterThan(spans[0].start);
-    expect(t3.slice(spans[0].start, spans[0].end)).toContain("第一章内容");
+    // 第三个「第1章」取最后一处出现（cursor 已越过前两个标题）
+    expect(t3.slice(spans[2].start, spans[2].end)).toContain("丙内容");
+    expect(spans[0].start).toBe(0);
   });
 });
 
