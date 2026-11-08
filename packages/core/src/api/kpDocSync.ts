@@ -273,7 +273,9 @@ export function buildSiyuanParsedTree(input: SiyuanSyncBuildInput): SiyuanSyncBu
       id: c.id,
       name: c.name,
       level: c.level,
-      parentKey: c.level === 2 && c.parentId !== null ? `id:${c.parentId}` : null,
+      // parentKey 按数据父链如实映射（N 级通用）：computeKpTreeDiff 的父章变更判定对所有层级生效，
+      // level>2 若置 null 会被误判为「父章变更」
+      parentKey: c.parentId !== null ? `id:${c.parentId}` : null,
       sort: c.sort,
     }));
 
@@ -895,8 +897,10 @@ export async function syncChapterStructure(courseId: number, diff: KpTreeDiff, a
   }
 
   // 3. 新建章节（文件序：顶章先于节 → 节的 parentID 可解析；
-  //    新建章可能尚未进入 data.chapters（宿主引用语义），回退到 addedChapters 解析）
+  //    新建章可能尚未进入 data.chapters（宿主引用语义），回退到 addedChapters 解析；
+  //    level>2 节点按设计不建文档（KP 区落最近 ≤2 文档，见 nearestDocAncestorId），跳过）
   for (const ch of addedChapters) {
+    if (ch.level > 2) continue;
     const parent =
       ch.parentId !== null
         ? data.chapters.find((c) => c.id === ch.parentId) ?? addedChapters.find((c) => c.id === ch.parentId)

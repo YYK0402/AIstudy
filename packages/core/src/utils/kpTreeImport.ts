@@ -25,8 +25,9 @@ export interface ParsedChapter {
   /** 现有章节 id；null = 文件中无标记（新增） */
   id: number | null;
   name: string;
+  /** 标题深度：# 数（1 = 顶章，2 = 节，3+ = 小节） */
   level: number;
-  /** unit(H2) 所属顶章的 key；顶章(H1) 为 null */
+  /** 直属父章的 key；顶章为 null */
   parentKey: string | null;
   sort: number;
 }
@@ -106,8 +107,8 @@ interface HeadingParse {
   id: number | null;
 }
 
-function parseHeading(line: string, level: 1 | 2): HeadingParse {
-  const prefix = level === 1 ? "# " : "## ";
+function parseHeading(line: string, depth: number): HeadingParse {
+  const prefix = "#".repeat(depth) + " ";
   let rest = line.slice(prefix.length);
   let id: number | null = null;
   const m = rest.match(CH_MARKER_RE);
@@ -190,16 +191,15 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
     kps: [],
   };
 
-  let currentTopKey: string | null = null;
-  let currentUnitKey: string | null = null;
   let inUnassigned = false;
   let currentKp: ParsedKp | null = null;
   let kpBuf: string[] = [];
   let firstH1Seen = false;
   let newChapterCounter = 0;
   let newKpCounter = 0;
-  let topCount = 0;
-  const unitCountPerTop = new Map<string, number>();
+  /** 章标题祖先栈（文件序，# 数 = 深度）：推导父子与 KP 归属；弹栈到最近更浅层即父 */
+  const chapterStack: Array<{ key: string; depth: number }> = [];
+  const siblingIndex = new Map<string, number>();
   const nodeKpIndex = new Map<string, number>();
   const seenChapterIds = new Set<number>();
   const seenKpIds = new Set<number>();
@@ -208,7 +208,8 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
 
   const kpChapterKey = (): string | null => {
     if (inUnassigned) return null;
-    return currentUnitKey ?? currentTopKey;
+    const top = chapterStack[chapterStack.length - 1];
+    return top ? top.key : null;
   };
 
   const finalizeKp = (): void => {
@@ -235,50 +236,47 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
 
     if (line.trim() === "" || line.trim().startsWith(">")) continue;
 
-    if (line.startsWith("## ")) {
-      if (currentTopKey === null) return fail("小节（##）未在任何顶章（#）下", lineNo);
-      const { name, id } = parseHeading(line, 2);
-      if (id !== null && seenChapterIds.has(id)) return fail(`重复的章节标记 ch:${id}`, lineNo);
-      if (id !== null) seenChapterIds.add(id);
-      const key = id !== null ? `id:${id}` : `new:${newChapterCounter++}`;
-      const idx = unitCountPerTop.get(currentTopKey) ?? 0;
-      unitCountPerTop.set(currentTopKey, idx + 1);
-      const unit: ParsedChapter = { key, id, name, level: 2, parentKey: currentTopKey, sort: idx };
-      tree.chapters.push(unit);
-      currentUnitKey = key;
-      continue;
-    }
-
-    if (line.startsWith("# ")) {
-      const { name, id } = parseHeading(line, 1);
-      const isTitle = !firstH1Seen || name.endsWith("知识点树");
-      firstH1Seen = true;
-      if (isTitle) {
-        if (tree.courseName === null) tree.courseName = name.replace(/ 知识点树$/, "").trim();
-        currentTopKey = null;
-        currentUnitKey = null;
-        inUnassigned = false;
-        continue;
-      }
-      if (name === "未归章") {
-        currentTopKey = null;
-        currentUnitKey = null;
-        inUnassigned = true;
-        continue;
+    // 章标题（任意深度）：# 数 = level；栈式推导父节点
+    const heading = line.match(/^(#{1,6}) (.+)$/);
+    if (heading) {
+      const depth = heading[1].length;
+      const { name, id } = parseHeading(line, depth);
+      if (depth === 1) {
+        // 课程标题（首个 H1 或以「知识点树」结尾）/ 未归章 / 顶章
+        const isTitle = !firstH1Seen || name.endsWith("知识点树");
+        firstH1Seen = true;
+        if (isTitle) {
+          if (tree.courseName === null) tree.courseName = name.replace(/ 知识点树$/, "").trim();
+          chapterStack.length = 0;
+          inUnassigned = false;
+          continue;
+        }
+        if (name === "未归章") {
+          chapterStack.length = 0;
+          inUnassigned = true;
+          continue;
+        }
+      } else if (chapterStack.length === 0) {
+        return fail(`第 ${depth} 级标题（${"#".repeat(depth)}）未在任何顶章（#）下`, lineNo);
       }
       if (id !== null && seenChapterIds.has(id)) return fail(`重复的章节标记 ch:${id}`, lineNo);
       if (id !== null) seenChapterIds.add(id);
       const key = id !== null ? `id:${id}` : `new:${newChapterCounter++}`;
-      const top: ParsedChapter = { key, id, name, level: 1, parentKey: null, sort: topCount++ };
-      tree.chapters.push(top);
-      currentTopKey = key;
-      currentUnitKey = null;
+      // 弹到最近更浅层作父；跳级（depth > 栈顶+1）挂当前栈顶（容错）；depth 1 弹空 → 顶章
+      while (chapterStack.length > 0 && chapterStack[chapterStack.length - 1].depth >= depth) chapterStack.pop();
+      const parent = chapterStack[chapterStack.length - 1] ?? null;
+      const groupKey = parent ? parent.key : "__none__";
+      const idx = siblingIndex.get(groupKey) ?? 0;
+      siblingIndex.set(groupKey, idx + 1);
+      const ch: ParsedChapter = { key, id, name, level: depth, parentKey: parent ? parent.key : null, sort: idx };
+      tree.chapters.push(ch);
+      chapterStack.push({ key, depth });
       inUnassigned = false;
       continue;
     }
 
     if (line.startsWith("- ")) {
-      if (currentTopKey === null && !inUnassigned && currentUnitKey === null) {
+      if (!inUnassigned && chapterStack.length === 0) {
         return fail("知识点条目（-）未在任何章节下（未归章请放在「# 未归章」之后）", lineNo);
       }
       const { name, id } = parseKpLine(line.slice(2));
@@ -294,7 +292,7 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
     }
 
     if (/^\s/.test(line)) return fail("缩进行未紧跟在知识点条目之后", lineNo);
-    return fail("未识别的行（应为 # 章 / ## 节 / - 条目 / 缩进内容）", lineNo);
+    return fail("未识别的行（应为 # 章节标题 / - 条目 / 缩进内容）", lineNo);
   }
   finalizeKp();
 
@@ -304,8 +302,9 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
   return { ok: true, tree };
 }
 
-/** 现有 KP 的归属节点（顶章 id / 节 id / 深节点的最近 level≤2 祖先 / null），与导出 nodeOf 的两级语义一致，
- *  另增深节点路由：level>2 节点本身不建文档，区域同步落最近 level≤2 有文档祖先（断链回退自身） */
+/** KP 归属的思源文档落点：顶章/节 = 自身；孤儿节/幽灵章节 → null；
+ *  level>2 节点本身不建文档，区域同步落最近 level≤2 有文档祖先（断链回退自身）。
+ *  注意：这是文档同步口径，md 导入的归属比较走 computeKpTreeDiff 的 full 粒度 */
 export function effectiveNodeOf(kp: Pick<KnowledgePoint, "chapterId">, chapters: Chapter[]): number | null {
   if (kp.chapterId === null) return null;
   const topIds = new Set(chapters.filter((c) => c.level === 1).map((c) => c.id));
@@ -329,7 +328,24 @@ function nodesEqual(a: number | string | null, b: number | string | null): boole
   return a === b;
 }
 
-export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: KnowledgePoint[]): KpTreeDiff {
+export interface KpTreeDiffOptions {
+  /** KP 归属比较粒度：
+   * full = 全深度章节 id（md 导入：文件位置即归属，N 级往返）；
+   * effective = 最近 level≤2 文档节点（思源区读回：KP 区落在 ≤2 文档，默认，行为不变） */
+  nodeGranularity?: "full" | "effective";
+}
+
+export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: KnowledgePoint[], opts: KpTreeDiffOptions = {}): KpTreeDiff {
+  const granularity: "full" | "effective" = opts.nodeGranularity ?? "effective";
+  const chapterIds = new Set(chapters.map((c) => c.id));
+  // 数据侧当前归属节点：full = 数据 chapterId（以存在性判定，空/幽灵 = null）；effective = 文档同步落点（最近 ≤2 祖先）
+  const curNodeOf = (k: KnowledgePoint): number | null =>
+    granularity === "full"
+      ? k.chapterId !== null && chapterIds.has(k.chapterId)
+        ? k.chapterId
+        : null
+      : effectiveNodeOf(k, chapters);
+
   const parsedKpById = new Map<number, ParsedKp>();
   for (const k of tree.kps) if (k.id !== null) parsedKpById.set(k.id, k);
   const parsedChById = new Map<number, ParsedChapter>();
@@ -345,20 +361,14 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
     parsedNodeIndex.set(nk, idx + 1);
     parsedSort.set(k.key, idx);
   }
-  const parsedTopIndex = new Map<string, number>();
-  const parsedUnitIndex = new Map<string, number>();
+  // 解析侧章节顺序索引：按父章分组（N 级通用；顶层章 parentKey 为 null）
+  const parsedSiblingIndex = new Map<string, number>();
   const parsedChSort = new Map<string, number>();
   for (const c of tree.chapters) {
-    if (c.level === 1) {
-      const idx = parsedTopIndex.get("__top__") ?? 0;
-      parsedTopIndex.set("__top__", idx + 1);
-      parsedChSort.set(c.key, idx);
-    } else {
-      const pk = c.parentKey ?? "__none__";
-      const idx = parsedUnitIndex.get(pk) ?? 0;
-      parsedUnitIndex.set(pk, idx + 1);
-      parsedChSort.set(c.key, idx);
-    }
+    const groupKey = c.parentKey ?? "__none__";
+    const idx = parsedSiblingIndex.get(groupKey) ?? 0;
+    parsedSiblingIndex.set(groupKey, idx + 1);
+    parsedChSort.set(c.key, idx);
   }
 
   const updated: KpDiffUpdate[] = [];
@@ -372,7 +382,7 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
       removed.push({ id: k.id, name: k.name });
       continue;
     }
-    const curNode = effectiveNodeOf(k, chapters);
+    const curNode = curNodeOf(k);
     const newNode = parsedNodeOf(pk, tree);
     const nameChanged = pk.name !== k.name;
     const contentChanged = pk.content !== k.content;
@@ -404,13 +414,11 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
       continue;
     }
     const nameChanged = pc.name !== c.name;
-    let parentChanged = false;
-    if (c.level === 2) {
-      const parentCh = pc.parentKey !== null ? tree.chapters.find((x) => x.key === pc.parentKey) : null;
-      const newParent = parentCh ? (parentCh.id !== null ? `id:${parentCh.id}` : "new") : "none";
-      const curParent = c.parentId === null ? "none" : `id:${c.parentId}`;
-      parentChanged = curParent !== newParent;
-    }
+    // 父章变更判定（N 级通用）：现父 = c.parentId，解析父 = pc.parentKey（id:/new/none 三态）
+    const parentCh = pc.parentKey !== null ? tree.chapters.find((x) => x.key === pc.parentKey) : null;
+    const newParent = parentCh ? (parentCh.id !== null ? `id:${parentCh.id}` : "new") : "none";
+    const curParent = c.parentId === null ? "none" : `id:${c.parentId}`;
+    const parentChanged = curParent !== newParent;
     if (!nameChanged && !parentChanged) continue;
     const entry: ChapterDiffUpdate = { id: c.id, sort: (parsedChSort.get(pc.key) ?? 0) + 1 };
     if (nameChanged) entry.name = pc.name;
@@ -470,9 +478,30 @@ export function applyKpTreeDiff(data: AppData, courseId: number, tree: ParsedKpT
       parentId: add.parentKey === null ? null : chKeyToId.get(add.parentKey) ?? null,
       siyuanBlockId: null,
       name: add.name,
-      level: add.level,
+      level: 1, // 占位，下方按父链深度统一校正
       sort: add.sort,
     });
+  }
+  // level = 父链深度（根 1）：新增章与换父章统一重算（文件序父先于子，最终列表中父链完整）
+  const chainDepth = (id: number): number => {
+    let cur: Chapter | undefined = chapters.find((c) => c.id === id);
+    let depth = 0;
+    let guard = 0;
+    while (cur && guard++ < 16) {
+      depth++;
+      const parentId = cur.parentId;
+      cur = parentId === null ? undefined : chapters.find((c) => c.id === parentId);
+    }
+    return depth;
+  };
+  for (const add of diff.chaptersAdded) {
+    const ch = chapters.find((c) => c.id === chKeyToId.get(add.key)!);
+    if (ch) ch.level = chainDepth(ch.id);
+  }
+  for (const up of diff.chaptersUpdated) {
+    if (up.parentKey === undefined) continue;
+    const ch = chapters.find((c) => c.id === up.id);
+    if (ch) ch.level = chainDepth(ch.id);
   }
 
   // 新增知识点按文件顺序分配新 id
@@ -521,15 +550,21 @@ export function applyKpTreeDiff(data: AppData, courseId: number, tree: ParsedKpT
     });
   }
 
-  // 刷新受影响的 chapterName：被更新的 KP、新增 KP、以及被改名章节子树下的 KP
+  // 刷新受影响的 chapterName：被更新的 KP、新增 KP、以及归属链（自身→顶章）上任一章节被改名（N 级通用）
   const renamedIds = new Set(diff.chaptersUpdated.filter((c) => c.name).map((c) => c.id));
   const finalKps = knowledgePoints.map((k) => {
     if (k.courseId !== courseId) return k;
     let refresh = updatedIds.has(k.id) || addedIds.has(k.id);
     if (!refresh && renamedIds.size > 0 && k.chapterId !== null) {
-      const unit = chapters.find((c) => c.id === k.chapterId && c.level === 2);
-      if (renamedIds.has(k.chapterId) || (unit && unit.parentId !== null && renamedIds.has(unit.parentId))) {
-        refresh = true;
+      let cur: Chapter | undefined = chapters.find((c) => c.id === k.chapterId);
+      let guard = 0;
+      while (cur && guard++ < 16) {
+        if (renamedIds.has(cur.id)) {
+          refresh = true;
+          break;
+        }
+        const parentId = cur.parentId;
+        cur = parentId === null ? undefined : chapters.find((c) => c.id === parentId);
       }
     }
     if (!refresh) return k;

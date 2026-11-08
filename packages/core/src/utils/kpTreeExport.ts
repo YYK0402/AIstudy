@@ -1,5 +1,6 @@
 import type { Chapter, Course, KnowledgePoint, Mastery, Question, WrongQuestion } from "../types/appData";
 import { formatLocalDate } from "../api/format";
+import { buildChapterTreeFlat, type NestedChapter } from "./outline";
 
 export interface KpTreeExportOptions {
   /** 含掌握度 tag（默认 true） */
@@ -42,8 +43,9 @@ function buildHeader(course: Pick<Course, "id" | "name">, date: string, filtered
 
 /**
  * 知识点树导出 Markdown（课程级，往返安全）：
- * 说明头（身份锚点+使用说明）→ 顶章 H1 → 小节 H2 → 知识点 bullet（章直属列在小节前），
+ * 说明头（身份锚点+使用说明）→ N 级标题（# 深度 = 节点层级，上限 6）→ 知识点 bullet（章直属列在其子节前），
  * 章节/条目带 ch/kp 身份标记，知识点内容缩进导出（多段落保留）。
+ * 计数后缀：顶层节点 = 整棵子树 KP 数、非顶层 = 直属数（与旧两级格式一致）；统计行「x 章」= 顶层节点数。
  * 孤儿（chapterId 空）与幽灵（chapterId 指向不存在节点）知识点归末尾「未归章」（虚拟分组，无标记）。
  * 过滤导出（onlyUnmastered）在说明头声明不可导入，防止已掌握知识点被误删。
  */
@@ -79,19 +81,13 @@ export function buildKpTreeMarkdown(
   }
 
   const sortByIds = (list: KnowledgePoint[]) => [...list].sort((a, b) => a.sort - b.sort);
-  const tops = chapters.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort);
-  const topIds = new Set(tops.map((t) => t.id));
-  const unitsOf = (topId: number): Chapter[] =>
-    chapters.filter((c) => c.level === 2 && c.parentId === topId).sort((a, b) => a.sort - b.sort);
+  // N 级章节树：同级按 sort 序；孤儿章（parentId 指向已删节点）提升顶层（末尾），不丢失
+  const roots = buildChapterTreeFlat(chapters);
+  const chapterById = new Map(chapters.map((c) => [c.id, c]));
 
-  // KP 归属节点：顶章直属 / 小节 / 未归章（空 chapterId 或指向不存在节点）
-  const unitById = new Map(chapters.filter((c) => c.level === 2).map((c) => [c.id, c]));
+  // KP 归属节点：chapterId 指向现存章节即其本身（任意深度）；空/幽灵 → 未归章
   function nodeOf(k: KnowledgePoint): number | null {
-    if (k.chapterId === null) return null;
-    if (topIds.has(k.chapterId)) return k.chapterId;
-    const unit = unitById.get(k.chapterId);
-    if (unit && unit.parentId !== null && topIds.has(unit.parentId)) return unit.id;
-    return null;
+    return k.chapterId !== null && chapterById.has(k.chapterId) ? k.chapterId : null;
   }
 
   const line = (k: KnowledgePoint): string[] => {
@@ -113,18 +109,23 @@ export function buildKpTreeMarkdown(
     "",
     `# ${course.name} 知识点树`,
     "",
-    `> 导出时间 ${date} · ${tops.length} 章 · ${kps.length} 知识点（${masteredCount} 已掌握）`,
+    `> 导出时间 ${date} · ${roots.length} 章 · ${kps.length} 知识点（${masteredCount} 已掌握）`,
   ];
-  for (const t of tops) {
-    const direct = sortByIds(kps.filter((k) => nodeOf(k) === t.id));
-    const units = unitsOf(t.id);
-    const underTop = direct.length + units.reduce((n, u) => n + kps.filter((k) => nodeOf(k) === u.id).length, 0);
-    out.push("", `# ${t.name}（${underTop}） <!-- ch:${t.id} -->`, ...direct.flatMap(line));
-    for (const u of units) {
-      const ukps = sortByIds(kps.filter((k) => nodeOf(k) === u.id));
-      out.push(`## ${u.name}（${ukps.length}） <!-- ch:${u.id} -->`, ...ukps.flatMap(line));
-    }
-  }
+  // 递归输出：顶层节点空行分隔 + 整棵子树计数；更深层直属计数；# 数 = 深度（上限 6）
+  const subtreeKpCount = (node: NestedChapter): number =>
+    kps.filter((k) => nodeOf(k) === node.chapter.id).length +
+    node.children.reduce((n, child) => n + subtreeKpCount(child), 0);
+  const emitNode = (node: NestedChapter, depth: number): void => {
+    const c = node.chapter;
+    const own = sortByIds(kps.filter((k) => nodeOf(k) === c.id));
+    if (depth === 1) out.push("");
+    out.push(
+      `${"#".repeat(Math.min(depth, 6))} ${c.name}（${depth === 1 ? subtreeKpCount(node) : own.length}） <!-- ch:${c.id} -->`,
+      ...own.flatMap(line),
+    );
+    for (const child of node.children) emitNode(child, depth + 1);
+  };
+  for (const root of roots) emitNode(root, 1);
   const unassigned = sortByIds(kps.filter((k) => nodeOf(k) === null));
   if (unassigned.length > 0) {
     out.push("", `# 未归章（${unassigned.length}）`, ...unassigned.flatMap(line));

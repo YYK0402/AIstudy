@@ -43,7 +43,8 @@ export async function previewKpTreeImport(file: File, courseId: number): Promise
 
   const chapters = data.chapters.filter((c) => c.courseId === courseId);
   const kps = data.knowledgePoints.filter((k) => k.courseId === courseId);
-  const diff = computeKpTreeDiff(tree, chapters, kps);
+  // md 文件位置即归属（N 级往返）：按全深度章节 id 比较
+  const diff = computeKpTreeDiff(tree, chapters, kps, { nodeGranularity: "full" });
   return { tree, diff, courseVerified: tree.courseId !== null || tree.courseName !== null, fileName: file.name };
 }
 

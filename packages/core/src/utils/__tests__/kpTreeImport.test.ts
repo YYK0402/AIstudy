@@ -47,11 +47,11 @@ const KPS = [
   kp(4, 999, "proficient", 1, "kp4"),
 ];
 
-function makeData(): AppData {
+function makeData(chapters: Chapter[] = CHAPTERS, kps: KnowledgePoint[] = KPS): AppData {
   const data = createEmptyData();
   data.courses = [{ id: 1, siyuanDocId: null, name: "财务管理学", description: "", target: "", totalCycle: "", status: "active", createTime: "2026-01-01T00:00:00Z" }];
-  data.chapters = [...CHAPTERS];
-  data.knowledgePoints = [...KPS];
+  data.chapters = [...chapters];
+  data.knowledgePoints = [...kps];
   return data;
 }
 
@@ -341,5 +341,172 @@ describe("applyKpTreeDiff", () => {
     expect(next.knowledgePoints.find((k) => k.id === 1)!.chapterName).toBe("存货总论");
     expect(next.knowledgePoints.find((k) => k.id === 2)!.chapterName).toBe("第一节 存货计价");
     expect(next.knowledgePoints.find((k) => k.id === 3)!.chapterName).toBe("");
+  });
+});
+
+// ---------- N 级（L3+）：栈式解析 / diff 泛化 / roundtrip ----------
+
+const CH3 = [
+  chapter(10, 1, null, 1, "第一章 存货"),
+  chapter(11, 2, 10, 1, "第一节 计价"),
+  chapter(12, 3, 11, 1, "1.1 方法"),
+  chapter(13, 4, 12, 1, "1.1.1 细节"),
+  chapter(14, 3, 11, 2, "1.2 计量"),
+  chapter(20, 1, null, 2, "第二章 固定资产"),
+];
+const KPS3 = [
+  kp(1, 10, "known", 1, "kp1", "内容1"),
+  kp(2, 11, "mastered", 1, "kp2"),
+  kp(3, 12, "unlearn", 1, "kp3"),
+  kp(4, 13, "known", 1, "kp4"),
+  kp(5, 14, "mastered", 1, "kp5"),
+  kp(6, 999, "proficient", 1, "kp6"),
+];
+
+describe("N 级解析（栈式）", () => {
+  it("N 级导出往返解析：level=# 数、parentKey=直属父章、跨章栈回退、KP 按标题深度归属", () => {
+    const md = buildKpTreeMarkdown(COURSE, CH3, KPS3, [], [], { date: "2026-11-03" });
+    const tree = roundTrip(md);
+    const keyOf = (id: number) => tree.chapters.find((c) => c.id === id)!.key;
+    expect(tree.chapters).toHaveLength(6);
+    expect(tree.chapters.find((c) => c.id === 11)!.level).toBe(2);
+    expect(tree.chapters.find((c) => c.id === 11)!.parentKey).toBe(keyOf(10));
+    expect(tree.chapters.find((c) => c.id === 12)!.level).toBe(3);
+    expect(tree.chapters.find((c) => c.id === 12)!.parentKey).toBe(keyOf(11));
+    expect(tree.chapters.find((c) => c.id === 13)!.level).toBe(4);
+    expect(tree.chapters.find((c) => c.id === 13)!.parentKey).toBe(keyOf(12));
+    // 1.2 与 1.1 是兄弟：#### 之后的 ### 回退到「第一节」而非挂在 1.1 下
+    expect(tree.chapters.find((c) => c.id === 14)!.level).toBe(3);
+    expect(tree.chapters.find((c) => c.id === 14)!.parentKey).toBe(keyOf(11));
+    // KP 归属跟随标题深度
+    expect(tree.kps.find((k) => k.id === 3)!.chapterKey).toBe(keyOf(12));
+    expect(tree.kps.find((k) => k.id === 4)!.chapterKey).toBe(keyOf(13));
+  });
+
+  it("跳级容错：# 后直接 ### 挂顶章（level=3、父=顶章），随后 ## 回退顶章", () => {
+    const res = parseKpTreeMarkdown(
+      [
+        "# 财务管理学 知识点树",
+        "# 第一章 存货（0） <!-- ch:10 -->",
+        "### 直接三级小节（0） <!-- ch:12 -->",
+        "- kp3 [未学习] <!-- kp:3 -->",
+        "## 第二节（0） <!-- ch:15 -->",
+      ].join("\n"),
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const t = res.tree;
+    expect(t.chapters.find((c) => c.id === 12)!.level).toBe(3);
+    expect(t.chapters.find((c) => c.id === 12)!.parentKey).toBe(t.chapters.find((c) => c.id === 10)!.key);
+    expect(t.chapters.find((c) => c.id === 15)!.level).toBe(2);
+    expect(t.chapters.find((c) => c.id === 15)!.parentKey).toBe(t.chapters.find((c) => c.id === 10)!.key);
+    expect(t.kps.find((k) => k.id === 3)!.chapterKey).toBe(t.chapters.find((c) => c.id === 12)!.key);
+  });
+
+  it("旧两层文件不变量：## 先于 # 出现仍报错", () => {
+    const res = parseKpTreeMarkdown("# 财务管理学 知识点树\n### 无主小节\n");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.line).toBeGreaterThan(0);
+  });
+});
+
+describe("N 级 diff/apply（full 粒度）", () => {
+  it("L3 KP 上移（#### → ##）：updated 带 chapterKey，apply 改 chapterId", () => {
+    const md = buildKpTreeMarkdown(COURSE, CH3, KPS3, [], [], { date: "2026-11-03" })
+      .replace("- kp4 [了解] <!-- kp:4 -->\n", "")
+      .replace("## 第一节 计价（1） <!-- ch:11 -->\n", "## 第一节 计价（1） <!-- ch:11 -->\n- kp4 [了解] <!-- kp:4 -->\n");
+    const tree = roundTrip(md);
+    const diff = computeKpTreeDiff(tree, CH3, KPS3, { nodeGranularity: "full" });
+    const u = diff.updated.find((x) => x.id === 4)!;
+    expect(u.chapterKey).toBe(tree.chapters.find((c) => c.id === 11)!.key);
+    expect(diff.unchangedKps).toBe(5);
+    const next = applyKpTreeDiff(makeData(CH3, KPS3), 1, tree, diff);
+    expect(next.knowledgePoints.find((k) => k.id === 4)!.chapterId).toBe(11);
+  });
+
+  it("L3 章换父（### 挪到新增 ## 下）：parentChanged 泛化检测，apply level=父链深度", () => {
+    const md = [
+      "# 财务管理学 知识点树",
+      "# 第一章（2） <!-- ch:10 -->",
+      "## 第一节（1） <!-- ch:11 -->",
+      "### 小节A（1） <!-- ch:12 -->",
+      "- kp3 [未学习] <!-- kp:3 -->",
+      "## 第二节（1）",
+      "### 小节B（1） <!-- ch:14 -->",
+      "- kp5 [掌握] <!-- kp:5 -->",
+    ].join("\n");
+    const chs = [
+      chapter(10, 1, null, 1, "第一章"),
+      chapter(11, 2, 10, 1, "第一节"),
+      chapter(12, 3, 11, 1, "小节A"),
+      chapter(14, 3, 11, 2, "小节B"),
+    ];
+    const kps = [kp(3, 12, "unlearn", 1, "kp3"), kp(5, 14, "mastered", 1, "kp5")];
+    const data = makeData(chs, kps);
+    const tree = roundTrip(md);
+    const diff = computeKpTreeDiff(tree, chs, kps, { nodeGranularity: "full" });
+    expect(diff.chaptersAdded).toHaveLength(1);
+    expect(diff.chaptersAdded[0].name).toBe("第二节");
+    const u14 = diff.chaptersUpdated.find((c) => c.id === 14)!;
+    expect(u14.parentKey).toBe(diff.chaptersAdded[0].key);
+    // kp5 归属节点（14）未变，只是父章移动 → 条目零变更
+    expect(diff.updated).toHaveLength(0);
+    expect(diff.unchangedKps).toBe(2);
+    const next = applyKpTreeDiff(data, 1, tree, diff);
+    const sec2 = next.chapters.find((c) => c.name === "第二节")!;
+    expect(sec2.level).toBe(2);
+    expect(sec2.parentId).toBe(10);
+    const ch14 = next.chapters.find((c) => c.id === 14)!;
+    expect(ch14.parentId).toBe(sec2.id);
+    expect(ch14.level).toBe(3);
+    expect(next.knowledgePoints.find((k) => k.id === 5)!.chapterId).toBe(14);
+  });
+});
+
+describe("roundtrip（导出 → 导入 ≡ 原始）", () => {
+  it("两级课程：full 粒度零 diff", () => {
+    const tree = roundTrip();
+    const diff = computeKpTreeDiff(tree, CHAPTERS, KPS, { nodeGranularity: "full" });
+    expect(diff.updated).toHaveLength(0);
+    expect(diff.added).toHaveLength(0);
+    expect(diff.removed).toHaveLength(0);
+    expect(diff.unchangedKps).toBe(4);
+    expect(diff.chaptersUpdated).toHaveLength(0);
+    expect(diff.chaptersAdded).toHaveLength(0);
+    expect(diff.chaptersRemoved).toHaveLength(0);
+  });
+
+  it("四级课程：import(export(x)) 结构等价（id/名/level/父子/KP 归属/内容）+ 零 diff + apply 数据不变", () => {
+    const md = buildKpTreeMarkdown(COURSE, CH3, KPS3, [], [], { date: "2026-11-03" });
+    const tree = roundTrip(md);
+    const keyOf = (id: number) => tree.chapters.find((c) => c.id === id)!.key;
+    // 章节结构等价：level = 原始 level（= 父链深度），parentKey = 原始父子
+    for (const c of CH3) {
+      const pc = tree.chapters.find((x) => x.id === c.id)!;
+      expect(pc.name).toBe(c.name);
+      expect(pc.level).toBe(c.level);
+      expect(pc.parentKey).toBe(c.parentId === null ? null : keyOf(c.parentId));
+    }
+    // KP 归属/内容等价（幽灵 999 → 未归章）
+    for (const k of KPS3) {
+      const pk = tree.kps.find((x) => x.id === k.id)!;
+      const expectKey = k.chapterId === null || !CH3.some((c) => c.id === k.chapterId) ? null : keyOf(k.chapterId);
+      expect(pk.chapterKey).toBe(expectKey);
+      expect(pk.content).toBe(k.content);
+    }
+    // 导入自身导出 = 零 diff
+    const diff = computeKpTreeDiff(tree, CH3, KPS3, { nodeGranularity: "full" });
+    expect(diff.updated).toHaveLength(0);
+    expect(diff.added).toHaveLength(0);
+    expect(diff.removed).toHaveLength(0);
+    expect(diff.unchangedKps).toBe(KPS3.length);
+    expect(diff.chaptersUpdated).toHaveLength(0);
+    expect(diff.chaptersAdded).toHaveLength(0);
+    expect(diff.chaptersRemoved).toHaveLength(0);
+    // apply 零 diff：数据逐字段不变
+    const data = makeData(CH3, KPS3);
+    const next = applyKpTreeDiff(data, 1, tree, diff);
+    expect(next.chapters).toEqual(data.chapters);
+    expect(next.knowledgePoints).toEqual(data.knowledgePoints);
   });
 });

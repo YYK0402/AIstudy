@@ -278,6 +278,32 @@ describe("buildSiyuanParsedTree 读回分流", () => {
     expect(diff.added[0].chapterKey).toBe("id:10");
   });
 
+  it("L3 章存在时读回零误判：章节 diff 全空（parentKey 按父链如实映射，防父章变更误报）", () => {
+    const chC: Chapter = { id: 12, courseId: 1, parentId: 11, siyuanBlockId: null, name: "小节C", level: 3, sort: 1 };
+    const chapters3 = [chA, chB, chC];
+    // KP 归 L3（12）：文档落点 = 最近 ≤2 祖先「节B」（11），区写在 docB
+    const kps = [kp({ id: 1, chapterId: 12 })];
+    const docB = "# 节B\n\n" + renderKpRegion(kps);
+    const built = buildSiyuanParsedTree({
+      course,
+      chapters: chapters3,
+      kps,
+      docRegions: { docB: { h: parseKpRegion(docB).hash, ids: [1] } },
+      docs: new Map([
+        ["docA", "# 章A\n\n用户手写，没有区"],
+        ["docB", docB],
+        ["doc-course", "# 测试课程"],
+      ]),
+    });
+    const diff = computeKpTreeDiff(built.tree, chapters3, kps);
+    expect(diff.chaptersUpdated).toHaveLength(0);
+    expect(diff.chaptersAdded).toHaveLength(0);
+    expect(diff.chaptersRemoved).toHaveLength(0);
+    expect(diff.updated).toHaveLength(0);
+    expect(diff.removed).toHaveLength(0);
+    expect(diff.unchangedKps).toBe(1);
+  });
+
   it("多文档归章：章文档→顶章、节文档→unit、课程文档→未归章；文档不存在=跳过不清空", () => {
     const kps = [kp({ id: 1, chapterId: null })]; // 未归章
     const built = buildSiyuanParsedTree({
