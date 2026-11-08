@@ -1182,34 +1182,18 @@ export interface MergeResult {
   failed: { materialName: string; reason: string; outline: OutlineNode[] }[];
 }
 
-/** 既有课程章节树 → 合并种子（id 重排为下标，保持 sort 序与父子关系） */
+/** 既有章节树 → 种子节点：buildChapterTree 前序展平（=文档序，父必在子前，id=序号，chapterId 侧信道） */
 export function seedNodesFromChapters(chapters: Chapter[], courseId: number): MergeNode[] {
-  const ofCourse = chapters
-    .filter((c) => c.courseId === courseId)
-    .sort((a, b) => a.sort - b.sort);
-  const byId = new Map(ofCourse.map((c) => [c.id, c]));
   const out: MergeNode[] = [];
-  const indexByChapter = new Map<number, number>();
-  // 按深度递增处理，保证父先于子入列
-  const sorted = [...ofCourse].sort((a, b) => depth(byId, a) - depth(byId, b));
-  for (const ch of sorted) {
-    const parentIdx = ch.parentId === null ? null : indexByChapter.get(ch.parentId) ?? null;
-    indexByChapter.set(ch.id, out.length);
-    out.push({ id: out.length, parent: parentIdx, name: ch.name, variants: [], chapterId: ch.id });
-  }
-  // 孤儿（parentId 指向已删节点）按 sort 排到同级末尾已由上面处理；重排 id 为下标
+  const walk = (list: ReturnType<typeof buildChapterTree>, parentIdx: number | null): void => {
+    for (const it of list) {
+      const idx = out.length;
+      out.push({ id: idx, parent: parentIdx, name: it.chapter.name, variants: [], chapterId: it.chapter.id });
+      walk(it.children, idx);
+    }
+  };
+  walk(buildChapterTree(chapters, courseId), null);
   return out;
-}
-
-function depth(byId: Map<number, Chapter>, ch: Chapter): number {
-  let d = 1;
-  let p = ch.parentId;
-  let guard = 0;
-  while (p !== null && byId.has(p) && guard++ < 16) {
-    d++;
-    p = byId.get(p)!.parentId;
-  }
-  return d;
 }
 
 export interface ParsedMerge {
@@ -1286,18 +1270,21 @@ export function parseMergeResponse(content: string, inputCount: number, outlineC
   return { nodes, mapping };
 }
 
-/** 大 outline 按顶层（level 1）边界拆成 ≤MAX_OUTLINE_PER_CALL 的连续片 */
+/** 大 outline 拆片：切点取 (start, start+150] 内最后一个顶层（level 1）边界；无边界则硬切兜底 */
 export function splitOutlineForMerge(outline: OutlineNode[]): { start: number; nodes: OutlineNode[] }[] {
   if (outline.length <= MAX_OUTLINE_PER_CALL) return [{ start: 0, nodes: outline }];
   const parts: { start: number; nodes: OutlineNode[] }[] = [];
   let start = 0;
-  for (let i = MAX_OUTLINE_PER_CALL; i < outline.length; i++) {
-    if (outline[i].level === 1) {
-      parts.push({ start, nodes: outline.slice(start, i) });
-      start = i;
+  while (start < outline.length) {
+    const endLimit = Math.min(start + MAX_OUTLINE_PER_CALL, outline.length);
+    let cut = -1;
+    for (let i = start + 1; i < endLimit; i++) {
+      if (outline[i].level === 1) cut = i;
     }
+    const end = cut >= 0 ? cut : endLimit;
+    parts.push({ start, nodes: outline.slice(start, end) });
+    start = end;
   }
-  parts.push({ start, nodes: outline.slice(start) });
   return parts;
 }
 
@@ -1435,6 +1422,10 @@ export function cancelTocMergeTask(courseId: number): void {
 ```
 
 说明：`startTocMergeTask` 完成时派发 `siyuan-ai-study:toc-merged` 自定义事件（detail 带 `courseId` 与 `MergeResult`），Task 8 在弹窗组件里监听该事件打开预览——避免 tocMerge 反向 import stores/modal（保持 api 层不依赖组件层，与现有 `DATA_SAVED_EVENT` 模式一致）。
+
+**实现裁决（Task 5 执行时，commit 60aacb4）**：
+- `seedNodesFromChapters`：原草稿「深度序」排序 ≠ 文档序（章2 会排到章1 子节之前，prompt 树文本乱序）→ 改 `buildChapterTree` 前序展平（上段代码即修正版）。
+- `splitOutlineForMerge`：原草稿「切点向前退」算法过不了 brief 自身测试（3×81 节点时首片 162>150）→ 改「取 (start, start+150] 内最后一个顶层边界；无边界硬切兜底」（见下方实现版）。
 
 - [ ] **Step 4: 跑测试确认通过 + 类型检查**
 
