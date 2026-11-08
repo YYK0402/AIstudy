@@ -8,6 +8,7 @@ import { courseTaskId } from "../stores/notify";
 import { appendWeakPointTaskInData, completeKpTasksInData, logStudyInData } from "./studyData";
 import { hasActiveExtract } from "./extractState";
 import { countPlanDays, distributeKpsByDay } from "./planSchedule";
+import { nearestTopAncestorId } from "../utils/outline";
 
 // learn 骨架由系统确定性生成（100% 挂 kpId），AI 只负责穿插 review/practice 补充任务
 interface AiPlanExtraItem {
@@ -461,13 +462,14 @@ export async function generateStudyPlan(
   // 章末测评 + 结业模考：系统确定性排期（章末=该章最后一个学习日；无模型配置也能出、位置精确）
   const courseChapters = data.chapters.filter((c) => c.courseId === courseId);
   const chapterById = new Map(courseChapters.map((c) => [c.id, c]));
+  // KP 归属最近 level-1 祖先（子树全深度 KP 计入该顶层章最后学习日）；幽灵节点跳过
   const chapterLastDay = new Map<number, string>();
   for (const { date, kps: dk } of dayKps) {
     for (const kp of dk) {
       if (kp.chapterId == null) continue;
-      const node = chapterById.get(kp.chapterId);
-      const chId = node?.level === 2 && node.parentId != null ? node.parentId : kp.chapterId;
-      chapterLastDay.set(chId, date);
+      const topId = nearestTopAncestorId(kp.chapterId, chapterById);
+      if (topId === null) continue;
+      chapterLastDay.set(topId, date);
     }
   }
   for (const ch of courseChapters.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort)) {

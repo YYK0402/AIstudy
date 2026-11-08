@@ -165,6 +165,18 @@ export function nearestDocAncestorId(chapters: Chapter[], nodeId: number): numbe
   return cur?.id ?? nodeId;
 }
 
+/** 最近 level-1 祖先 id（parentId 链上溯至 level===1；自身 level 1 取自身）；
+ *  节点不存在/链断/环致守卫耗尽返回 null（KP 归属口径，章末测评与掌握热力图共用） */
+export function nearestTopAncestorId(chapterId: number, chapterById: Map<number, Chapter>): number | null {
+  let cur: Chapter | undefined = chapterById.get(chapterId);
+  let guard = 0;
+  while (cur && guard++ < 16) {
+    if (cur.level === 1) return cur.id;
+    cur = cur.parentId === null ? undefined : chapterById.get(cur.parentId);
+  }
+  return null;
+}
+
 /** nodeId 是否 ancestorId 的严格后代（自身不算） */
 export function isDescendant(chapters: Chapter[], ancestorId: number, nodeId: number): boolean {
   const byId = new Map(chapters.map((c) => [c.id, c]));

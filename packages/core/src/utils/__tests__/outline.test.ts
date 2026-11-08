@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Chapter } from "../../api";
 import {
   alignOutlineSpans, buildChapterTree, buildChapterTreeFlat, buildOutlineTree,
-  chapterPathText, isDescendant, nearestDocAncestorId, nodePathOf,
+  chapterPathText, isDescendant, nearestDocAncestorId, nearestTopAncestorId, nodePathOf,
 } from "../outline";
 
 const text = [
@@ -145,5 +145,23 @@ describe("nearestDocAncestorId / chapterPathText / isDescendant", () => {
     expect(isDescendant(chapters, 1, 4)).toBe(true);
     expect(isDescendant(chapters, 4, 1)).toBe(false);
     expect(isDescendant(chapters, 2, 2)).toBe(false);
+  });
+});
+
+describe("nearestTopAncestorId", () => {
+  const chapters = [ch(1, null, 1, 1), ch(2, 1, 2, 1), ch(3, 2, 3, 1), ch(4, 3, 4, 1)];
+  const byId = new Map(chapters.map((c) => [c.id, c]));
+  it("任意深度上溯至最近 level-1 祖先；自身 level 1 取自身", () => {
+    expect(nearestTopAncestorId(1, byId)).toBe(1);
+    expect(nearestTopAncestorId(2, byId)).toBe(1);
+    expect(nearestTopAncestorId(3, byId)).toBe(1);
+    expect(nearestTopAncestorId(4, byId)).toBe(1);
+  });
+  it("多顶章各归各的；幽灵节点/链断返回 null", () => {
+    const multi = [ch(1, null, 1, 1), ch(5, null, 1, 2), ch(51, 5, 2, 1), ch(9, 99, 3, 1)];
+    const m = new Map(multi.map((c) => [c.id, c]));
+    expect(nearestTopAncestorId(51, m)).toBe(5);
+    expect(nearestTopAncestorId(9, m)).toBeNull(); // 链断（父 99 不存在，自身 level 3）
+    expect(nearestTopAncestorId(404, byId)).toBeNull(); // 幽灵节点
   });
 });

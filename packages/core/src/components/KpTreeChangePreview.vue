@@ -91,7 +91,10 @@ function chName(key: string | null): string {
 }
 
 function chAddBadge(a: { level: number; parentKey: string | null }): string {
-  return a.level === 1 ? "新增顶章" : `新增小节（${chName(a.parentKey)}）`;
+  // 按深度措辞：1=顶章 / 2=小节 / 3+=深层节点（N 级通用，层级感随深度递增）
+  if (a.level === 1) return "新增顶章";
+  if (a.level === 2) return `新增小节（${chName(a.parentKey)}）`;
+  return `新增深层节点（${chName(a.parentKey)}）`;
 }
 
 function kpLabel(id: number): string {

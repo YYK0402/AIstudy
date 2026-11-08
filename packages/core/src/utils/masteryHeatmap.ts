@@ -1,5 +1,6 @@
 // 掌握度热力图：按顶层章分组的知识点矩阵（报告页热力图 / 后续树形掌握等级图可复用）
 import type { Chapter, KnowledgePoint, Mastery } from "../api";
+import { nearestTopAncestorId } from "./outline";
 
 export interface HeatmapKpCell {
   id: number;
@@ -38,17 +39,8 @@ export function buildMasteryHeatmap(kps: KnowledgePoint[], chapters: Chapter[]):
   }
   const unassigned: HeatmapKpCell[] = [];
   for (const k of kps) {
-    // 最近 level-1 祖先：沿 parentId 链上溯（自身 level 1 取自身）
-    let cur: Chapter | undefined = k.chapterId === null ? undefined : byId.get(k.chapterId);
-    let topId: number | null = null;
-    let guard = 0;
-    while (cur && guard++ < 16) {
-      if (cur.level === 1) {
-        topId = cur.id;
-        break;
-      }
-      cur = cur.parentId === null ? undefined : byId.get(cur.parentId);
-    }
+    // 最近 level-1 祖先（与章末测评共用，见 outline.nearestTopAncestorId）
+    const topId = k.chapterId === null ? null : nearestTopAncestorId(k.chapterId, byId);
     const row = topId !== null ? rows.get(topId) : null;
     const cell: HeatmapKpCell = { id: k.id, name: k.name, mastery: k.mastery };
     if (row) {
