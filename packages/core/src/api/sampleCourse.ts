@@ -3,6 +3,7 @@
 // 再复用 generateStudyPlan 生成现成学习计划（无 gen_plan 绑定时走确定性骨架，无需 key）。
 import type { AppData } from "../types/appData";
 import { SAMPLE_COURSE } from "../constants/sampleCourse";
+import { getBridgeSafe } from "../bridge";
 import { applyImportToData, remapCoursePackage } from "./coursePackage";
 import { generateStudyPlan } from "./plan";
 import { getData, saveData } from "./storage";
@@ -42,7 +43,17 @@ export async function createSampleCourse(): Promise<SampleCourseResult> {
     return { courseId: sample.id, courseName: sample.name, counts: sampleCounts(existing, sample.id) };
   }
 
-  const remapped = remapCoursePackage(SAMPLE_COURSE, existing);
+  // 示例课同样必须传磁盘课程文件 id（diskIds）：删课后磁盘遗留孤儿文件 course-<max+1>，
+  // 若只按注册表分配 id 会与之碰撞 → 提交时外部变更检测判为外部改动、原子中止 → 重试 id 不变 → 永久死锁
+  //（防回归，对齐 2026-11-07 孤儿文件事故加固意图；course.ts / coursePackage.ts 既有写法）。
+  // 列举失败退化为空 = 仅按注册表分配（旧行为），不阻塞示例课。
+  let diskCourseIds: number[] = [];
+  try {
+    diskCourseIds = (await getBridgeSafe()?.listCourseFileIds?.()) ?? [];
+  } catch {
+    diskCourseIds = [];
+  }
+  const remapped = remapCoursePackage(SAMPLE_COURSE, existing, diskCourseIds);
   // 标记示例课 + 统一创建时间为添加时刻（卡片「创建于」显示准确）
   const stamp = now();
   remapped.course.isSample = true;

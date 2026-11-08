@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createEmptyData } from "../../types/appData";
-import type { AppData } from "../../types/appData";
+import type { AppData, Course } from "../../types/appData";
 import { setBridge } from "../../bridge";
 import type { StudyBridge } from "../../bridge/types";
 
@@ -10,17 +10,34 @@ let store: AppData = createEmptyData();
 (globalThis as Record<string, unknown>).window = {
   addEventListener: () => undefined,
   dispatchEvent: () => true,
-
 };
-setBridge({
+// 基础桥：有状态数据读写（磁盘课程文件 id 列举由各测试按需注入）
+function makeBaseBridge(): StudyBridge {
+  return {
     getData: async () => store,
     saveData: async (d: AppData) => {
       store = d;
       return { code: 0, msg: "" };
     },
-  } as unknown as StudyBridge);
+  } as unknown as StudyBridge;
+}
+setBridge(makeBaseBridge());
 
 const { createSampleCourse, hasSampleCourse } = await import("../sampleCourse");
+
+/** 构造普通课程（模拟注册表既有课程） */
+function makeCourse(id: number, name: string): Course {
+  return {
+    id,
+    siyuanDocId: null,
+    name,
+    description: "",
+    target: "",
+    totalCycle: "",
+    status: "active",
+    createTime: "2026-11-01T00:00:00.000Z",
+  };
+}
 
 beforeEach(() => {
   store = createEmptyData();
@@ -88,5 +105,37 @@ describe("createSampleCourse", () => {
     expect(hasSampleCourse(store)).toBe(false);
     await createSampleCourse();
     expect(hasSampleCourse(store)).toBe(true);
+  });
+
+  it("磁盘孤儿课程文件：示例课 id 跳过孤儿 id（2026-11-07 删最大 id 课程后导入死锁回归）", async () => {
+    // 注册表已有课程 1/2（max id 2）；磁盘有删课程 3 遗留的孤儿文件 course-3
+    store.courses.push(makeCourse(1, "课程A"), makeCourse(2, "课程B"));
+    const bridge = makeBaseBridge();
+    bridge.listCourseFileIds = async () => [1, 2, 3];
+    setBridge(bridge);
+    const res = await createSampleCourse();
+    // 不传 diskIds 会分配 max(注册表)+1=3，与孤儿文件 course-3 碰撞 → 提交原子中止 → 重试 id 不变 → 永久死锁；须跳过取 4
+    expect(res.courseId).toBe(4);
+    expect(store.courses.find((c) => c.id === 4)?.isSample).toBe(true);
+  });
+
+  it("磁盘文件 id 列举失败（抛错/方法缺失）：退化为仅注册表分配（旧行为不崩、不阻塞示例课）", async () => {
+    // 情形 1：列举抛错
+    store.courses.push(makeCourse(1, "课程A"), makeCourse(2, "课程B"));
+    const throwingBridge = makeBaseBridge();
+    throwingBridge.listCourseFileIds = async () => {
+      throw new Error("列举失败");
+    };
+    setBridge(throwingBridge);
+    const res = await createSampleCourse();
+    expect(res.courseId).toBe(3);
+    expect(store.courses.find((c) => c.id === 3)?.isSample).toBe(true);
+    // 情形 2：宿主未实现列举方法（如 fnos 端 bridge-shim 无 listCourseFileIds）
+    store = createEmptyData();
+    store.courses.push(makeCourse(1, "课程A"));
+    setBridge(makeBaseBridge());
+    const res2 = await createSampleCourse();
+    expect(res2.courseId).toBe(2);
+    expect(store.courses.find((c) => c.id === 2)?.isSample).toBe(true);
   });
 });
