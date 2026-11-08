@@ -27,6 +27,10 @@ function unit(id: number, parentId: number | null, sort: number, name = `节${id
   return { id, courseId: 1, parentId, siyuanBlockId: null, name, level: 2, sort };
 }
 
+function sub(id: number, parentId: number, sort: number, name = `目${id}`): Chapter {
+  return { id, courseId: 1, parentId, siyuanBlockId: null, name, level: 3, sort };
+}
+
 describe("levelOf", () => {
   it("total=0：未学习", () => {
     expect(levelOf(0, 0)).toBe("unlearn");
@@ -54,7 +58,7 @@ describe("buildMasteryTree", () => {
     const tree = buildMasteryTree(kps, chapters);
     expect(tree.chapters.map((c) => c.id)).toEqual([1, 2]);
     const ch1 = tree.chapters[0];
-    expect(ch1.units.map((u) => u.id)).toEqual([12, 11]);
+    expect(ch1.children.map((u) => u.id)).toEqual([12, 11]);
     // 章直属 1 个 + 小节 2 个 = 3
     expect(ch1.total).toBe(3);
     expect(ch1.mastered).toBe(2);
@@ -69,21 +73,53 @@ describe("buildMasteryTree", () => {
     expect(tree.unassigned?.kps).toEqual([1, 2]);
   });
 
-  it("chapterId=null / 孤儿小节 / 幽灵章节 id 均归 unassigned；无则 null", () => {
-    const chapters = [top(1, 1), unit(99, null, 1)]; // 孤儿小节：parentId null
+  it("chapterId=null / 幽灵章节 id 归 unassigned；孤儿节点 KP 直属该节点（提升顶层）；无则 null", () => {
+    const chapters = [top(1, 1), unit(99, null, 1)]; // 孤儿小节：parentId null → buildChapterTreeFlat 提升顶层
     const kps = [kp(1, "mastered", null), kp(2, "known", 99), kp(3, "known", 404), kp(4, "unlearn", 1)];
     const tree = buildMasteryTree(kps, chapters);
-    expect(tree.unassigned?.kps.sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    // 仅 null / 幽灵归未归章；kp2 直属孤儿节点 99
+    expect(tree.unassigned?.kps.sort((a, b) => a - b)).toEqual([1, 3]);
     expect(tree.chapters[0].total).toBe(1);
+    expect(tree.chapters[1].id).toBe(99);
+    expect(tree.chapters[1].kps).toEqual([2]);
     const none = buildMasteryTree([kp(1, "mastered", 1)], [top(1, 1)]);
     expect(none.unassigned).toBeNull();
   });
 
-  it("无知识点章节：level 未学习、units 空", () => {
+  it("无知识点章节：level 未学习、children 空", () => {
     const tree = buildMasteryTree([], [top(1, 1), unit(11, 1, 1)]);
     expect(tree.chapters[0].total).toBe(0);
     expect(tree.chapters[0].level).toBe("unlearn");
-    expect(tree.chapters[0].units).toHaveLength(1);
-    expect(tree.chapters[0].units[0].total).toBe(0);
+    expect(tree.chapters[0].children).toHaveLength(1);
+    expect(tree.chapters[0].children[0].total).toBe(0);
+  });
+
+  it("L3 用例：L1→L2→L3 各挂 KP，L3 行现于 L2 children，L2/L1 计数含 L3 KP 不重复计，幽灵归未归章", () => {
+    const chapters = [top(1, 1), unit(11, 1, 1), sub(111, 11, 1)];
+    const kps = [
+      kp(1, "mastered", 1), // L1 直属
+      kp(2, "proficient", 11), // L2 直属
+      kp(3, "known", 111), // L3 直属
+      kp(4, "unlearn", 404), // 幽灵章节
+    ];
+    const tree = buildMasteryTree(kps, chapters);
+    const ch1 = tree.chapters[0];
+    const u11 = ch1.children.find((c) => c.id === 11)!;
+    const s111 = u11.children.find((c) => c.id === 111)!;
+    // L3 行出现于 L2 children
+    expect(s111.total).toBe(1);
+    expect(s111.kps).toEqual([3]);
+    expect(s111.mastered).toBe(0); // known 不计入 mastered
+    // L2 = 直属 kp2 + 后代 kp3（L3 KP 计一次，不重复）
+    expect(u11.kps.sort((a, b) => a - b)).toEqual([2, 3]);
+    expect(u11.total).toBe(2);
+    expect(u11.mastered).toBe(1); // kp2 proficient
+    // L1 = 直属 kp1 + 后代 kp2 + 后代 kp3（L3 KP 只计一次）
+    expect(ch1.kps.sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(ch1.total).toBe(3);
+    expect(ch1.mastered).toBe(2); // kp1 mastered + kp2 proficient
+    expect(ch1.level).toBe("mastered"); // 2/3 ≈ 0.67 ≥ 0.6
+    // 幽灵 404 归未归章
+    expect(tree.unassigned?.kps).toEqual([4]);
   });
 });

@@ -1,6 +1,7 @@
-// 树形掌握等级图：两级章节树（chapter→unit）的掌握度聚合 + 等级
+// 树形掌握等级图：N 级章节树（递归嵌套）的掌握度聚合 + 等级
 // 等级规则：已掌握占比 r = (mastered+proficient)/total；r≥1 精通 / ≥0.6 掌握 / ≥0.3 了解 / 其余未学习；无知识点=未学习
 import type { Chapter, KnowledgePoint, Mastery } from "../api";
+import { buildChapterTreeFlat, type NestedChapter } from "./outline";
 
 export interface MasteryDist {
   unlearn: number;
@@ -21,7 +22,8 @@ export interface MasteryTreeNode {
 }
 
 export interface MasteryTreeChapter extends MasteryTreeNode {
-  units: MasteryTreeNode[];
+  /** 子章节节点（递归，任意深度） */
+  children: MasteryTreeChapter[];
 }
 
 export interface MasteryTree {
@@ -62,50 +64,37 @@ function toNode(id: number, name: string, kps: KnowledgePoint[]): MasteryTreeNod
 }
 
 /**
- * 构建两级章节掌握树：顶层章（sort 序）→ 其小节（sort 序）。
- * 知识点归属与 masteryHeatmap 同口径：直接挂章 / 挂其小节；其余归 unassigned。
+ * 构建 N 级章节掌握树：树结构走 buildChapterTreeFlat（同级 sort 序、孤儿提升顶层）；
+ * 知识点按 k.chapterId 直属分组（存在性判定 chapterById）；每节点计数 = 直属 + 全部后代递归聚合；
+ * chapterId 为 null 或幽灵（chapterById 无此 id）→ unassigned。
  */
 export function buildMasteryTree(kps: KnowledgePoint[], chapters: Chapter[]): MasteryTree {
-  const tops = chapters
-    .filter((c) => c.level === 1)
-    .sort((a, b) => a.sort - b.sort);
-  const topIds = new Set(tops.map((t) => t.id));
-  const unitOfTop = new Map<number, number>();
-  for (const u of chapters) {
-    if (u.level === 2 && u.parentId !== null && topIds.has(u.parentId)) {
-      unitOfTop.set(u.id, u.parentId);
-    }
-  }
+  const chapterById = new Map(chapters.map((c) => [c.id, c]));
 
-  // 按章节节点 id 分组知识点
+  // 按章节节点 id 直属分组知识点
   const byNode = new Map<number, KnowledgePoint[]>();
   const unassignedKps: KnowledgePoint[] = [];
   for (const k of kps) {
-    // 直接挂章 / 挂其小节 → 该节点本身；其余 → 未归章
-    const nodeId =
-      k.chapterId === null || (!topIds.has(k.chapterId) && !unitOfTop.has(k.chapterId)) ? null : k.chapterId;
-    if (nodeId === null) {
+    if (k.chapterId === null || !chapterById.has(k.chapterId)) {
       unassignedKps.push(k);
     } else {
-      const arr = byNode.get(nodeId);
+      const arr = byNode.get(k.chapterId);
       if (arr) arr.push(k);
-      else byNode.set(nodeId, [k]);
+      else byNode.set(k.chapterId, [k]);
     }
   }
 
-  const chaptersOut = tops.map((t) => {
-    const units = chapters
-      .filter((c) => c.level === 2 && c.parentId === t.id)
-      .sort((a, b) => a.sort - b.sort)
-      .map((u) => toNode(u.id, u.name, byNode.get(u.id) ?? []));
-    // 章节点 = 章直属 + 全部小节
-    const chapterKps = [...(byNode.get(t.id) ?? [])];
-    for (const u of units) {
-      chapterKps.push(...(byNode.get(u.id) ?? []));
-    }
-    return { ...toNode(t.id, t.name, chapterKps), units };
-  });
+  // 自底向上递归：节点 = 直属 + 全部后代（子树 KP 汇总，每 KP 在每层恰好计一次）
+  const subtreeKps = new Map<number, KnowledgePoint[]>();
+  const walk = (nc: NestedChapter): MasteryTreeChapter => {
+    const children = nc.children.map(walk);
+    const all = [...(byNode.get(nc.chapter.id) ?? [])];
+    for (const c of children) all.push(...(subtreeKps.get(c.id) ?? []));
+    subtreeKps.set(nc.chapter.id, all);
+    return { ...toNode(nc.chapter.id, nc.chapter.name, all), children };
+  };
 
+  const chaptersOut = buildChapterTreeFlat(chapters).map(walk);
   const unassigned = unassignedKps.length > 0 ? toNode(-1, "未归章", unassignedKps) : null;
   return { chapters: chaptersOut, unassigned };
 }

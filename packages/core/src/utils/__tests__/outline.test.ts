@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Chapter } from "../../api";
 import {
-  alignOutlineSpans, buildChapterTree, buildOutlineTree,
+  alignOutlineSpans, buildChapterTree, buildChapterTreeFlat, buildOutlineTree,
   chapterPathText, isDescendant, nearestDocAncestorId, nodePathOf,
 } from "../outline";
 
@@ -96,6 +96,37 @@ describe("buildChapterTree", () => {
     ], 1);
     expect(tree.map((n) => n.chapter.id)).toEqual([2, 1, 9]);
     expect(tree[0].children.map((n) => n.chapter.id)).toEqual([4, 3]);
+  });
+});
+
+describe("buildChapterTreeFlat", () => {
+  it("与 buildChapterTree 同课程数据结果一致（仅去 courseId 过滤）", () => {
+    const sameCourse = [
+      ch(1, null, 1, 2), ch(2, null, 1, 1), ch(3, 2, 2, 2), ch(4, 2, 2, 1), ch(9, 99, 3, 1),
+    ];
+    expect(buildChapterTreeFlat(sameCourse)).toEqual(buildChapterTree(sameCourse, 1));
+  });
+
+  it("含多课程数据：不过滤 courseId，全部节点建树", () => {
+    const otherCourse = (c: Chapter): Chapter => ({ ...c, courseId: 2 });
+    const mixed = [
+      ch(1, null, 1, 1),
+      ch(2, 1, 2, 1),
+      otherCourse(ch(3, null, 1, 1)),
+      otherCourse(ch(4, 3, 2, 1)),
+    ];
+    const tree = buildChapterTreeFlat(mixed);
+    expect(tree.map((n) => n.chapter.id)).toEqual([1, 3]);
+    expect(tree[0].children.map((n) => n.chapter.id)).toEqual([2]);
+    expect(tree[1].children.map((n) => n.chapter.id)).toEqual([4]);
+  });
+
+  it("孤儿 parentId 指向已删节点时提升顶层防丢失", () => {
+    const tree = buildChapterTreeFlat([
+      ch(1, null, 1, 1),
+      ch(9, 99, 3, 1), // 孤儿：99 不存在
+    ]);
+    expect(tree.map((n) => n.chapter.id)).toEqual([1, 9]);
   });
 });
 

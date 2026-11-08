@@ -108,8 +108,8 @@
                 <i v-for="m in MASTERY_ORDER" :key="m" :class="m" :style="{ width: nodePct(ch, m) + '%' }"></i>
               </div>
             </div>
-            <div v-if="ch.units.length > 0" class="mtree-children">
-              <div v-for="u in ch.units" :key="u.id" class="mtree-node sm" :class="`lv-${u.level}`">
+            <div v-if="ch.children.length > 0" class="mtree-children">
+              <div v-for="u in ch.children" :key="u.id" class="mtree-node sm" :class="`lv-${u.level}`">
                 <span class="mtree-name">{{ u.name }}</span>
                 <span class="mtree-progress">{{ u.mastered }}/{{ u.total }}</span>
                 <div class="mtree-bar">

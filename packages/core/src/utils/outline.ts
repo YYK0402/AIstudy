@@ -124,12 +124,10 @@ export interface NestedChapter {
   children: NestedChapter[];
 }
 
-/** 课程章节 flat → 嵌套树（同级按 sort；孤儿 parentId 指向已删节点时提升顶层防丢失） */
-export function buildChapterTree(chapters: Chapter[], courseId: number): NestedChapter[] {
+/** 章节 flat → 嵌套树（同级按 sort；孤儿 parentId 指向已删节点时提升顶层防丢失）；调用方自行保证传入范围 */
+export function buildChapterTreeFlat(chapters: Chapter[]): NestedChapter[] {
   type Item = { chapter: Chapter; children: NestedChapter[] };
-  const items: Item[] = chapters
-    .filter((c) => c.courseId === courseId)
-    .map((c) => ({ chapter: c, children: [] }));
+  const items: Item[] = chapters.map((c) => ({ chapter: c, children: [] }));
   const byId = new Map(items.map((it) => [it.chapter.id, it]));
   const roots: NestedChapter[] = [];
   const orphans: NestedChapter[] = [];
@@ -149,6 +147,11 @@ export function buildChapterTree(chapters: Chapter[], courseId: number): NestedC
     roots.push(...orphans);
   }
   return roots;
+}
+
+/** 课程章节 flat → 嵌套树（courseId 过滤后同 buildChapterTreeFlat） */
+export function buildChapterTree(chapters: Chapter[], courseId: number): NestedChapter[] {
+  return buildChapterTreeFlat(chapters.filter((c) => c.courseId === courseId));
 }
 
 /** 自身或最近的 level≤2 祖先 id（KP 区域/文档同步落点）；level>2 节点本身不建文档 */

@@ -22,21 +22,15 @@ function countMastered(kps: HeatmapKpCell[]): number {
 }
 
 /**
- * 按顶层章（level=chapter，sort 序）分组：章下含其小节（unit）的全部知识点；
- * 知识点 chapterId 为 null、或指向不属于任何顶层章的节点时，归末尾「未归章」行。
+ * 按顶层章（level===1，sort 序）分组：章下含其子树全部节点的知识点；
+ * KP 归属 = 最近 level-1 祖先（parentId 链上溯；自身 level 1 取自身）；
+ * chapterId 为 null、或链上无 level-1 祖先（链断/幽灵）时，归末尾「未归章」行。
  */
 export function buildMasteryHeatmap(kps: KnowledgePoint[], chapters: Chapter[]): HeatmapRow[] {
   const tops = chapters
     .filter((c) => c.level === 1)
     .sort((a, b) => a.sort - b.sort);
-  const topIds = new Set(tops.map((t) => t.id));
-  // 小节 → 所属顶层章
-  const unitOfTop = new Map<number, number>();
-  for (const u of chapters) {
-    if (u.level === 2 && u.parentId !== null && topIds.has(u.parentId)) {
-      unitOfTop.set(u.id, u.parentId);
-    }
-  }
+  const byId = new Map(chapters.map((c) => [c.id, c]));
 
   const rows = new Map<number, HeatmapRow>();
   for (const t of tops) {
@@ -44,13 +38,17 @@ export function buildMasteryHeatmap(kps: KnowledgePoint[], chapters: Chapter[]):
   }
   const unassigned: HeatmapKpCell[] = [];
   for (const k of kps) {
-    // 直接挂顶层章，或挂其小节
-    const topId =
-      k.chapterId === null
-        ? null
-        : topIds.has(k.chapterId)
-          ? k.chapterId
-          : unitOfTop.get(k.chapterId) ?? null;
+    // 最近 level-1 祖先：沿 parentId 链上溯（自身 level 1 取自身）
+    let cur: Chapter | undefined = k.chapterId === null ? undefined : byId.get(k.chapterId);
+    let topId: number | null = null;
+    let guard = 0;
+    while (cur && guard++ < 16) {
+      if (cur.level === 1) {
+        topId = cur.id;
+        break;
+      }
+      cur = cur.parentId === null ? undefined : byId.get(cur.parentId);
+    }
     const row = topId !== null ? rows.get(topId) : null;
     const cell: HeatmapKpCell = { id: k.id, name: k.name, mastery: k.mastery };
     if (row) {
