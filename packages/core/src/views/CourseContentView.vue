@@ -299,6 +299,8 @@ import {
   startExtractTask,
   docsEnabled,
   getSettings,
+  getData,
+  saveData,
 } from "../api";
 import type { Material, KnowledgePoint, Mastery, Chapter, MergeResult } from "../api";
 import { useNotifyStore, materialTaskId } from "../stores/notify";
@@ -753,11 +755,19 @@ function reidentifyChapters() {
   startTocMergeTask(currentCourseId());
 }
 
-// 资料行「重新识别结构」：单资料重跑结构识别 + 目录合并（merge 内部对无 outline 资料自动补跑阶段②，单入口）
+// 资料行「重新识别结构」= 先清目标资料 outline 再合并：merge 内部对无 outline 资料自动补跑阶段②（单入口）
 async function reidentifyStructure(m: Material) {
   const cid = currentCourseId();
   if (!cid) return;
   if (!(await confirm({ message: `将重新识别资料「${m.name}」结构并合并目录。确定继续？` }))) return;
+  // 清 outline 落库后，补跑②才会发生（有 outline 资料 merge 只走合并，不会重跑结构识别）
+  const data = await getData();
+  const target = data.materials.find((x) => x.id === m.id);
+  if (target) {
+    target.outline = "";
+    target.outlineStatus = "none";
+    await saveData(data);
+  }
   startTocMergeTask(cid, [m.id]);
 }
 

@@ -1,13 +1,13 @@
-// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / 结构识别 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
+// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / 目录合并 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
 import { defineStore } from "pinia";
 import { computed, onScopeDispose, ref } from "vue";
 import { getBridge, getBridgeSafe } from "@/bridge";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type BgTaskType = "organize" | "extract" | "outline" | "toc" | "gen_question" | "gen_flashcard" | "gen_plan";
+export type BgTaskType = "organize" | "extract" | "toc" | "gen_question" | "gen_flashcard" | "gen_plan";
 
 export interface BgTaskState {
-  /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
+  /** 唯一键：organize-{materialId} / extract-{materialId} / course-{courseId}-toc / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
   taskId: string;
   taskType: BgTaskType;
   /** 显示目标名（资料名 / 课程名） */
@@ -46,7 +46,6 @@ function isBgTaskType(v: unknown): v is BgTaskType {
   return (
     v === "organize" ||
     v === "extract" ||
-    v === "outline" ||
     v === "toc" ||
     v === "gen_question" ||
     v === "gen_flashcard" ||

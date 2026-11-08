@@ -174,11 +174,12 @@ function levelOf(nodes: MergeNode[], id: number): number {
 /**
  * 逐资料顺序语义合并。种子=现有课程树（幂等/增量）；
  * 资料无 outline 时先跑阶段②；>150 节点拆片顺序合；单资料失败不阻塞其他。
+ * onProgress 第三参 phase：outline=补跑②期间 / merge=正式合并期（进度文案区分）
  */
 export async function mergeCourseToc(
   courseId: number,
   materialIds?: number[],
-  onProgress?: (done: number, total: number) => void,
+  onProgress?: (done: number, total: number, phase: "outline" | "merge") => void,
   isAborted?: () => boolean,
 ): Promise<MergeResult> {
   const data = await getData();
@@ -197,15 +198,16 @@ export async function mergeCourseToc(
 
   for (let i = 0; i < mats.length; i++) {
     if (isAborted?.()) throw new AiCanceledError();
-    onProgress?.(i, mats.length);
     const mat = mats[i];
+    let outline = outlineOf(mat);
     try {
-      let outline = outlineOf(mat);
       if (outline.length === 0) {
+        onProgress?.(i, mats.length, "outline");
         const r = await runOutlineRecognition(mat.id, courseId, undefined, isAborted);
         if (isAborted?.()) throw new AiCanceledError();
         outline = r.nodes;
       }
+      onProgress?.(i, mats.length, "merge");
       for (const part of splitOutlineForMerge(outline)) {
         const treeText = nodes.length
           ? nodes.map((n) => `L${levelOf(nodes, n.id)} ${n.name}`).join("\n")
@@ -231,14 +233,15 @@ export async function mergeCourseToc(
       }
     } catch (e) {
       if (e instanceof AiCanceledError) throw e;
-      failed.push({ materialName: mat.name, reason: e instanceof Error ? e.message : String(e), outline: outlineOf(mat) });
+      // outline 用当前值（补跑②后的新结果；未补跑时等价 outlineOf(mat)）
+      failed.push({ materialName: mat.name, reason: e instanceof Error ? e.message : String(e), outline });
     }
   }
-  onProgress?.(mats.length, mats.length);
+  onProgress?.(mats.length, mats.length, "merge");
   return { nodes, mappings, failed };
 }
 
-// 后台任务（与 startOutlineTask 同模式）：模块级 Set 防重入 + flag Map 协作取消
+// 后台任务：模块级 Set 防重入 + flag Map 协作取消（同一课程串行，多课程并行）
 const tocMergingCourseIds = new Set<number>();
 const tocAbortFlags = new Map<number, { aborted: boolean }>();
 
@@ -259,7 +262,14 @@ export function startTocMergeTask(courseId: number, materialIds?: number[]): voi
       const result = await mergeCourseToc(
         courseId,
         materialIds,
-        (done, total) => task.progress({ done, total, message: `合并目录：资料 ${Math.min(done + 1, total)}/${total}…` }),
+        (done, total, phase) =>
+          task.progress({
+            done,
+            total,
+            message: phase === "outline"
+              ? `识别资料结构：资料 ${Math.min(done + 1, total)}/${total}…`
+              : `合并目录：资料 ${Math.min(done + 1, total)}/${total}…`,
+          }),
         () => flag.aborted,
       );
       if (flag.aborted) {

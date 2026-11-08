@@ -68,4 +68,26 @@ describe("mergeOutlineNodes", () => {
   it("无重复时顺序拼接", () => {
     expect(mergeOutlineNodes([], [{ text: "A", level: 1 }])).toEqual([{ text: "A", level: 1 }]);
   });
+  it("密集标题重叠窗：≥2 连续重复节点被正确去重", () => {
+    const acc = [{ text: "第1章", level: 1 }, { text: "1.1 甲", level: 2 }, { text: "1.2 乙", level: 2 }];
+    const next = [{ text: "1.1 甲", level: 2 }, { text: "1.2 乙", level: 2 }, { text: "1.3 丙", level: 2 }];
+    expect(mergeOutlineNodes(acc, next)).toEqual([
+      { text: "第1章", level: 1 },
+      { text: "1.1 甲", level: 2 },
+      { text: "1.2 乙", level: 2 },
+      { text: "1.3 丙", level: 2 },
+    ]);
+  });
+  it("合法连续同名同 level 标题：非重叠部分不误丢", () => {
+    // 文档中 B 连续出现 3 次；chunk1 识别到第 1 个 B（acc 尾部），
+    // chunk2 上下文重叠区含第 1 个 B + 正文含第 2/3 个 B → 只应去重重叠区那 1 个
+    const acc = [{ text: "A", level: 1 }, { text: "B", level: 2 }];
+    const next = [{ text: "B", level: 2 }, { text: "B", level: 2 }, { text: "C", level: 2 }];
+    expect(mergeOutlineNodes(acc, next)).toEqual([
+      { text: "A", level: 1 },
+      { text: "B", level: 2 },
+      { text: "B", level: 2 },
+      { text: "C", level: 2 },
+    ]);
+  });
 });

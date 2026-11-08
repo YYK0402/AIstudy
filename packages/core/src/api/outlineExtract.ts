@@ -1,9 +1,10 @@
 // 阶段② 结构识别：资料干净文本 → 分段调 AI（recognize_outline）→ 合并 N 级扁平 outline
-// → 代码侧 span 对齐定位 → 落库 Material.outline/outlineStatus（后台任务，铃铛可取消）
+// → 代码侧 span 对齐定位 → 落库 Material.outline/outlineStatus
+// ② 不作为独立 bg 任务暴露：由目录合并（mergeCourseToc）对无 outline 资料内联补跑；
+// 重试经资料菜单「重新识别结构」（先清 outline 再触发合并）
 import { getData, saveData } from "./storage";
-import { callAi, cancelAiCall, AiCanceledError, findTaskBinding } from "./ai";
+import { callAi, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
-import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { alignOutlineSpans, type OutlineNode } from "../utils/outline";
 import { stripThinkBlocks } from "../utils/aiJson";
 
@@ -78,17 +79,22 @@ export function buildOutlineChunks(text: string, size = OUTLINE_CHUNK_SIZE, tail
   });
 }
 
-/** 累积合并：丢弃 next 开头与 acc 尾部重复的节点（重叠区双识别） */
+/** 累积合并：丢弃 next 开头与 acc 尾部重叠的节点（有界最长后缀-前缀匹配，重叠窗 ≤3；
+ *  只认「next 前 d 个 === acc 末尾 d 个」的整窗匹配，避免合法连续同名标题被误丢） */
 export function mergeOutlineNodes(acc: OutlineNode[], next: OutlineNode[]): OutlineNode[] {
-  let drop = 0;
-  const tail3 = acc.slice(-3);
-  while (drop < next.length && tail3.length > 0) {
-    const cand = next[drop];
-    const last = tail3[tail3.length - 1];
-    if (cand.text === last.text && cand.level === last.level) drop++;
-    else break;
+  const same = (a: OutlineNode, b: OutlineNode): boolean => a.text === b.text && a.level === b.level;
+  for (let d = Math.min(3, next.length - 1); d >= 1; d--) {
+    if (acc.length < d) continue;
+    let matched = true;
+    for (let k = 0; k < d; k++) {
+      if (!same(next[k], acc[acc.length - d + k])) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return [...acc, ...next.slice(d)];
   }
-  return [...acc, ...next.slice(drop)];
+  return [...acc, ...next];
 }
 
 /** 识别一份资料的 N 级 outline：分段调用 AI → 合并 → 对齐定位 → 落库 Material.outline */
@@ -133,55 +139,4 @@ export async function runOutlineRecognition(
   await saveData(latest);
   onProgress?.(chunks.length, chunks.length);
   return { nodes: acc, unlocated };
-}
-
-// 后台任务（与 startOrganizeTask 同模式）：模块级 Set 防重入 + flag Map 协作取消
-const outliningMaterialIds = new Set<number>();
-const outlineAbortFlags = new Map<number, { aborted: boolean }>();
-
-export function startOutlineTask(materialId: number, courseId: number): void {
-  if (outliningMaterialIds.has(materialId)) return;
-  outliningMaterialIds.add(materialId);
-  const flag = { aborted: false };
-  outlineAbortFlags.set(materialId, flag);
-  const task: BgTaskReporter = startBgTask({
-    taskId: `material-${materialId}-outline`,
-    taskType: "outline",
-    label: "结构识别",
-    materialId,
-    courseId,
-    message: "准备中…",
-  });
-  void (async () => {
-    try {
-      const r = await runOutlineRecognition(
-        materialId,
-        courseId,
-        (done, total) => task.progress({ done, total, message: `识别中：第 ${Math.min(done + 1, total)}/${total} 段…` }),
-        () => flag.aborted,
-      );
-      if (flag.aborted) {
-        task.canceled();
-        return;
-      }
-      const msg =
-        r.unlocated.length > 0
-          ? `识别完成：${r.nodes.length} 个标题，${r.unlocated.length} 个未能定位（不影响抽取，预览可查看）`
-          : `识别完成：${r.nodes.length} 个标题`;
-      task.done(msg);
-    } catch (e) {
-      if (e instanceof AiCanceledError || flag.aborted) task.canceled();
-      else task.fail(e, "结构识别失败");
-    } finally {
-      outliningMaterialIds.delete(materialId);
-      outlineAbortFlags.delete(materialId);
-    }
-  })();
-}
-
-export function cancelOutlineTask(materialId: number): void {
-  const flag = outlineAbortFlags.get(materialId);
-  if (flag) flag.aborted = true;
-  // 打断在途 AI 调用（forwardProxy 无网络层 abort：响应返回后丢弃）
-  cancelAiCall("recognize_outline", "material-" + materialId);
 }
