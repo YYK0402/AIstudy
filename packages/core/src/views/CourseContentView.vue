@@ -100,7 +100,7 @@
             @click="kpBatchMode ? toggleKpSelect(kp.id) : viewKp(kp)"
             @keydown.enter.prevent="kpBatchMode ? toggleKpSelect(kp.id) : viewKp(kp)"
             @keydown.space.prevent="kpBatchMode ? toggleKpSelect(kp.id) : viewKp(kp)"
-            @dragover.prevent="kpDragEnabled ? onRowDragOver($event, 'kp', kp.id) : undefined"
+            @dragover.prevent="kpDragEnabled ? onRowDragOver($event, kp.id) : undefined"
             @dragleave="onRowDragLeave(kp.id)"
             @drop="onRowDrop($event, kp.id)"
           >
@@ -478,11 +478,6 @@ function posFromEvent(e: DragEvent): DropPos {
   return ratio < 0.5 ? "before" : "after";
 }
 
-function dropValid(p: DragPayload, kind: "chapter" | "kp"): boolean {
-  if (p.kind === "kp") return true; // KP 落章节行 = 改绑（任意位置）
-  return kind === "kp"; // 章节节点只接受章节行
-}
-
 function rowDropClass(id: number): string {
   if (!dropHint.value || dropHint.value.id !== id) return "";
   return "drop-" + dropHint.value.pos;
@@ -519,20 +514,20 @@ async function onTreeDrop(targetId: number) {
   }
 }
 
-function onRowDragOver(e: DragEvent, kind: "kp", id: number) {
+/** KP 行拖悬停：仅 KP 拖拽可落（换序）；章节节点拖过 KP 行不显示指示、dropEffect=none（旧守卫语义） */
+function onRowDragOver(e: DragEvent, id: number) {
   const dt = e.dataTransfer;
   const p = dragPayload.value;
   if (!dt || !p || p.id === id) {
     if (dt) dt.dropEffect = "none";
     return;
   }
-  const pos = p.kind === "kp" ? posFromEvent(e) : "inside";
-  if (!dropValid(p, kind)) {
+  if (p.kind !== "kp") {
     dropHint.value = null;
     dt.dropEffect = "none";
     return;
   }
-  dropHint.value = { id, pos };
+  dropHint.value = { id, pos: posFromEvent(e) };
   dt.dropEffect = "move";
 }
 
