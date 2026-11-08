@@ -464,16 +464,22 @@ export function buildChapterTree(chapters: Chapter[], courseId: number): NestedC
     .map((c) => ({ chapter: c, children: [] }));
   const byId = new Map(items.map((it) => [it.chapter.id, it]));
   const roots: NestedChapter[] = [];
+  const orphans: NestedChapter[] = [];
   for (const it of items) {
     const parent = it.chapter.parentId === null ? undefined : byId.get(it.chapter.parentId);
     if (parent) parent.children.push(it);
-    else roots.push(it);
+    else if (it.chapter.parentId === null) roots.push(it);
+    else orphans.push(it); // 孤儿不混进真根排序，统一追加在顶层末尾
   }
   const sortRec = (list: NestedChapter[]): void => {
     list.sort((a, b) => a.chapter.sort - b.chapter.sort);
     for (const n of list) sortRec(n.children);
   };
   sortRec(roots);
+  if (orphans.length) {
+    orphans.sort((a, b) => a.chapter.sort - b.chapter.sort);
+    roots.push(...orphans);
+  }
   return roots;
 }
 
@@ -488,10 +494,12 @@ export function nearestDocAncestorId(chapters: Chapter[], nodeId: number): numbe
   return cur?.id ?? nodeId;
 }
 
-/** nodeId 是否 ancestorId 的严格后代 */
+/** nodeId 是否 ancestorId 的严格后代（自身不算） */
 export function isDescendant(chapters: Chapter[], ancestorId: number, nodeId: number): boolean {
   const byId = new Map(chapters.map((c) => [c.id, c]));
   let cur: Chapter | undefined = byId.get(nodeId);
+  // 从 nodeId 的父节点起步，保证严格语义（isDescendant(c, x, x) === false）
+  cur = cur && cur.parentId !== null ? byId.get(cur.parentId) : undefined;
   let guard = 0;
   while (cur && guard++ < 16) {
     if (cur.id === ancestorId) return true;
