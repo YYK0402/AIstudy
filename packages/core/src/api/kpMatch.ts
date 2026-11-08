@@ -4,6 +4,17 @@ export function normalizeKpName(s: string): string {
   return s.toLowerCase().replace(/[\s、，。；：（）()【】\[\]'"“”‘’·\-—/\\,.]/g, "");
 }
 
+// 归一化知识点名：小写、去掉空白与标点，用于本地去重
+// 本地判断两个知识点名是否重复（精确/归一化后相同，或相互包含）
+export function isDuplicateKpName(a: string, b: string): boolean {
+  const na = normalizeKpName(a);
+  const nb = normalizeKpName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
+}
+
 /** 归一化章节引用：在去空白标点的基础上，再剥掉开头的编号前缀（如「第一章」「1.2」「第3节」） */
 export function normalizeChapterRef(s: string): string {
   const n = normalizeKpName(s);

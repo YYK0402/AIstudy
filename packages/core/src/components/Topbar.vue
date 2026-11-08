@@ -222,7 +222,7 @@ function retryTask(t: BgTaskState) {
 
 function cancelTask(t: BgTaskState) {
   if (t.materialId == null) return;
-  if (t.taskType === "extract") cancelExtractTask(t.materialId);
+  if (t.taskType === "extract") void cancelExtractTask(t.materialId);
   else if (t.taskType === "outline") cancelOutlineTask(t.materialId);
   else cancelOrganizeTask(t.materialId);
 }
