@@ -44,6 +44,8 @@
               <button v-if="t.status === 'failed'" class="btn sm ghost" @click="retryTask(t)">重试</button>
               <button v-if="t.status === 'running'" class="btn sm ghost" @click="cancelTask(t)">取消</button>
             </template>
+            <!-- 目录合并是课程级任务（无 materialId）：进行中可取消（重跑走课程内容页「重新识别目录」，无重试语义） -->
+            <button v-else-if="t.status === 'running' && t.taskType === 'toc'" class="btn sm ghost" @click="cancelTask(t)">取消</button>
             <button class="btn sm ghost" @click="notifyStore.clearTask(t.taskId)">移除</button>
           </div>
         </div>
@@ -87,6 +89,7 @@ import {
   cancelExtractTask,
   startOutlineTask,
   cancelOutlineTask,
+  cancelTocMergeTask,
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { useIsMobile } from "../composables/useIsMobile";
@@ -221,6 +224,10 @@ function retryTask(t: BgTaskState) {
 }
 
 function cancelTask(t: BgTaskState) {
+  if (t.taskType === "toc") {
+    cancelTocMergeTask(t.courseId);
+    return;
+  }
   if (t.materialId == null) return;
   if (t.taskType === "extract") void cancelExtractTask(t.materialId);
   else if (t.taskType === "outline") cancelOutlineTask(t.materialId);

@@ -35,70 +35,17 @@
           <AppIcon name="folder" :size="28" /> 暂无章节，点击「添加章节」搭建目录
         </div>
         <div v-else class="tree">
-          <div v-for="ch in chapterTree" :key="ch.id" class="tree-node" :class="{ open: expandedChapters.has(ch.id) }">
-            <div
-              class="row"
-              role="button"
-              tabindex="0"
-              :data-chapter-id="ch.id"
-              :class="[{ active: selectedChapterId === ch.id }, rowDropClass(ch.id)]"
-              @click="batchMode ? toggleSelect(ch.id) : selectChapter(ch.id)"
-              @keydown.enter.prevent="batchMode ? toggleSelect(ch.id) : selectChapter(ch.id)"
-              @keydown.space.prevent="batchMode ? toggleSelect(ch.id) : selectChapter(ch.id)"
-              @dragover.prevent="onRowDragOver($event, 'chapter', ch.id)"
-              @dragleave="onRowDragLeave(ch.id)"
-              @drop="onRowDrop($event, 'chapter', ch.id)"
-            >
-              <input v-if="batchMode" type="checkbox" class="tp-check" :checked="selectedChapterIds.has(ch.id)" @click.stop @change="toggleSelect(ch.id)" />
-              <span class="tgl" @click.stop="toggleChapter(ch.id)">▶</span>
-              <span class="name">{{ ch.name }}</span>
-              <span class="count">{{ kpCountOf(ch.id) }}</span>
-              <template v-if="!archived && !batchMode">
-                <span class="drag-handle" title="拖拽换序 / 移入小节" draggable="true" @click.stop @dragstart="onDragStart('chapter', ch.id)" @dragend="onDragEnd">⋮⋮</span>
-                <button class="btn sm ghost" @click.stop="addUnit(ch)">＋小节</button>
-                <span class="row-more">
-                  <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="toggleRowMenu(ch.id)">⋯</button>
-                  <div v-if="rowMenuId === ch.id" class="row-menu" @click.stop>
-                    <button @click.stop="closeRowMenu(); openReview(ch)">复盘</button>
-                    <button @click.stop="closeRowMenu(); editChapter(ch)">编辑</button>
-                    <button class="danger" @click.stop="closeRowMenu(); delChapter(ch)">删除</button>
-                  </div>
-                </span>
-              </template>
-            </div>
-            <div class="tree-children">
-              <div v-for="u in ch.units" :key="u.id" class="tree-node">
-                <div
-                  class="row"
-                  role="button"
-                  tabindex="0"
-                  :data-chapter-id="u.id"
-                  :class="[{ active: selectedChapterId === u.id }, rowDropClass(u.id)]"
-                  @click="batchMode ? toggleSelect(u.id) : selectChapter(u.id)"
-                  @keydown.enter.prevent="batchMode ? toggleSelect(u.id) : selectChapter(u.id)"
-                  @keydown.space.prevent="batchMode ? toggleSelect(u.id) : selectChapter(u.id)"
-                  @dragover.prevent="onRowDragOver($event, 'unit', u.id)"
-                  @dragleave="onRowDragLeave(u.id)"
-                  @drop="onRowDrop($event, 'unit', u.id)"
-                >
-                  <input v-if="batchMode" type="checkbox" class="tp-check" :checked="selectedChapterIds.has(u.id)" @click.stop @change="toggleSelect(u.id)" />
-                  <span class="tgl" style="opacity:0">▶</span>
-                  <span class="name">{{ u.name }}</span>
-                  <span class="count">{{ kpCountOf(u.id) }}</span>
-                  <template v-if="!archived && !batchMode">
-                    <span class="drag-handle" title="拖拽换序 / 跨章移动" draggable="true" @click.stop @dragstart="onDragStart('unit', u.id)" @dragend="onDragEnd">⋮⋮</span>
-                    <span class="row-more">
-                      <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="toggleRowMenu(u.id)">⋯</button>
-                      <div v-if="rowMenuId === u.id" class="row-menu" @click.stop>
-                        <button @click.stop="closeRowMenu(); editChapter(u)">编辑</button>
-                        <button class="danger" @click.stop="closeRowMenu(); delChapter(u)">删除</button>
-                      </div>
-                    </span>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChapterTreeRow
+            v-for="n in chapterTree"
+            :key="n.chapter.id"
+            :node="n"
+            :depth="0"
+            @click="(nd) => (batchMode ? toggleSelect(nd.chapter.id) : selectChapter(nd.chapter.id))"
+            @dragstart="onTreeDragStart"
+            @dragover="(nd, pos) => onTreeDragOver(nd.chapter.id, pos)"
+            @drop="(nd) => onTreeDrop(nd.chapter.id)"
+            @menu="(nd) => toggleRowMenu(nd.chapter.id)"
+          />
         </div>
         <div v-if="batchMode && chapters.length > 0" class="batch-bar">
           <button class="btn sm ghost" @click="selectAll">全选</button>
@@ -155,7 +102,7 @@
             @keydown.space.prevent="kpBatchMode ? toggleKpSelect(kp.id) : viewKp(kp)"
             @dragover.prevent="kpDragEnabled ? onRowDragOver($event, 'kp', kp.id) : undefined"
             @dragleave="onRowDragLeave(kp.id)"
-            @drop="onRowDrop($event, 'kp', kp.id)"
+            @drop="onRowDrop($event, kp.id)"
           >
             <input v-if="kpBatchMode" type="checkbox" class="tp-check" :checked="selectedKpIds.has(kp.id)" @click.stop @change="toggleKpSelect(kp.id)" />
             <span class="idx">{{ String((currentPage - 1) * PAGE_SIZE + i + 1).padStart(2, "0") }}</span>
@@ -243,6 +190,12 @@
                 {{ extractTaskOf(m)?.status === "running" ? "抽取中…" : "抽取知识点" }}
               </button>
               <button class="btn sm ghost" @click="del(m)">删除</button>
+              <span class="row-more">
+                <button class="btn sm ghost row-more-btn" title="更多操作" @click.stop="materialMenuId = materialMenuId === m.id ? null : m.id">⋯</button>
+                <div v-if="materialMenuId === m.id" class="row-menu" @click.stop>
+                  <button @click.stop="materialMenuId = null; void reidentifyStructure(m)">重新识别结构</button>
+                </div>
+              </span>
             </template>
           </div>
         </div>
@@ -265,7 +218,7 @@
       :open="chapterModal !== null"
       :course-id="currentCourseId() ?? 0"
       :chapter="chapterModal === 'edit' ? editingChapter : null"
-      :parent-id="chapterModal === 'unit' ? editingChapter?.id ?? null : null"
+      :parent="chapterModal === 'child' ? editingChapter : null"
       @close="chapterModal = null"
       @saved="loadChapters"
     />
@@ -313,7 +266,7 @@ onDeactivated(() => {
     siyuanKpSyncOpen.value = false;
 });
 import AppIcon from "../components/AppIcon.vue";
-import { onDeactivated, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onDeactivated, computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
@@ -351,6 +304,9 @@ import type { Material, KnowledgePoint, Mastery, Chapter, MergeResult } from "..
 import { useNotifyStore, materialTaskId } from "../stores/notify";
 import { computeChapterMove, type DropPos } from "../utils/chapterMove";
 import { expandChapterNodeIds, kpCountByNode } from "../utils/chapterScope";
+import { buildChapterTree, chapterPathText, type NestedChapter } from "../utils/outline";
+import ChapterTreeRow from "../components/ChapterTreeRow.vue";
+import { chapterTreeCtxKey } from "../components/chapterTreeCtx";
 import KnowledgePointDetailModal from "../components/KnowledgePointDetailModal.vue";
 import KnowledgePointEditModal from "../components/KnowledgePointEditModal.vue";
 import ChapterEditModal from "../components/ChapterEditModal.vue";
@@ -403,8 +359,10 @@ const detailKp = ref<KnowledgePoint | null>(null);
 const route = useRoute();
 const router = useRouter();
 const chapters = ref<Chapter[]>([]);
-const chapterModal = ref<"edit" | "top" | "unit" | null>(null);
+const chapterModal = ref<"edit" | "top" | "child" | null>(null);
 const editingChapter = ref<Chapter | null>(null);
+/** 资料行「⋯」菜单：同一时间只开一个（与章节行 rowMenuId 独立，id 空间不同） */
+const materialMenuId = ref<number | null>(null);
 // 展开的章节 id 集合（空 = 全部收起；重进页面/切换课程后自然回到默认全收起）
 const expandedChapters = ref<Set<number>>(new Set());
 const selectedChapterId = ref<number | null>(null);
@@ -428,17 +386,11 @@ const PAGE_SIZE = 10;
 const batchMode = ref(false);
 const selectedChapterIds = ref<Set<number>>(new Set());
 
-interface ChapterNode extends Chapter {
-  units: Chapter[];
-}
-
-const chapterTree = computed<ChapterNode[]>(() => {
-  const sorted = [...chapters.value].sort((a, b) => a.sort - b.sort);
-  const chaptersOnly = sorted.filter((c) => c.level === 1);
-  return chaptersOnly.map((ch) => ({
-    ...ch,
-    units: sorted.filter((c) => c.level === 2 && c.parentId === ch.id),
-  }));
+// N 级章节树：flat → 嵌套（同级按 sort；孤儿 parentId 提升顶层防丢失）
+const chapterTree = computed<NestedChapter[]>(() => {
+  const cid = currentCourseId();
+  if (cid === null) return [];
+  return buildChapterTree(chapters.value.filter((c) => c.courseId === cid), cid);
 });
 
 const kpSources = computed<Record<number, string[]>>(() => {
@@ -457,19 +409,10 @@ function chapterKpIds(chapterId: number): Set<number> {
   return expandChapterNodeIds(chapters.value, chapterId);
 }
 
-/** 章节 id → 章节 Map（O(1) 查找，替代模板行级 find） */
-const chapterById = computed(() => new Map(chapters.value.map((c) => [c.id, c])));
-
-/** 知识点所属「章 / 节」路径（搜索结果展示归属用） */
+/** 知识点所属章节完整路径（N 级，搜索结果展示归属用） */
 function kpChapterPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "未分配";
-  const c = chapterById.value.get(kp.chapterId);
-  if (!c) return "";
-  if (c.level === 2 && c.parentId != null) {
-    const parent = chapterById.value.get(c.parentId);
-    return parent ? `${parent.name} / ${c.name}` : c.name;
-  }
-  return c.name;
+  return chapterPathText(chapters.value, kp.chapterId);
 }
 
 // 章节复盘弹层
@@ -503,9 +446,9 @@ const filteredKnowledgePoints = computed(() => {
   return [...list].sort((a, b) => a.sort - b.sort || a.id - b.id);
 });
 
-// ===== 拖拽：章节树换序/跨章移动 + 知识点换序/改绑 =====
+// ===== 拖拽：章节树换序/跨父移动（N 级，行内三区间）+ 知识点换序/改绑 =====
 interface DragPayload {
-  kind: "chapter" | "unit" | "kp";
+  kind: "chapter" | "kp";
   id: number;
 }
 const dragPayload = ref<DragPayload | null>(null);
@@ -518,28 +461,26 @@ function onDragStart(kind: DragPayload["kind"], id: number) {
   dragPayload.value = { kind, id };
 }
 
+/** 章节树行拖拽开始（N 级任意深度节点统一 kind=chapter） */
+function onTreeDragStart(id: number) {
+  onDragStart("chapter", id);
+}
+
 function onDragEnd() {
   dragPayload.value = null;
   dropHint.value = null;
 }
 
-/** 章节行三区间（上/下沿=前后插，中部=移入），小节/KP 行两区间 */
-function posFromEvent(e: DragEvent, isChapterRow: boolean): DropPos {
+/** KP 行两区间（上/下沿=前后插）；章节树行三区间在 ChapterTreeRow 内计算 */
+function posFromEvent(e: DragEvent): DropPos {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   const ratio = (e.clientY - rect.top) / rect.height;
-  if (isChapterRow) {
-    if (ratio < 0.3) return "before";
-    if (ratio > 0.7) return "after";
-    return "inside";
-  }
   return ratio < 0.5 ? "before" : "after";
 }
 
-function dropValid(p: DragPayload, kind: "chapter" | "unit" | "kp", pos: DropPos): boolean {
-  if (kind === "kp") return p.kind === "kp";
-  if (p.kind === "kp") return true; // KP 落到章节/小节行 = 改绑（任意位置）
-  if (kind === "unit") return p.kind === "unit";
-  return pos === "inside" ? p.kind === "unit" : p.kind === "chapter";
+function dropValid(p: DragPayload, kind: "chapter" | "kp"): boolean {
+  if (p.kind === "kp") return true; // KP 落章节行 = 改绑（任意位置）
+  return kind === "kp"; // 章节节点只接受章节行
 }
 
 function rowDropClass(id: number): string {
@@ -547,16 +488,46 @@ function rowDropClass(id: number): string {
   return "drop-" + dropHint.value.pos;
 }
 
-function onRowDragOver(e: DragEvent, kind: "chapter" | "unit" | "kp", id: number) {
+/** 章节树行拖悬停（pos 由行组件按行内三区间算好） */
+function onTreeDragOver(targetId: number, pos: DropPos) {
+  const p = dragPayload.value;
+  if (!p) return;
+  // KP 落章节行统一按「移入」高亮（改绑语义，非插入位置）
+  dropHint.value = { id: targetId, pos: p.kind === "kp" ? "inside" : pos };
+}
+
+async function onTreeDrop(targetId: number) {
+  const p = dragPayload.value;
+  const hint = dropHint.value;
+  dragPayload.value = null;
+  dropHint.value = null;
+  if (!p || !hint || hint.id !== targetId || p.id === targetId) return;
+  try {
+    if (p.kind === "kp") {
+      const kp = knowledgePoints.value.find((k) => k.id === p.id);
+      if (!kp || kp.chapterId === targetId) return;
+      await updateKnowledgePoint({ ...kp, chapterId: targetId });
+      await loadKnowledgePoints();
+      const node = chapters.value.find((c) => c.id === targetId);
+      getBridge().showMessage(`已归入「${node?.name ?? "章节"}」`);
+    } else {
+      await applyChapterDrop(p.id, targetId, hint.pos);
+    }
+  } catch (err) {
+    console.error("拖拽操作失败:", err);
+    getBridge().showMessage(err instanceof Error ? err.message : "拖拽操作失败", 4000, "error");
+  }
+}
+
+function onRowDragOver(e: DragEvent, kind: "kp", id: number) {
   const dt = e.dataTransfer;
   const p = dragPayload.value;
   if (!dt || !p || p.id === id) {
     if (dt) dt.dropEffect = "none";
     return;
   }
-  // KP 落章节/小节行统一按「移入」高亮（改绑语义，非插入位置）
-  const pos = p.kind === "kp" && kind !== "kp" ? "inside" : posFromEvent(e, kind === "chapter");
-  if (!dropValid(p, kind, pos)) {
+  const pos = p.kind === "kp" ? posFromEvent(e) : "inside";
+  if (!dropValid(p, kind)) {
     dropHint.value = null;
     dt.dropEffect = "none";
     return;
@@ -571,26 +542,15 @@ function onRowDragLeave(id: number) {
   }
 }
 
-async function onRowDrop(e: DragEvent, kind: "chapter" | "unit" | "kp", id: number) {
+async function onRowDrop(e: DragEvent, id: number) {
   e.preventDefault();
   const p = dragPayload.value;
   const hint = dropHint.value;
   dragPayload.value = null;
   dropHint.value = null;
-  if (!p || !hint || hint.id !== id || p.id === id) return;
+  if (!p || p.kind !== "kp" || !hint || hint.id !== id || p.id === id) return;
   try {
-    if (p.kind === "kp" && kind === "kp") {
-      await reorderKp(p.id, id, hint.pos === "before" ? "before" : "after");
-    } else if (p.kind === "kp") {
-      const kp = knowledgePoints.value.find((k) => k.id === p.id);
-      if (!kp || kp.chapterId === id) return;
-      await updateKnowledgePoint({ ...kp, chapterId: id });
-      await loadKnowledgePoints();
-      const node = chapters.value.find((c) => c.id === id);
-      getBridge().showMessage(`已归入「${node?.name ?? "章节"}」`);
-    } else {
-      await applyChapterDrop(p.id, id, hint.pos);
-    }
+    await reorderKp(p.id, id, hint.pos === "before" ? "before" : "after");
   } catch (err) {
     console.error("拖拽操作失败:", err);
     getBridge().showMessage(err instanceof Error ? err.message : "拖拽操作失败", 4000, "error");
@@ -768,7 +728,12 @@ function focusChapterFromQuery() {
   const id = Number(Array.isArray(raw) ? raw[0] : raw);
   const node = Number.isFinite(id) ? chapters.value.find((c) => c.id === id) : undefined;
   if (node) {
-    if (node.parentId != null) expandedChapters.value.add(node.parentId);
+    // N 级：展开全部祖先链，节点行才可见
+    let pid = node.parentId;
+    while (pid != null) {
+      expandedChapters.value.add(pid);
+      pid = chapters.value.find((c) => c.id === pid)?.parentId ?? null;
+    }
     expandedChapters.value.add(node.id);
     selectedChapterId.value = node.id;
     void nextTick(() => {
@@ -792,6 +757,14 @@ function reidentifyChapters() {
   startTocMergeTask(currentCourseId());
 }
 
+// 资料行「重新识别结构」：单资料重跑结构识别 + 目录合并（merge 内部对无 outline 资料自动补跑阶段②，单入口）
+async function reidentifyStructure(m: Material) {
+  const cid = currentCourseId();
+  if (!cid) return;
+  if (!(await confirm({ message: `将重新识别资料「${m.name}」结构并合并目录。确定继续？` }))) return;
+  startTocMergeTask(cid, [m.id]);
+}
+
 // 目录合并完成（后台任务）→ 命中当前课程时打开目录预览（重新识别/顶栏查看目录/梳理完成自动触发，统一走这里）
 function onTocMerged(e: Event) {
   const detail = (e as CustomEvent<{ courseId: number; result: MergeResult }>).detail;
@@ -800,9 +773,10 @@ function onTocMerged(e: Event) {
   }
 }
 
-function addUnit(ch: Chapter) {
+/** 在被点节点（任意深度）下新建子级：parentId = 该节点 id，level = parent.level + 1 */
+function addChapterChild(ch: Chapter) {
   editingChapter.value = ch;
-  chapterModal.value = "unit";
+  chapterModal.value = "child";
 }
 
 function editChapter(ch: Chapter) {
@@ -811,7 +785,7 @@ function editChapter(ch: Chapter) {
 }
 
 async function delChapter(ch: Chapter) {
-  if (!(await confirm({ message: `确定删除章节「${ch.name}」？其下小节将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
+  if (!(await confirm({ message: `确定删除章节「${ch.name}」？其下子级将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteChapter(ch.id);
     await Promise.all([loadChapters(), loadKnowledgePoints()]);
@@ -853,7 +827,7 @@ function selectAll() {
 async function batchDelete() {
   const ids = [...selectedChapterIds.value];
   if (ids.length === 0) return;
-  if (!(await confirm({ message: `确定删除选中的 ${ids.length} 个章节？其下小节将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
+  if (!(await confirm({ message: `确定删除选中的 ${ids.length} 个章节？其下子级将一并删除，关联知识点归类改为「未分配」。`, danger: true, confirmText: "删除" }))) return;
   try {
     await deleteChapters(ids);
     exitBatchMode();
@@ -945,12 +919,13 @@ function extract(m: Material) {
 }
 
 const fullExtracting = ref(false);
+// 进度按节点单位（Task 7 起）：block=当前节点路径，空=该资料准备中；null=清除旧知识点阶段
 const fullExtractProgress = ref<{ material: number; total: number; block: string } | null>(null);
 const fullExtractLabel = computed(() => {
   if (!fullExtracting.value) return "全量重新抽取";
   const p = fullExtractProgress.value;
   if (!p) return "正在清除旧知识点…";
-  return `正在重新抽取：资料 ${p.material}/${p.total}${p.block ? " · " + p.block : ""}…`;
+  return p.block ? `正在重新抽取：节点 ${p.block}…` : `正在重新抽取：资料 ${p.material}/${p.total}…`;
 });
 
 // 全量重新抽取：清空本课程全部知识点（级联清理同步进行），再按资料顺序逐块抽取
@@ -971,8 +946,8 @@ async function fullReExtract() {
       fullExtractProgress.value = { material: i + 1, total: mats.length, block: "" };
       try {
         await extractKnowledgePoints(mats[i].id, {
-          onProgress: (current, total, blockTitle) => {
-            fullExtractProgress.value = { material: i + 1, total: mats.length, block: `第 ${current}/${total} 块 · ${blockTitle}` };
+          onProgress: (_current, _total, blockTitle) => {
+            fullExtractProgress.value = { material: i + 1, total: mats.length, block: blockTitle };
           },
         });
       } catch (e) {
@@ -1065,14 +1040,40 @@ useDataSavedRefresh(() => {
   // 设置页改动（persistToSiyuan）会触发 global 保存事件，刷新「从思源同步」按钮显隐
   void refreshSiyuanPersist();
 });
+// 章节树行上下文：provide 给递归 ChapterTreeRow（行内状态/动作免 props 逐层透传）
+provide(chapterTreeCtxKey, {
+  isArchived: () => archived.value,
+  isBatchMode: () => batchMode.value,
+  isSelected: (nid) => selectedChapterId.value === nid,
+  isBatchChecked: (nid) => selectedChapterIds.value.has(nid),
+  isExpanded: (nid) => expandedChapters.value.has(nid),
+  isRowMenuOpen: (nid) => rowMenuId.value === nid,
+  dropPos: (nid) => (dropHint.value && dropHint.value.id === nid ? dropHint.value.pos : null),
+  draggingId: () => dragPayload.value?.id ?? null,
+  toggleExpand: toggleChapter,
+  toggleSelect,
+  closeRowMenu,
+  kpCountOf,
+  addChapterChild,
+  openReview,
+  editChapter,
+  delChapter,
+  onRowDragLeave,
+  onDragEnd,
+});
+
+function closeAllRowMenus() {
+  closeRowMenu();
+  materialMenuId.value = null;
+}
 onMounted(() => {
-  document.addEventListener("click", closeRowMenu);
+  document.addEventListener("click", closeAllRowMenus);
   window.addEventListener(TOC_MERGED_EVENT, onTocMerged);
   void load();
   void refreshSiyuanPersist();
 });
 onBeforeUnmount(() => {
-  document.removeEventListener("click", closeRowMenu);
+  document.removeEventListener("click", closeAllRowMenus);
   window.removeEventListener(TOC_MERGED_EVENT, onTocMerged);
 });
 </script>

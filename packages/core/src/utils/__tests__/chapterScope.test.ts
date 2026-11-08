@@ -7,6 +7,7 @@ const ch2: Chapter = { id: 2, courseId: 1, level: 1, parentId: null, name: "二�
 const u11: Chapter = { id: 11, courseId: 1, level: 2, parentId: 1, name: "一节", siyuanBlockId: null, sort: 1 };
 const u12: Chapter = { id: 12, courseId: 1, level: 2, parentId: 1, name: "二节", siyuanBlockId: null, sort: 2 };
 const u21: Chapter = { id: 21, courseId: 1, level: 2, parentId: 2, name: "三节", siyuanBlockId: null, sort: 1 };
+const u111: Chapter = { id: 111, courseId: 1, level: 3, parentId: 11, name: "一小节", siyuanBlockId: null, sort: 1 };
 
 function kp(id: number, chapterId: number | null): KnowledgePoint {
   return {
@@ -48,6 +49,34 @@ describe("kpCountByNode", () => {
   it("与逐节点 expand+filter 口径一致", () => {
     const chapters = [ch1, ch2, u11, u12, u21];
     const kps = [kp(1, 1), kp(2, 11), kp(3, 12), kp(4, 21), kp(5, 12)];
+    const counts = kpCountByNode(chapters, kps);
+    for (const c of chapters) {
+      const ids = expandChapterNodeIds(chapters, c.id);
+      const expected = kps.filter((k) => k.chapterId !== null && ids.has(k.chapterId)).length;
+      expect(counts.get(c.id) ?? 0).toBe(expected);
+    }
+  });
+});
+
+describe("N 级（level 3+ 链）", () => {
+  it("expandChapterNodeIds = 自身 + 全部后代（任意深度）", () => {
+    const chapters = [ch1, u11, u111];
+    expect(expandChapterNodeIds(chapters, 1)).toEqual(new Set([1, 11, 111]));
+    expect(expandChapterNodeIds(chapters, 11)).toEqual(new Set([11, 111]));
+    expect(expandChapterNodeIds(chapters, 111)).toEqual(new Set([111]));
+  });
+
+  it("kpCountByNode：知识点沿祖先链逐级计入（深度 3+）", () => {
+    const chapters = [ch1, u11, u111];
+    const counts = kpCountByNode(chapters, [kp(1, 111)]);
+    expect(counts.get(111)).toBe(1);
+    expect(counts.get(11)).toBe(1);
+    expect(counts.get(1)).toBe(1);
+  });
+
+  it("N 级下与逐节点 expand+filter 口径一致", () => {
+    const chapters = [ch1, ch2, u11, u12, u21, u111];
+    const kps = [kp(1, 111), kp(2, 12), kp(3, 1), kp(4, null)];
     const counts = kpCountByNode(chapters, kps);
     for (const c of chapters) {
       const ids = expandChapterNodeIds(chapters, c.id);
