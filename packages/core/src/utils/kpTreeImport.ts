@@ -436,14 +436,10 @@ function maxId(list: { id: number }[]): number {
   return list.reduce((m, x) => Math.max(m, x.id), 0);
 }
 
-/** 归属节点的展示名（小节名优先，其次顶章名，未归章为空） */
+/** 归属节点的展示名：存节点名（与 nodeExtract 口径一致，N 级通用；未归章/已删节点为空） */
 function chapterNameOf(chapterId: number | null, chapters: Chapter[]): string {
   if (chapterId === null) return "";
-  const unit = chapters.find((c) => c.id === chapterId && c.level === 2);
-  if (unit) return unit.name;
-  const top = chapters.find((c) => c.id === chapterId && c.level === 1);
-  if (top) return top.name;
-  return "";
+  return chapters.find((c) => c.id === chapterId)?.name ?? "";
 }
 
 export function applyKpTreeDiff(data: AppData, courseId: number, tree: ParsedKpTree, diff: KpTreeDiff): AppData {

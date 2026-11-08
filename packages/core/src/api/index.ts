@@ -45,6 +45,7 @@ export type {
   KnowledgePoint,
   Material,
   MaterialChapter,
+  TocMapping,
   Question,
   ExamPaper,
   AnswerRecord,

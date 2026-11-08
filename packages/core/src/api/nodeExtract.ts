@@ -63,8 +63,12 @@ export function buildNodeText(data: AppData, nodeId: number): { text: string; ma
     const outline = outlineOf(m);
     if (outline.length === 0) continue;
     const { spans } = alignOutlineSpans(m.contentText, outline);
-    // 预建 path→seq 索引，每条映射直接定位对应 span
-    const pathToSeq = new Map(outline.map((h, i) => [nodePathOf(outline, i), i]));
+    // 预建 path→seq 索引，每条映射直接定位对应 span（同名节点重复路径时首现优先）
+    const pathToSeq = new Map<string, number>();
+    for (let i = 0; i < outline.length; i++) {
+      const path = nodePathOf(outline, i);
+      if (!pathToSeq.has(path)) pathToSeq.set(path, i);
+    }
     const slices: string[] = [];
     for (const t of ms) {
       const seq = pathToSeq.get(t.materialPath);
