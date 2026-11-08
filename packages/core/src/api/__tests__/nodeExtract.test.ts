@@ -2,8 +2,26 @@ import { describe, expect, it } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
-import { setBridge } from "../../bridge";
-import { buildNodeText, resolveExtractNodes } from "../nodeExtract";
+import { setBridge, type StudyBridge } from "../../bridge";
+import { buildNodeText, extractMaterialNodes, resolveExtractNodes } from "../nodeExtract";
+import { listUnextractedMaterials } from "../extract";
+
+// 假桥：KP 写入走真实 saveData 假桥，AI 响应由假桥 callAi 返回固定 JSON 并计数
+const bridgeDataRef: { data: AppData } = { data: createEmptyData() };
+let callAiCount = 0;
+let saveCount = 0;
+setBridge({
+  getData: async () => bridgeDataRef.data,
+  saveData: async (next: AppData) => {
+    bridgeDataRef.data = next;
+    saveCount++;
+    return { code: 0 };
+  },
+  callAi: async () => {
+    callAiCount++;
+    return { content: "[]", tokenIn: 0, tokenOut: 0 };
+  },
+} as unknown as StudyBridge);
 
 // fixture：课程 1；章 1（level1）→ 节 2（level2）→ 小节 3（level3）
 // 资料 10 outline: [第一章 L1, 1.1 L2, 1.1.1 L3, 第二章 L1]
@@ -77,5 +95,36 @@ describe("buildNodeText", () => {
     expect(materialIds).toEqual([10, 11]);
     expect(text).toContain("乙");
     expect(text).toContain("乙2");
+  });
+});
+
+describe("extractMaterialNodes 来源回填（跳过节点）", () => {
+  it("增量资料只映射到已有 KP 的节点：并入节点 KP 的 sourceAssetIds（去重/顺序稳定），无 AI 调用，无变更不保存", async () => {
+    // 节点 1 已有 KP(100, 来源 99)，节点 2 也有 KP(101, 来源 98)：资料 11 的全部节点都被跳过
+    const d = fixture();
+    d.knowledgePoints.push({
+      id: 101, courseId: 1, chapterId: 2, blockId: null, name: "既有KP2", content: "y",
+      mastery: "unlearn", sourceAssetIds: "98", prevKpIds: "", chapterName: "1.1", sort: 0, createTime: "t",
+    });
+    bridgeDataRef.data = d;
+    callAiCount = 0;
+    saveCount = 0;
+
+    const r = await extractMaterialNodes(1, [11]);
+    expect(r).toEqual({ nodeTotal: 0, nodeDone: 0, created: 0, skippedDup: 0 });
+    expect(callAiCount).toBe(0); // 全跳过，无 AI 调用
+    // 去重、顺序稳定：原有顺序保留，新 id 追加
+    expect(bridgeDataRef.data.knowledgePoints.find((k) => k.id === 100)!.sourceAssetIds).toBe("99,11");
+    expect(bridgeDataRef.data.knowledgePoints.find((k) => k.id === 101)!.sourceAssetIds).toBe("98,11");
+    expect(saveCount).toBe(1);
+
+    // 症状恢复：资料 11 已被 KP 来源覆盖，不再被误列为未抽取
+    const unextracted = await listUnextractedMaterials(1);
+    expect(unextracted.map((m) => m.id)).not.toContain(11);
+
+    // 再跑一次：已含 11 → 无变更 → 不触发保存
+    await extractMaterialNodes(1, [11]);
+    expect(bridgeDataRef.data.knowledgePoints.find((k) => k.id === 100)!.sourceAssetIds).toBe("99,11");
+    expect(saveCount).toBe(1);
   });
 });

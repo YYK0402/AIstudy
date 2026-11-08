@@ -234,6 +234,36 @@ export async function extractNodeKps(
   return { created, skippedDup };
 }
 
+/**
+ * 来源回填：被本批资料映射覆盖、已有 KP 而跳过的节点（未调 AI），
+ * 把本批中映射到该节点的资料 id 并入该节点每个 KP 的 sourceAssetIds
+ * （去重、保原有顺序、新 id 追加）；节点的设计口径是 sourceAssetIds=全部映射贡献资料。
+ * 无变更返回 false（不触发保存）。
+ */
+function backfillSkippedNodeSources(data: AppData, courseId: number, materialIds: number[]): boolean {
+  const set = new Set(materialIds);
+  const covered = new Set(
+    data.tocMappings.filter((t) => t.courseId === courseId && set.has(t.materialId)).map((t) => t.chapterId),
+  );
+  let changed = false;
+  for (const nodeId of covered) {
+    // 本批中映射到该节点的资料 id（数字序，保证合并结果稳定）
+    const mids = [...new Set(
+      data.tocMappings.filter((t) => t.chapterId === nodeId && set.has(t.materialId)).map((t) => t.materialId),
+    )].sort((a, b) => a - b);
+    if (mids.length === 0) continue;
+    for (const kp of data.knowledgePoints) {
+      if (kp.courseId !== courseId || kp.chapterId !== nodeId) continue;
+      const srcIds = kp.sourceAssetIds.split(",").map((s) => s.trim()).filter(Boolean);
+      const added = mids.filter((m) => !srcIds.includes(String(m)));
+      if (added.length === 0) continue;
+      kp.sourceAssetIds = [...srcIds, ...added.map(String)].join(",");
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** 资料集合 → 节点集合 → 逐节点抽取（多资料共享节点只抽一次） */
 export async function extractMaterialNodes(
   courseId: number,
@@ -245,13 +275,20 @@ export async function extractMaterialNodes(
   const nodes = resolveExtractNodes(data, materialIds);
   let created = 0;
   let skippedDup = 0;
-  for (let i = 0; i < nodes.length; i++) {
-    if (isAborted?.()) throw new AiCanceledError();
-    const path = chapterPathText(data.chapters.filter((c) => c.courseId === courseId), nodes[i]);
-    onProgress?.(i, nodes.length, path);
-    const r = await extractNodeKps(courseId, nodes[i], undefined, isAborted);
-    created += r.created;
-    skippedDup += r.skippedDup;
+  try {
+    for (let i = 0; i < nodes.length; i++) {
+      if (isAborted?.()) throw new AiCanceledError();
+      const path = chapterPathText(data.chapters.filter((c) => c.courseId === courseId), nodes[i]);
+      onProgress?.(i, nodes.length, path);
+      const r = await extractNodeKps(courseId, nodes[i], undefined, isAborted);
+      created += r.created;
+      skippedDup += r.skippedDup;
+    }
+  } finally {
+    // 来源回填是本地数据操作、不依赖 AI：取消（上抛 AiCanceledError）时也照常执行，
+    // 保证增量资料进已有节点 KP 的 sourceAssetIds（listUnextractedMaterials 覆盖判定依赖它）
+    const latest = await getData();
+    if (backfillSkippedNodeSources(latest, courseId, materialIds)) await saveData(latest);
   }
   return { nodeTotal: nodes.length, nodeDone: nodes.length, created, skippedDup };
 }
