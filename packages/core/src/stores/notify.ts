@@ -4,7 +4,7 @@ import { computed, onScopeDispose, ref } from "vue";
 import { getBridge, getBridgeSafe } from "@/bridge";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type BgTaskType = "organize" | "extract" | "outline" | "gen_question" | "gen_flashcard" | "gen_plan";
+export type BgTaskType = "organize" | "extract" | "outline" | "toc" | "gen_question" | "gen_flashcard" | "gen_plan";
 
 export interface BgTaskState {
   /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
@@ -42,6 +42,18 @@ const FINISHED_TASK_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 
 type LegacyTask = Partial<BgTaskState> & { materialName?: string };
 
+function isBgTaskType(v: unknown): v is BgTaskType {
+  return (
+    v === "organize" ||
+    v === "extract" ||
+    v === "outline" ||
+    v === "toc" ||
+    v === "gen_question" ||
+    v === "gen_flashcard" ||
+    v === "gen_plan"
+  );
+}
+
 function isOldFinishedTask(t: BgTaskState): boolean {
   if (t.status !== "done" && t.status !== "failed") return false;
   const ts = Date.parse(t.finishedAt ?? t.startedAt);
@@ -58,17 +70,9 @@ function loadPersisted(): BgTaskState[] {
     return arr
       .filter((t) => t && typeof t.status === "string")
       .map((t, i) => {
-        // 旧数据兼容：无 taskId/label 字段，按 taskType + materialId 派生
-        const taskType: BgTaskType =
-          t.taskType === "extract"
-            ? "extract"
-            : t.taskType === "gen_question"
-              ? "gen_question"
-              : t.taskType === "gen_flashcard"
-                ? "gen_flashcard"
-                : t.taskType === "gen_plan"
-                  ? "gen_plan"
-                  : "organize";
+        // 旧数据兼容：无 taskId/label 字段，按 taskType + materialId 派生；
+        // 现存 taskType 原样保留（旧数据缺字段或未知值时兜底 organize）
+        const taskType: BgTaskType = isBgTaskType(t.taskType) ? t.taskType : "organize";
         const base: BgTaskState = {
           taskId:
             typeof t.taskId === "string" && t.taskId

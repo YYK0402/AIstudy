@@ -157,6 +157,7 @@ const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
   organize: "AI 梳理",
   extract: "知识点抽取",
   outline: "结构识别",
+  toc: "目录合并",
   gen_question: "AI 出题",
   gen_flashcard: "AI 闪卡",
   gen_plan: "AI 学习计划",
