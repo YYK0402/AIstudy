@@ -602,8 +602,12 @@ Expected: FAIL（`recognize_outline` 不存在等）
 
 `promptTemplates.ts` 改动（保留其余 9 个任务不动；`renderPrompt` 签名不变）：
 
-1. `organize_doc`：`system` 删「标注章/节」相关条目（原 5/6 条），新增一条：「原文中已有的 markdown 标题行（# 开头）保留原样，不添加、不删除任何标题标记，不判断标题层级」。`desc` 保持「AI 文档结构梳理：清洗+可读化」。
+1. `organize_doc`：`system` 删「标注章/节」相关条目（原 5/6 条），新增一条：「原文中已有的标题行（# 开头）保留原样，不增删标题标记，不判断标题层级」（最终文本，见下方裁决）。`desc` 保持「AI 文档结构梳理：清洗+可读化」。
 2. 删除 `recognize_toc` 整条。
+
+**裁决（Task 3 执行时，commit a37b71d）**：
+- organize_doc 条目 5 最终文本=「原文中已有的标题行（# 开头）保留原样，不增删标题标记，不判断标题层级」——brief 原文案「markdown 标题行…不添加、不删除任何标题标记」会命中其自身测试负向正则 `/标注|添加.*标题|markdown 标题/`，测试为准，文案最小调整。
+- `PROMPT_TASKS` 由数组（`PromptTaskMeta.key`+`defaultTemplate`）重构为 `Record<string, PromptTaskMeta>`（`system`/`user` 提升顶层、删 `key`）——brief 测试代码（`PROMPT_TASKS.organize_doc.system`）逼出的结构变更；消费方 `prompts.ts`（getPromptTemplateViews/savePromptTemplate）与 `resolvePromptTemplate` 同步更新；9 个不动任务的模板内容逐字保留（实现者脚本校验）。
 3. 新增（插在 `organize_doc` 之后）：
 
 ```ts
