@@ -65,10 +65,12 @@ export interface GanttRow {
   overdue: number;
 }
 
-/** 行分组；name 为 null = 无标题（节直属章、测评/其他行） */
+/** 行分组节点（递归，任意深度）；name 为 null = 无标题（本章直属行、测评/其他行） */
 export interface GanttUnit {
   name: string | null;
   rows: GanttRow[];
+  /** 子章节节点（递归） */
+  children: GanttUnit[];
 }
 
 export interface GanttChapter {
@@ -348,8 +350,8 @@ export interface GanttModelOpts {
 
 /**
  * 推导甘特模型（纯函数）。
- * 分组口径与 StudyPlanView 一致：章（教材序）→ 节 → 知识点（教材序），
- * 章直属 KP 排节之后，测评/其他任务（无 KP）殿后；未归入任何章的归「未分组」。
+ * 分组口径与 StudyPlanView 一致：顶层章（教材序）→ 子章节（任意深度递归，教材序）→ 知识点（教材序），
+ * 章直属 KP 排子章节之后，测评/其他任务（无 KP）殿后；未归入任何章的归「未分组」。
  * 未排期 KP（无任何任务）不出现。
  * 聚焦模式（传 range）：任务先按区间过滤，区间外无任务的行不出现；列单位由 colUnit 决定。
  */
@@ -379,10 +381,19 @@ export function buildGanttModel(
   const dates: string[] = colUnit === "day" ? columns.map((c) => c.start) : [];
 
   const kpById = new Map(knowledgePoints.map((k) => [k.id, k]));
-  const unitById = new Map(chapters.filter((c) => c.level === 2).map((c) => [c.id, c]));
+  const chapterById = new Map(chapters.map((c) => [c.id, c]));
+  const isTopLevel = (c: Chapter): boolean => c.level === 1 || c.parentId == null;
   const topLevel = chapters
-    .filter((c) => c.level === 1 || c.parentId == null)
+    .filter(isTopLevel)
     .sort((a, b) => a.sort - b.sort);
+  // 直属子章节索引（排除顶层章，防 level 错位数据在两个树中重复出现）
+  const childByParent = new Map<number, Chapter[]>();
+  for (const c of chapters) {
+    if (c.parentId == null || isTopLevel(c)) continue;
+    const arr = childByParent.get(c.parentId) ?? [];
+    arr.push(c);
+    childByParent.set(c.parentId, arr);
+  }
 
   const buckets = new Map<number, ChBucket>();
   for (const ch of topLevel) {
@@ -396,14 +407,21 @@ export function buildGanttModel(
     bucket.slots.set(slot, list);
   };
 
-  // 任务 chapterId → 所属桶（命中章自身返回 [桶, 章直属]，命中节返回 [桶, 节槽位]）
+  // 任务 chapterId → 所属桶（命中顶层章返回 [桶, 章直属]，命中任意深度子章节返回 [顶层祖先桶, 子章节槽位]）
   const locate = (chId: number | null): { bucket: ChBucket; slot: string } => {
     if (chId != null) {
-      const unit = unitById.get(chId);
-      const ch = unit ? topLevel.find((c) => c.id === unit.parentId) : topLevel.find((c) => c.id === chId);
+      const ch = chapterById.get(chId);
       if (ch) {
-        const bucket = buckets.get(ch.id)!;
-        return { bucket, slot: unit ? `u:${chId}` : "direct" };
+        let top: Chapter | undefined = ch;
+        let guard = 0;
+        while (top && !isTopLevel(top) && guard++ < 32) {
+          if (top.parentId === null) break;
+          top = chapterById.get(top.parentId);
+        }
+        if (top) {
+          const bucket = buckets.get(top.id)!;
+          return { bucket, slot: isTopLevel(ch) ? "direct" : `u:${chId}` };
+        }
       }
     }
     return { bucket: ungrouped, slot: "direct" };
@@ -438,23 +456,37 @@ export function buildGanttModel(
     }
   }
 
-  // 3) 组装章行（节 → 直属 → 其他 → 测评）
+  // 3) 组装章行（子章节递归 sort 序 → 章直属 → 其他 → 测评）
+  /** 递归收集节点下全部行（含各子章节），供章聚合与章条 */
+  const collectRows = (unit: GanttUnit): GanttRow[] => [...unit.rows, ...unit.children.flatMap(collectRows)];
+
+  /** 建子章节节点（递归）：自身行 = slot u:<id>，子节点 = 其直属子章节；无行且无存活子节点时返回 null */
+  const assembleUnit = (id: number, bucket: ChBucket): GanttUnit | null => {
+    const ch = chapterById.get(id);
+    if (!ch) return null;
+    const children = (childByParent.get(id) ?? [])
+      .slice()
+      .sort((a, b) => a.sort - b.sort)
+      .map((c) => assembleUnit(c.id, bucket))
+      .filter((u): u is GanttUnit => u !== null);
+    const rows = (bucket.slots.get(`u:${id}`) ?? []).sort((a, b) => a.sort - b.sort);
+    if (!rows.length && !children.length) return null;
+    return { name: ch.name, rows, children };
+  };
+
   const assemble = (bucket: ChBucket): GanttChapter => {
     const units: GanttUnit[] = [];
     if (bucket.id != null) {
-      const unitNodes = chapters
-        .filter((c) => c.parentId === bucket.id && c.level === 2)
-        .sort((a, b) => a.sort - b.sort);
-      for (const u of unitNodes) {
-        const rows = (bucket.slots.get(`u:${u.id}`) ?? []).sort((a, b) => a.sort - b.sort);
-        if (rows.length) units.push({ name: u.name, rows });
+      for (const c of (childByParent.get(bucket.id) ?? []).slice().sort((a, b) => a.sort - b.sort)) {
+        const u = assembleUnit(c.id, bucket);
+        if (u) units.push(u);
       }
     }
-    for (const [slot, title] of [["direct", null], ["other", null], ["test", null]] as const) {
-      const rows = (bucket.slots.get(slot) ?? []).sort((a, b) => a.sort - b.sort);
-      if (rows.length) units.push({ name: title, rows });
-    }
-    const rows = units.flatMap((u) => u.rows);
+    const tailRows = (["direct", "other", "test"] as const).flatMap((slot) =>
+      (bucket.slots.get(slot) ?? []).sort((a, b) => a.sort - b.sort),
+    );
+    if (tailRows.length) units.push({ name: null, rows: tailRows, children: [] });
+    const rows = units.flatMap(collectRows);
     return {
       key: bucket.id == null ? "ch:ungrouped" : `ch:${bucket.id}`,
       chapterId: bucket.id,

@@ -1937,6 +1937,8 @@
 .gantt-bar-ch.full { background: var(--as-green-soft); border-color: var(--as-green-line); }
 .gantt-unit-row { height: 20px; background: var(--as-bg-elev2); }
 .gantt-unit-left { padding-left: 26px; font-size: 11px; color: var(--as-text-faint); }
+/* L3 及更深子章节行：缩进加深一档（同族） */
+.gantt-unit-left.deep { padding-left: 40px; }
 .gantt-kp-row { height: 24px; }
 .gantt-kp-left { gap: 5px; }
 .gantt-kp-row .task-check { width: 16px; height: 16px; border-radius: 4px; font-size: 10px; }

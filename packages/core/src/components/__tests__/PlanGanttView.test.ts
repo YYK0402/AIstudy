@@ -17,11 +17,11 @@ function makePlan(): StudyPlan {
   };
 }
 
-function makeChapter(): Chapter {
-  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: 1, sort: 1 };
+function makeChapter(over: Partial<Chapter> = {}): Chapter {
+  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: 1, sort: 1, ...over };
 }
 
-function makeKp(): KnowledgePoint {
+function makeKp(over: Partial<KnowledgePoint> = {}): KnowledgePoint {
   return {
     id: 1,
     courseId: 1,
@@ -35,6 +35,7 @@ function makeKp(): KnowledgePoint {
     chapterName: "第一章",
     sort: 1,
     createTime: "2026-10-01T00:00:00.000Z",
+    ...over,
   };
 }
 
@@ -151,6 +152,34 @@ describe("PlanGanttView", () => {
     expect(w.find(".gantt-week").exists()).toBe(false);
     expect(w.find(".gantt-wd").exists()).toBe(false);
     expect(w.find(".gantt-cell").exists()).toBe(true);
+  });
+
+  it("L3 用例：章 → 节 → 小节递归渲染，L3 行带 .deep 缩进类，KP 行计入章聚合", () => {
+    const chs = [
+      makeChapter({ id: 1, name: "第一章" }),
+      makeChapter({ id: 11, name: "第二节", parentId: 1, level: 2, sort: 1 }),
+      makeChapter({ id: 111, name: "小节三", parentId: 11, level: 3, sort: 1 }),
+    ];
+    const kps = [
+      makeKp({ id: 111, name: "KP-L3", chapterId: 111, chapterName: "小节三" }),
+      makeKp({ id: 1, name: "KP-直属", chapterId: 1 }),
+    ];
+    const tasks = [
+      makeTask({ id: 1, kpId: 1, chapterId: 1 }),
+      makeTask({ id: 3, kpId: 111, chapterId: 111, scheduledDate: "2026-10-03" }),
+    ];
+    const model = buildGanttModel(makePlan(), tasks, chs, kps, TODAY);
+    const w = mountGantt({ expandedChapters: new Set(["ch:1"]) }, model);
+    // 节行 + 小节行（L3 带缩进类），章直属 KP 无节行直接渲染
+    const unitRows = w.findAll(".gantt-unit-left");
+    expect(unitRows.map((n) => n.text())).toEqual(["第二节", "小节三"]);
+    expect(unitRows[0].classes()).not.toContain("deep");
+    expect(unitRows[1].classes()).toContain("deep");
+    // 章直属 KP 排子章节之后（与既有口径一致）
+    expect(w.findAll(".gantt-kp-name").map((n) => n.text())).toEqual(["KP-L3", "KP-直属"]);
+    // L3 行计入章聚合与章条数据
+    expect(w.find(".gantt-ch-prog").text()).toBe("0/2");
+    expect(w.findAll(".gantt-cell").length).toBe(2);
   });
 
   it("月列模式：月份行显示月标签，无周标签/星期行", () => {
