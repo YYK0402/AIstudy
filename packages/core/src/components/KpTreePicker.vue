@@ -5,45 +5,25 @@
       <span class="kpsm-count">已选 {{ modelValue.length }}</span>
     </div>
     <div class="kpsm-tree">
-      <div v-for="ch in visibleChapters" :key="ch.id" class="kpsm-ch">
-        <div class="kpsm-row ch" :class="{ checked: isNodeAll(ch.id) }">
-          <input
-            type="checkbox"
-            :checked="isNodeAll(ch.id)"
-            :indeterminate.prop="isNodePartial(ch.id)"
-            @change="toggleNode(ch.id, $event)"
-          />
-          <span class="nm">{{ ch.name }}</span>
-          <span class="cnt">{{ allKpIdsOfNode(ch.id).length }}</span>
-          <span class="tgl" role="button" tabindex="0" :aria-expanded="expanded.has(ch.id)" :class="{ open: expanded.has(ch.id) }" @click="toggleExpand(ch.id)" @keydown.enter.prevent="toggleExpand(ch.id)" @keydown.space.prevent="toggleExpand(ch.id)">▾</span>
-        </div>
-        <div v-show="isSearching || expanded.has(ch.id)" class="kpsm-children">
-          <div v-for="u in visibleUnitsOf(ch.id)" :key="u.id" class="kpsm-unit">
-            <div class="kpsm-row unit" :class="{ checked: isNodeAll(u.id) }">
-              <input
-                type="checkbox"
-                :checked="isNodeAll(u.id)"
-                :indeterminate.prop="isNodePartial(u.id)"
-                @change="toggleNode(u.id, $event)"
-              />
-              <span class="nm">{{ u.name }}</span>
-              <span class="cnt">{{ kpsOfNode(u.id).length }}</span>
-            </div>
-            <div class="kpsm-kps">
-              <label v-for="kp in kpsOfNode(u.id)" :key="kp.id" class="kpsm-row kp" :class="{ checked: selected.has(kp.id) }">
-                <input type="checkbox" :checked="selected.has(kp.id)" @change="toggleKp(kp.id)" />
-                <span class="nm">{{ kp.name }}</span>
-              </label>
-            </div>
-          </div>
-          <div v-if="kpsOfNode(ch.id).length > 0" class="kpsm-kps direct">
-            <label v-for="kp in kpsOfNode(ch.id)" :key="kp.id" class="kpsm-row kp" :class="{ checked: selected.has(kp.id) }">
-              <input type="checkbox" :checked="selected.has(kp.id)" @change="toggleKp(kp.id)" />
-              <span class="nm">{{ kp.name }}</span>
-            </label>
-          </div>
-        </div>
-      </div>
+      <KpTreeBranch
+        v-for="ch in visibleChapters"
+        :key="ch.id"
+        :chapter="ch"
+        :depth="1"
+        :children="childrenOf(ch.id)"
+        :kps-by-node="kpsByNode"
+        :selected="selected"
+        :expanded="expanded"
+        :is-searching="isSearching"
+        :node-visible="nodeVisible"
+        :children-of="childrenOf"
+        :toggle-node="toggleNode"
+        :toggle-kp="toggleKp"
+        :toggle-expand="toggleExpand"
+        :is-node-all="isNodeAll"
+        :is-node-partial="isNodePartial"
+        :all-kp-ids-of-node="allKpIdsOfNode"
+      />
       <div v-if="visibleChapters.length === 0" class="kpsm-empty">未找到匹配的知识点</div>
     </div>
   </div>
@@ -52,6 +32,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, withDefaults } from "vue";
 import type { Chapter, KnowledgePoint } from "../api";
+import { buildChapterTreeFlat, type NestedChapter } from "../utils/outline";
+import KpTreeBranch from "./KpTreeBranch.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -75,16 +57,22 @@ const search = ref("");
 const expanded = ref<Set<number>>(new Set());
 const selected = computed(() => new Set(props.modelValue));
 
-// 章节异步加载：autoExpand 时新出现的章默认展开（不主动收起用户手动折叠的）；immediate 覆盖挂载时章节已就绪的场景
+// N 级章节树（T1）：同级 sort 序，孤儿（parentId 指向已删节点）提升顶层追加末尾
+const tree = computed(() => buildChapterTreeFlat(props.chapters));
+
+// 顶层章列表（顶层渲染/空态判断）
+const topChapters = computed(() => tree.value.map((n) => n.chapter));
+
+// 章节异步加载：默认展开全部顶层章（不主动收起用户手动折叠的）；immediate 覆盖挂载时章节已就绪的场景
 watch(
-  () => props.chapters,
-  (chs) => {
+  tree,
+  (roots) => {
     if (!props.autoExpand) return;
     const next = new Set(expanded.value);
     let changed = false;
-    for (const c of chs) {
-      if ((c.level === 1 || c.parentId === null) && !next.has(c.id)) {
-        next.add(c.id);
+    for (const n of roots) {
+      if (!next.has(n.chapter.id)) {
+        next.add(n.chapter.id);
         changed = true;
       }
     }
@@ -96,33 +84,21 @@ watch(
 const isSearching = computed(() => search.value.trim() !== "");
 const matchName = (s: string) => !isSearching.value || s.toLowerCase().includes(search.value.trim().toLowerCase());
 
-const chapterById = computed(() => new Map(props.chapters.map((c) => [c.id, c])));
-
-const chapterSort = (id: number) => chapterById.value.get(id)?.sort ?? 0;
-
-const topChapters = computed(() =>
-  props.chapters.filter((c) => c.level === 1 || c.parentId === null).sort((a, b) => a.sort - b.sort),
-);
-
-// 章节 → 小节列表（按 sort），预计算替代每行 filter+sort
-const unitsByChapter = computed(() => {
+// 节点 → 直属子节点（任意 parentId，sort 序）：替代两级 unitsByChapter
+const childrenByParent = computed(() => {
   const map = new Map<number, Chapter[]>();
-  for (const c of props.chapters) {
-    if (c.level === 2 && c.parentId != null) {
-      let list = map.get(c.parentId);
-      if (!list) {
-        list = [];
-        map.set(c.parentId, list);
-      }
-      list.push(c);
+  const walk = (list: NestedChapter[]) => {
+    for (const n of list) {
+      if (n.children.length > 0) map.set(n.chapter.id, n.children.map((c) => c.chapter));
+      walk(n.children);
     }
-  }
-  for (const list of map.values()) list.sort((a, b) => a.sort - b.sort);
+  };
+  walk(tree.value);
   return map;
 });
 
-function unitsOf(chId: number): Chapter[] {
-  return unitsByChapter.value.get(chId) ?? [];
+function childrenOf(nodeId: number): Chapter[] {
+  return childrenByParent.value.get(nodeId) ?? [];
 }
 
 // 节点直属 KP（按教材序，搜索词过滤）：预计算替代每行 filter+sort；
@@ -146,24 +122,54 @@ function kpsOfNode(nodeId: number): KnowledgePoint[] {
   return kpsByNode.value.get(nodeId) ?? [];
 }
 
-// 节点全部 KP id（章 = 直属 + 其下所有节；节 = 直属）：预计算 + 选中数，
-// 替代 isNodeAll/isNodePartial 每行全量遍历
+// 节点 → 前序索引（整树一次 DFS）：任意深度节点的教材序位置
+const preorderIndex = computed(() => {
+  const idx = new Map<number, number>();
+  let i = 0;
+  const walk = (list: NestedChapter[]) => {
+    for (const n of list) {
+      idx.set(n.chapter.id, i++);
+      walk(n.children);
+    }
+  };
+  walk(tree.value);
+  return idx;
+});
+
+// 节点 → 其顶层祖先章 sort（教材序主键；章直属先于子节点天然由前序索引保证）
+const topSortOf = computed(() => {
+  const map = new Map<number, number>();
+  for (const root of tree.value) {
+    const visit = (list: NestedChapter[]) => {
+      for (const n of list) {
+        map.set(n.chapter.id, root.chapter.sort);
+        visit(n.children);
+      }
+    };
+    visit([root]);
+  }
+  return map;
+});
+
+// 节点全部 KP id（直属 + 全部后代，DFS 前序聚合）：预计算 + 选中数，
+// 替代 isNodeAll/isNodePartial 每行全量遍历；章直属排在其子节点之前
 const nodeKpIds = computed(() => {
   const ids = new Map<number, number[]>();
-  for (const node of topChapters.value) {
-    const all = [...kpsOfNode(node.id)];
-    for (const u of unitsOf(node.id)) all.push(...kpsOfNode(u.id));
-    ids.set(node.id, all.map((k) => k.id));
-    for (const u of unitsOf(node.id)) ids.set(u.id, kpsOfNode(u.id).map((k) => k.id));
-  }
+  const walk = (node: NestedChapter): number[] => {
+    const all = kpsOfNode(node.chapter.id).map((k) => k.id);
+    for (const child of node.children) all.push(...walk(child));
+    ids.set(node.chapter.id, all);
+    return all;
+  };
+  for (const root of tree.value) walk(root);
   return ids;
 });
 
 const nodeSelectedCount = computed(() => {
   const counts = new Map<number, number>();
-  for (const [id, ids] of nodeKpIds.value) {
+  for (const [id, idList] of nodeKpIds.value) {
     let n = 0;
-    for (const kid of ids) if (selected.value.has(kid)) n++;
+    for (const kid of idList) if (selected.value.has(kid)) n++;
     counts.set(id, n);
   }
   return counts;
@@ -185,14 +191,12 @@ function isNodePartial(nodeId: number): boolean {
   return hit > 0 && hit < ids.length;
 }
 
-/** 教材序：章序 → 节序（章直属排节之前）→ KP 排序 */
+/** 教材序：顶层祖先章 sort → 节点前序索引 → KP 排序（章直属先于子节点） */
 function orderKey(kp: KnowledgePoint): [number, number, number, number] {
-  const node = kp.chapterId != null ? chapterById.value.get(kp.chapterId) : undefined;
-  if (!node) return [9999, 9999, kp.sort, kp.id];
-  if (node.level === 2 && node.parentId != null) {
-    return [chapterSort(node.parentId), node.sort, kp.sort, kp.id];
-  }
-  return [chapterSort(node.id), -1, kp.sort, kp.id];
+  if (kp.chapterId == null) return [9999, 9999, kp.sort, kp.id];
+  const idx = preorderIndex.value.get(kp.chapterId);
+  if (idx === undefined) return [9999, 9999, kp.sort, kp.id];
+  return [topSortOf.value.get(kp.chapterId) ?? 9999, idx, kp.sort, kp.id];
 }
 
 function emitSorted(set: Set<number>) {
@@ -219,10 +223,10 @@ function toggleNode(nodeId: number, e: Event) {
   emitSorted(set);
 }
 
-function toggleExpand(chId: number) {
+function toggleExpand(nodeId: number) {
   const next = new Set(expanded.value);
-  if (next.has(chId)) next.delete(chId);
-  else next.add(chId);
+  if (next.has(nodeId)) next.delete(nodeId);
+  else next.add(nodeId);
   expanded.value = next;
 }
 
@@ -233,17 +237,27 @@ function toggleKp(id: number) {
   emitSorted(set);
 }
 
-/** 搜索时只保留含命中 KP 的节 */
-function visibleUnitsOf(chId: number): Chapter[] {
-  const units = unitsOf(chId);
-  return isSearching.value ? units.filter((u) => kpsOfNode(u.id).length > 0) : units;
+// 搜索时只保留含命中 KP 的分支（节点自身或任一后代有直属命中）；null = 未搜索不过滤
+const visibleNodeIds = computed(() => {
+  if (!isSearching.value) return null;
+  const set = new Set<number>();
+  const walk = (node: NestedChapter): boolean => {
+    const visible = kpsOfNode(node.chapter.id).length > 0 || node.children.some((c) => walk(c));
+    if (visible) set.add(node.chapter.id);
+    return visible;
+  };
+  for (const root of tree.value) walk(root);
+  return set;
+});
+
+function nodeVisible(nodeId: number): boolean {
+  const set = visibleNodeIds.value;
+  return set === null || set.has(nodeId);
 }
 
-/** 搜索时只保留含命中 KP 的章 */
+/** 搜索时只保留含命中 KP 的顶层章 */
 const visibleChapters = computed(() => {
   if (!isSearching.value) return topChapters.value;
-  return topChapters.value.filter(
-    (ch) => kpsOfNode(ch.id).length > 0 || unitsOf(ch.id).some((u) => kpsOfNode(u.id).length > 0),
-  );
+  return topChapters.value.filter((c) => nodeVisible(c.id));
 });
 </script>

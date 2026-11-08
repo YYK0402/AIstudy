@@ -31,22 +31,19 @@
             <div class="ct-row" :class="{ active: chapterId === 0 }" @click="pickChapter(0)">
               <span class="t-faint">（未分配）</span>
             </div>
-            <template v-for="ch in chapterTree" :key="ch.id">
-              <div class="ct-row" :class="{ active: chapterId === ch.id }" @click="pickChapter(ch.id)">
-                <span class="tp-tag chapter">章</span>
-                <span class="ct-name">{{ ch.name }}</span>
-              </div>
-              <div
-                v-for="u in ch.units"
-                :key="u.id"
-                class="ct-row unit"
-                :class="{ active: chapterId === u.id }"
-                @click="pickChapter(u.id)"
-              >
-                <span class="tp-tag unit">节</span>
-                <span class="ct-name">{{ u.name }}</span>
-              </div>
-            </template>
+            <div
+              v-for="row in chapterTree"
+              :key="row.id"
+              class="ct-row"
+              :class="{ active: chapterId === row.id, unit: row.depth >= 1 }"
+              :style="{ paddingLeft: 8 + row.depth * 18 + 'px' }"
+              @click="pickChapter(row.id)"
+            >
+              <span class="tp-tag" :class="row.depth === 0 ? 'chapter' : row.depth === 1 ? 'unit' : 'sub'">
+                {{ row.depth === 0 ? "章" : row.depth === 1 ? "节" : "小节" }}
+              </span>
+              <span class="ct-name">{{ row.name }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -75,6 +72,7 @@ import { docsEnabled, parseTagsInput, queryChapters, updateKnowledgePoint } from
 import type { Chapter, KnowledgePoint, SiyuanDocSelection } from "../api";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
 import { getBridge } from "@/bridge";
+import { buildChapterTreeFlat, type NestedChapter } from "../utils/outline";
 
 const props = defineProps<{
   open: boolean;
@@ -95,15 +93,21 @@ const treeWrap = ref<HTMLElement | null>(null);
 interface ChapterTreeRow {
   id: number;
   name: string;
-  units: Chapter[];
+  /** 树层（0=顶层章）：下拉面板不折叠，仅按层缩进 */
+  depth: number;
 }
 
-/** 章节树：章按 sort 排序，节挂在所属章下 */
+/** 归属章节下拉：N 级树前序展平（任意深度可选，孤儿提升顶层） */
 const chapterTree = computed<ChapterTreeRow[]>(() => {
-  const sorted = [...chapters.value].sort((a, b) => a.sort - b.sort || a.id - b.id);
-  return sorted
-    .filter((c) => c.level === 1)
-    .map((ch) => ({ id: ch.id, name: ch.name, units: sorted.filter((c) => c.level === 2 && c.parentId === ch.id) }));
+  const rows: ChapterTreeRow[] = [];
+  const walk = (list: NestedChapter[], depth: number) => {
+    for (const n of list) {
+      rows.push({ id: n.chapter.id, name: n.chapter.name, depth });
+      walk(n.children, depth + 1);
+    }
+  };
+  walk(buildChapterTreeFlat(chapters.value), 0);
+  return rows;
 });
 
 const selectedLabel = computed(() => chapters.value.find((c) => c.id === chapterId.value)?.name ?? "");
