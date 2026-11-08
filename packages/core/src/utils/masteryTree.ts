@@ -28,7 +28,7 @@ export interface MasteryTreeChapter extends MasteryTreeNode {
 
 export interface MasteryTree {
   chapters: MasteryTreeChapter[];
-  /** 未归入任何顶层章的知识点（chapterId 为空/孤儿小节/幽灵章节）；无则 null */
+  /** 未归入任何章节的知识点（chapterId 为空/幽灵章节）；无则 null */
   unassigned: MasteryTreeNode | null;
 }
 
@@ -48,6 +48,11 @@ export function levelOf(mastered: number, total: number): Mastery {
   if (r >= 0.6) return "mastered";
   if (r >= 0.3) return "known";
   return "unlearn";
+}
+
+/** 节点某档占比（% 一位小数）；0 知识点节点全空条 */
+export function nodeDistPct(n: MasteryTreeNode, m: Mastery): number {
+  return n.total ? Math.round((n.dist[m] / n.total) * 1000) / 10 : 0;
 }
 
 function toNode(id: number, name: string, kps: KnowledgePoint[]): MasteryTreeNode {

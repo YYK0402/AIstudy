@@ -1396,6 +1396,8 @@
 .mtree-node .tag { flex-shrink: 0; }
 .mtree-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .mtree-node.sm .mtree-name { max-width: 260px; font-weight: 400; }
+/* L3 及更深节点：字号随 .sm 族再收一档 */
+.mtree-node.lv-deep .mtree-name { font-size: 12px; }
 .mtree-progress { font-family: var(--as-font-mono); font-size: 11px; color: var(--as-text-dim); flex-shrink: 0; }
 .mtree-bar { flex: 1; display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--as-bg-elev); min-width: 60px; }
 .mtree-bar i { display: block; height: 100%; }

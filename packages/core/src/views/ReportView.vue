@@ -99,31 +99,13 @@
       <div v-if="stats.kp.total > 0 && (treeData.chapters.length > 0 || treeData.unassigned)" class="card">
         <h3>章节掌握树</h3>
         <div class="mtree">
-          <template v-for="ch in treeData.chapters" :key="ch.id">
-            <div class="mtree-node" :class="`lv-${ch.level}`">
-              <span class="tag" :class="ch.level"><span class="d"></span>{{ MASTERY_LABELS[ch.level] }}</span>
-              <span class="mtree-name">{{ ch.name }}</span>
-              <span class="mtree-progress">{{ ch.mastered }}/{{ ch.total }}</span>
-              <div class="mtree-bar">
-                <i v-for="m in MASTERY_ORDER" :key="m" :class="m" :style="{ width: nodePct(ch, m) + '%' }"></i>
-              </div>
-            </div>
-            <div v-if="ch.children.length > 0" class="mtree-children">
-              <div v-for="u in ch.children" :key="u.id" class="mtree-node sm" :class="`lv-${u.level}`">
-                <span class="mtree-name">{{ u.name }}</span>
-                <span class="mtree-progress">{{ u.mastered }}/{{ u.total }}</span>
-                <div class="mtree-bar">
-                  <i v-for="m in MASTERY_ORDER" :key="m" :class="m" :style="{ width: nodePct(u, m) + '%' }"></i>
-                </div>
-              </div>
-            </div>
-          </template>
+          <MasteryTreeNode v-for="ch in treeData.chapters" :key="ch.id" :node="ch" :depth="1" />
           <div v-if="treeData.unassigned" class="mtree-node" :class="`lv-${treeData.unassigned.level}`">
             <span class="tag" :class="treeData.unassigned.level"><span class="d"></span>{{ MASTERY_LABELS[treeData.unassigned.level] }}</span>
             <span class="mtree-name">{{ treeData.unassigned.name }}</span>
             <span class="mtree-progress">{{ treeData.unassigned.mastered }}/{{ treeData.unassigned.total }}</span>
             <div class="mtree-bar">
-              <i v-for="m in MASTERY_ORDER" :key="m" :class="m" :style="{ width: nodePct(treeData.unassigned, m) + '%' }"></i>
+                <i v-for="m in MASTERY_ORDER" :key="m" :class="m" :style="{ width: nodeDistPct(treeData.unassigned, m) + '%' }"></i>
             </div>
           </div>
         </div>
@@ -187,8 +169,9 @@ import type { WeakKpEntry } from "../utils/weakKps";
 import { formatDuration } from "../utils/studyTrend";
 import { buildMasteryHeatmap } from "../utils/masteryHeatmap";
 import type { HeatmapRow } from "../utils/masteryHeatmap";
-import { buildMasteryTree } from "../utils/masteryTree";
-import type { MasteryTree, MasteryTreeNode } from "../utils/masteryTree";
+import MasteryTreeNode from "../components/MasteryTreeNode.vue";
+import { buildMasteryTree, nodeDistPct } from "../utils/masteryTree";
+import type { MasteryTree } from "../utils/masteryTree";
 import { queryChapters } from "../api";
 import type { CourseStats, Mastery } from "../api";
 
@@ -262,11 +245,6 @@ const trendBars = computed<TrendBar[]>(() => {
   }));
 });
 const trendWidth = computed(() => trendBars.value.length * (TREND_BAR_W + TREND_GAP) - TREND_GAP);
-
-/** 树节点某档占比（0 知识点节点全空条） */
-function nodePct(n: MasteryTreeNode, m: Mastery): number {
-  return n.total ? Math.round((n.dist[m] / n.total) * 1000) / 10 : 0;
-}
 
 async function load() {
   loading.value = true;
