@@ -76,8 +76,8 @@ function mergeFixture(): MergeResult {
       { id: 1, parent: 0, name: "1.1", variants: [], chapterId: null },
     ],
     mappings: [
-      { materialIdx: 0, materialSeq: 0, nodeId: 0 },
-      { materialIdx: 0, materialSeq: 1, nodeId: 1 },
+      { materialId: 10, materialSeq: 0, nodeId: 0 },
+      { materialId: 10, materialSeq: 1, nodeId: 1 },
     ],
     failed: [],
   };

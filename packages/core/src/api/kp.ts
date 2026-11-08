@@ -215,10 +215,10 @@ export async function importChapterTree(
     const nextMappings = data.tocMappings.filter((m) => m.courseId !== courseId);
     const seen = new Set<string>();
     let mid = data.tocMappings.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
-    // 资料自然序（materialIdx 是 queryMaterials 列表下标，与合并侧同口径）
-    const materials = await queryMaterials(courseId);
+    // 按资料 id 显式查找（RawMapping.materialId 是资料 id，与列表顺序无关，防子集合并下标错位）
+    const byId = new Map((await queryMaterials(courseId)).map((m) => [m.id, m]));
     for (const rm of toc.result.mappings) {
-      const material = materials[rm.materialIdx];
+      const material = byId.get(rm.materialId);
       if (!material) continue;
       const path = nodePathOf(outlineOf(material), rm.materialSeq);
       if (!path) continue; // outline 损坏/节点缺失：无路径可记，跳过

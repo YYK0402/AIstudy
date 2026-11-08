@@ -72,26 +72,27 @@ const failedList = computed(() => modalStore.chapterPreviewResult?.failed ?? [])
 
 /** MergeNode[]（扁平）按 parent 建递归树；from=映射反查资料名，unlocated=对应资料 span 对齐复算 */
 function buildPreviewTree(res: MergeResult, materials: Material[]): PreviewNode[] {
-  // 每份资料预计算未定位 seq 集合（materialIdx → outline 内未定位节点序号）
+  // 每份资料预计算未定位 seq 集合（materialId → outline 内未定位节点序号）
   const unlocatedSeqByMat = new Map<number, Set<number>>();
-  for (let i = 0; i < materials.length; i++) {
-    const outline = outlineOf(materials[i]);
+  for (const mat of materials) {
+    const outline = outlineOf(mat);
     if (outline.length === 0) continue;
-    const { spans } = alignOutlineSpans(materials[i].contentText, outline);
+    const { spans } = alignOutlineSpans(mat.contentText, outline);
     const bad = new Set<number>();
     for (const sp of spans) if (sp.start < 0) bad.add(sp.seq);
-    unlocatedSeqByMat.set(i, bad);
+    unlocatedSeqByMat.set(mat.id, bad);
   }
+  const nameById = new Map(materials.map((m) => [m.id, m.name]));
   const fromByNode = new Map<number, Set<string>>();
   const unlocatedByNode = new Map<number, boolean>();
   for (const rm of res.mappings) {
-    const name = materials[rm.materialIdx]?.name;
+    const name = nameById.get(rm.materialId);
     if (name) {
       let s = fromByNode.get(rm.nodeId);
       if (!s) fromByNode.set(rm.nodeId, (s = new Set()));
       s.add(name);
     }
-    if (unlocatedSeqByMat.get(rm.materialIdx)?.has(rm.materialSeq)) unlocatedByNode.set(rm.nodeId, true);
+    if (unlocatedSeqByMat.get(rm.materialId)?.has(rm.materialSeq)) unlocatedByNode.set(rm.nodeId, true);
   }
   const nodes: PreviewNode[] = res.nodes.map((n) => ({
     id: n.id,
@@ -123,7 +124,7 @@ watch(
       tree.value = [];
       return;
     }
-    // 来源徽章资料名按 queryMaterials 自然序取（与合并侧 materialIdx 同口径）
+    // 来源徽章资料名按资料 id 反查（RawMapping.materialId 是资料 id，与列表顺序无关）
     const materials = await queryMaterials(modalStore.chapterPreviewCourseId);
     // 异步间隙弹窗可能已关闭：丢弃本次构建
     if (!modalStore.chapterPreviewOpen) return;

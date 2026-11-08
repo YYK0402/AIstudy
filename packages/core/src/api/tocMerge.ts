@@ -27,7 +27,8 @@ export interface MergeNode {
 }
 
 export interface RawMapping {
-  materialIdx: number;
+  /** 资料 id（显式 id：子集合并时过滤列表下标会错位，不用下标） */
+  materialId: number;
   /** 资料 outline 内节点序号（全局，非分片局部） */
   materialSeq: number;
   nodeId: number;
@@ -221,7 +222,7 @@ export async function mergeCourseToc(
         const oldById = new Map(nodes.map((n) => [n.id, n.chapterId]));
         nodes = parsed.nodes.map((n) => ({ ...n, chapterId: oldById.has(n.id) ? (oldById.get(n.id) ?? null) : null }));
         for (const mp of parsed.mapping) {
-          mappings.push({ materialIdx: i, materialSeq: part.start + mp.seq, nodeId: mp.node });
+          mappings.push({ materialId: mat.id, materialSeq: part.start + mp.seq, nodeId: mp.node });
         }
       }
     } catch (e) {
