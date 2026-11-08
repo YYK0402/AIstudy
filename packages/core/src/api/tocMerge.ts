@@ -87,13 +87,17 @@ export function parseMergeResponse(content: string, inputCount: number, outlineC
     const n = item as Record<string, unknown>;
     const id = Number(n.id);
     const name = typeof n.name === "string" ? n.name.trim() : "";
-    if (!Number.isInteger(id) || seen.has(id)) throw new Error(`AI 返回节点 id 非法或重复：${id}`);
+    if (!Number.isInteger(id) || id < 0 || seen.has(id)) throw new Error(`AI 返回节点 id 非法或重复：${id}`);
     if (!name) throw new Error("AI 返回节点存在空 name");
     seen.add(id);
     const variants = Array.isArray(n.variants)
       ? (n.variants as unknown[]).filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim())
       : [];
     nodes.push({ id, parent: n.parent === null ? null : Number(n.parent), name, variants });
+  }
+  // 序不变量：数组下标 === id（下游 levelOf/mapping 均按下标取节点，乱序会静默挂错章）
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].id !== i) throw new Error(`AI 返回 nodes 未按 id 升序排列：位置 ${i} 的 id=${nodes[i].id}`);
   }
   // 输入节点全部保留；新节点 id 从 inputCount 起连续
   for (let i = 0; i < inputCount; i++) {

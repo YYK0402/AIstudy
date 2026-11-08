@@ -77,6 +77,52 @@ describe("parseMergeResponse", () => {
     ], "mappings": []}`;
     expect(parseMergeResponse(omit, 1, 3).mapping).toEqual([]);
   });
+  it("mappings 项非法 / seq 重复 → 抛错", () => {
+    const badItem = `{"nodes": [
+      {"id": 0, "parent": null, "name": "a", "variants": []}
+    ], "mappings": [42]}`;
+    expect(() => parseMergeResponse(badItem, 1, 3)).toThrow(/mappings/);
+    const dupSeq = `{"nodes": [
+      {"id": 0, "parent": null, "name": "a", "variants": []}
+    ], "mappings": [{"seq": 0, "node": 0}, {"seq": 0, "node": 0}]}`;
+    expect(() => parseMergeResponse(dupSeq, 1, 3)).toThrow(/seq 重复/);
+  });
+  it("mappings 不是数组 → 抛错", () => {
+    const bad = `{"nodes": [
+      {"id": 0, "parent": null, "name": "a", "variants": []}
+    ], "mappings": "oops"}`;
+    expect(() => parseMergeResponse(bad, 1, 0)).toThrow(/mappings/);
+  });
+  it("nodes 项非对象 / id 重复 / 负 id → 抛错", () => {
+    const notObj = '{"nodes": [42], "mappings": []}';
+    expect(() => parseMergeResponse(notObj, 0, 0)).toThrow(/非法项/);
+    const dup = `{"nodes": [
+      {"id": 0, "parent": null, "name": "a", "variants": []},
+      {"id": 0, "parent": null, "name": "b", "variants": []}
+    ], "mappings": []}`;
+    expect(() => parseMergeResponse(dup, 1, 0)).toThrow(/id/);
+    const neg = `{"nodes": [
+      {"id": 0, "parent": null, "name": "a", "variants": []},
+      {"id": -1, "parent": 0, "name": "b", "variants": []}
+    ], "mappings": []}`;
+    expect(() => parseMergeResponse(neg, 1, 0)).toThrow(/id/);
+  });
+  it("nodes 乱序（数组下标 ≠ id）→ 抛错（序不变量）", () => {
+    const shuffled = `{"nodes": [
+      {"id": 1, "parent": 0, "name": "b", "variants": []},
+      {"id": 0, "parent": null, "name": "a", "variants": []}
+    ], "mappings": []}`;
+    expect(() => parseMergeResponse(shuffled, 2, 0)).toThrow(/升序/);
+  });
+  it("非 JSON 响应 / 缺 nodes 键 → 抛错", () => {
+    expect(() => parseMergeResponse("抱歉，无法完成合并", 2, 3)).toThrow(/JSON/);
+    expect(() => parseMergeResponse('{"mappings": []}', 2, 3)).toThrow(/nodes/);
+  });
+  it("markdown 围栏剥离后正常解析", () => {
+    const r = parseMergeResponse("```json\n" + input3 + "\n```", 2, 3);
+    expect(r.nodes).toHaveLength(3);
+    expect(r.mapping).toHaveLength(3);
+  });
 });
 
 describe("splitOutlineForMerge", () => {
