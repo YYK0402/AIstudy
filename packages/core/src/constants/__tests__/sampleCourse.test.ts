@@ -5,6 +5,7 @@ describe("SAMPLE_COURSE 数据完整性", () => {
   it("不含任何原始资料（IP 安全）", () => {
     expect(SAMPLE_COURSE.materials).toEqual([]);
     expect(SAMPLE_COURSE.materialChapters).toEqual([]);
+    expect(SAMPLE_COURSE.tocMappings).toEqual([]);
     for (const k of SAMPLE_COURSE.knowledgePoints) {
       expect(k.sourceAssetIds).toBe("");
     }

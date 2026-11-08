@@ -13,6 +13,7 @@ import type {
   Material,
   MaterialChapter,
   Question,
+  TocMapping,
 } from "../types/appData";
 import { nextId, now } from "./format";
 import { getData, saveData } from "./storage";
@@ -33,13 +34,15 @@ export interface CoursePackageOptions {
   includeAssets?: boolean;
 }
 
-/** 课程包数据（内部 id 原样保留，导入时再重映射） */
+/** 课程包数据（内部 id 原样保留，导入时再重映射）
+ *  tocMappings 为 v1 包可选字段（v1 无此键，读取处按 [] 容错，PACKAGE_VERSION 保持 1） */
 export interface CoursePackageData {
   course: Course;
   chapters: Chapter[];
   knowledgePoints: KnowledgePoint[];
   materials: Material[];
   materialChapters: MaterialChapter[];
+  tocMappings: TocMapping[];
   questions: Question[];
   examPapers: ExamPaper[];
   flashCards: FlashCard[];
@@ -52,6 +55,7 @@ export interface RemappedCoursePackage {
   knowledgePoints: KnowledgePoint[];
   materials: Material[];
   materialChapters: MaterialChapter[];
+  tocMappings: TocMapping[];
   questions: Question[];
   examPapers: ExamPaper[];
   flashCards: FlashCard[];
@@ -102,6 +106,8 @@ export function buildCoursePackageData(data: AppData, courseId: number, opts: Co
   const materialChapters: MaterialChapter[] = data.materialChapters.filter(
     (mc) => chapterIds.has(mc.chapterId) && materialIds.has(mc.materialId),
   );
+  // outline 节点 → 章节映射随包携带（仅本课程的；悬挂外键在 remap 时丢弃）
+  const tocMappings: TocMapping[] = data.tocMappings.filter((m) => m.courseId === courseId);
 
   const questions: Question[] = includeQuestions
     ? data.questions.filter((q) => q.courseId === courseId)
@@ -119,6 +125,7 @@ export function buildCoursePackageData(data: AppData, courseId: number, opts: Co
     knowledgePoints,
     materials,
     materialChapters,
+    tocMappings,
     questions,
     examPapers,
     flashCards,
@@ -198,6 +205,17 @@ export function remapCoursePackage(pkg: CoursePackageData, existing: AppData, di
     materialId: materialIdMap[mc.materialId],
     chapterId: chapterIdMap[mc.chapterId],
   }));
+  // 资料 outline 节点 → 章节映射：materialId/chapterId 双外键重映射；
+  // v1 包无此字段（?? [] 容错）；指向包外 material/chapter 的悬挂行丢弃
+  const tocMappings: TocMapping[] = (pkg.tocMappings ?? [])
+    .filter((m) => materialIdMap[m.materialId] !== undefined && chapterIdMap[m.chapterId] !== undefined)
+    .map((m, idx) => ({
+      id: nextId(existing.tocMappings) + idx,
+      materialId: materialIdMap[m.materialId],
+      courseId,
+      materialPath: m.materialPath,
+      chapterId: chapterIdMap[m.chapterId],
+    }));
   const questions: Question[] = pkg.questions.map((q) => ({
     ...q,
     id: questionIdMap[q.id],
@@ -217,7 +235,7 @@ export function remapCoursePackage(pkg: CoursePackageData, existing: AppData, di
     kpId: kpIdMap[c.kpId],
   }));
 
-  return { courseId, course, chapters, knowledgePoints, materials, materialChapters, questions, examPapers, flashCards };
+  return { courseId, course, chapters, knowledgePoints, materials, materialChapters, tocMappings, questions, examPapers, flashCards };
 }
 
 /** 把重映射结果并入现有数据，返回新的合并视图（纯） */
@@ -229,6 +247,7 @@ export function applyImportToData(existing: AppData, r: RemappedCoursePackage): 
     knowledgePoints: [...existing.knowledgePoints, ...r.knowledgePoints],
     materials: [...existing.materials, ...r.materials],
     materialChapters: [...existing.materialChapters, ...r.materialChapters],
+    tocMappings: [...existing.tocMappings, ...r.tocMappings],
     questions: [...existing.questions, ...r.questions],
     examPapers: [...existing.examPapers, ...r.examPapers],
     flashCards: [...existing.flashCards, ...r.flashCards],

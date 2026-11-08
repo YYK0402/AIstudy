@@ -100,6 +100,7 @@ export const SAMPLE_COURSE: CoursePackageData = {
   ],
   materials: [],
   materialChapters: [],
+  tocMappings: [],
   questions: [
     // 单选（8）
     { id: 101, courseId: 1, kpIds: "1", title: "1840 年，英国发动的侵略战争是？", options: JSON.stringify(["中法战争", "鸦片战争", "甲午战争", "八国联军侵华战争"]), answer: "B", analysis: "1840 年英国发动鸦片战争，中国近代史由此开端。", qType: "single", difficulty: "easy", source: "manual", paperId: 301, createTime: T },

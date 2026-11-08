@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyImportToData, buildCoursePackageData, remapCoursePackage } from "../coursePackage";
+import { applyImportToData, buildCoursePackageData, remapCoursePackage, type CoursePackageData } from "../coursePackage";
 import type {
   AppData,
   Chapter,
@@ -10,6 +10,7 @@ import type {
   Material,
   MaterialChapter,
   Question,
+  TocMapping,
 } from "../../types/appData";
 
 const T = "2026-01-01T00:00:00.000Z";
@@ -70,6 +71,9 @@ function material(over: Partial<Material> = {}): Material {
 function mc(over: Partial<MaterialChapter> = {}): MaterialChapter {
   return { id: 1, materialId: 1, chapterId: 1, ...over };
 }
+function tm(over: Partial<TocMapping> = {}): TocMapping {
+  return { id: 1, materialId: 1, courseId: 1, materialPath: "第一章", chapterId: 1, ...over };
+}
 function question(over: Partial<Question> = {}): Question {
   return {
     id: 1,
@@ -109,7 +113,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     ],
     materials: [material(), material({ id: 2, courseId: 2, name: "力学.pdf", assetPath: "/assets/def.pdf", siyuanDocId: "doc-mat2" })],
     materialChapters: [mc(), mc({ id: 2, materialId: 2, chapterId: 2 })],
-    tocMappings: [],
+    tocMappings: [tm(), tm({ id: 2, materialId: 2, courseId: 2, chapterId: 2, materialPath: "力学" })],
     questions: [question(), question({ id: 2, courseId: 2, kpIds: "2", paperId: null })],
     examPapers: [paper()],
     answerRecords: [],
@@ -204,6 +208,15 @@ describe("buildCoursePackageData", () => {
     });
     const pkg = buildCoursePackageData(data, 1);
     expect(pkg.materialChapters.map((m) => m.id)).toEqual([1]);
+  });
+
+  it("tocMappings 仅取目标课程的映射（按 courseId 过滤，id 原样保留）", () => {
+    const pkg = buildCoursePackageData(makeData(), 1);
+    expect(pkg.tocMappings.map((m) => m.id)).toEqual([1]);
+    expect(pkg.tocMappings[0].materialPath).toBe("第一章");
+    // 反向：导出课程 2 只取课程 2 的行
+    const pkg2 = buildCoursePackageData(makeData(), 2);
+    expect(pkg2.tocMappings.map((m) => m.id)).toEqual([2]);
   });
 
   it("课程不存在时抛错", () => {
@@ -307,6 +320,48 @@ describe("remapCoursePackage", () => {
     expect(r.knowledgePoints[0].prevKpIds).toBe("");
   });
 
+  it("tocMappings 双外键重映射；指向包外 material/chapter 的悬挂行丢弃", () => {
+    const src = makeData({
+      courses: [course({ id: 10, name: "化学" })],
+      chapters: [chapter({ id: 11, courseId: 10, name: "第一章" }), chapter({ id: 12, courseId: 10, parentId: 11, name: "烃", level: 2 })],
+      knowledgePoints: [],
+      materials: [material({ id: 31, courseId: 10, name: "化学.pdf" })],
+      materialChapters: [],
+      tocMappings: [
+        tm({ id: 1, materialId: 31, courseId: 10, chapterId: 11, materialPath: "第一章" }),
+        tm({ id: 2, materialId: 31, courseId: 10, chapterId: 12, materialPath: "第一章>1.1" }),
+        // 悬挂：章节 999 不在包内
+        tm({ id: 3, materialId: 31, courseId: 10, chapterId: 999, materialPath: "第一章>1.1.1" }),
+        // 悬挂：资料 888 不在包内
+        tm({ id: 4, materialId: 888, courseId: 10, chapterId: 11, materialPath: "第二章" }),
+      ],
+      questions: [],
+      examPapers: [],
+      flashCards: [],
+    });
+    const pkg = buildCoursePackageData(src, 10);
+    expect(pkg.tocMappings).toHaveLength(4); // build 只按 courseId 过滤
+    const r = remapCoursePackage(pkg, makeData());
+    expect(r.tocMappings).toHaveLength(2); // 两条悬挂行被丢弃
+    const chIdByName = Object.fromEntries(r.chapters.map((c) => [c.name, c.id]));
+    expect(r.tocMappings[0].materialId).toBe(r.materials[0].id);
+    expect(r.tocMappings[0].chapterId).toBe(chIdByName["第一章"]);
+    expect(r.tocMappings[0].materialPath).toBe("第一章");
+    expect(r.tocMappings[1].chapterId).toBe(chIdByName["烃"]);
+    expect(r.tocMappings.every((m) => m.courseId === r.courseId)).toBe(true);
+  });
+
+  it("v1 包无 tocMappings 字段：按空处理，remap/apply 不炸", () => {
+    // 模拟 v1 包：JSON 往返后删掉 tocMappings 键（parseCoursePackageZip 即 JSON.parse + 断言）
+    const pkg = buildCoursePackageData(makeData(), 1);
+    const v1 = JSON.parse(JSON.stringify(pkg)) as CoursePackageData;
+    delete (v1 as { tocMappings?: TocMapping[] }).tocMappings;
+    const r = remapCoursePackage(v1, makeData());
+    expect(r.tocMappings).toEqual([]);
+    const merged = applyImportToData(makeData(), r);
+    expect(merged.tocMappings).toHaveLength(2); // 仅接收方原有
+  });
+
   it("空课程（无章节/知识点）也能重映射，数量守恒为 0", () => {
     const src = makeData({
       courses: [course({ id: 10, name: "空课程" })],
@@ -356,6 +411,8 @@ describe("applyImportToData", () => {
     expect(merged.chapters).toHaveLength(3); // 原 2 + 新 1
     expect(merged.knowledgePoints).toHaveLength(3);
     expect(merged.materials).toHaveLength(3);
+    expect(merged.tocMappings).toHaveLength(3); // 原 2 + 新 1（接收方原有保留，新行 courseId=新课程）
+    expect(merged.tocMappings.filter((m) => m.courseId === r.courseId)).toHaveLength(1);
     expect(merged.questions).toHaveLength(3);
     expect(merged.examPapers).toHaveLength(2);
     expect(merged.flashCards).toHaveLength(3);
