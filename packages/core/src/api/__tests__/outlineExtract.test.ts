@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import { buildOutlineChunks, mergeOutlineNodes, parseOutlineResponse } from "../outlineExtract";
+
+describe("parseOutlineResponse", () => {
+  it("解析 JSON（含代码围栏与思考泄漏前缀）", () => {
+    const content = '```json\n{"headings": [{"text": "第1章 极限", "level": 1}, {"text": "1.1 定义", "level": 2}]}\n```';
+    expect(parseOutlineResponse(content)).toEqual([
+      { text: "第1章 极限", level: 1 },
+      { text: "1.1 定义", level: 2 },
+    ]);
+  });
+  it("过滤非法项：level 越界/空文本/目录点线", () => {
+    const content = `{"headings": [
+      {"text": "第1章 …… 3", "level": 1},
+      {"text": "", "level": 1},
+      {"text": "第2章", "level": 0},
+      {"text": "第3章", "level": 9},
+      {"text": "第4章", "level": 1}
+    ]}`;
+    expect(parseOutlineResponse(content)).toEqual([{ text: "第4章", level: 1 }]);
+  });
+  it("无 JSON 抛错", () => {
+    expect(() => parseOutlineResponse("抱歉，我无法处理")).toThrow(/JSON/);
+  });
+  it("缺 headings 数组抛错", () => {
+    expect(() => parseOutlineResponse('{"foo": 1}')).toThrow(/headings/);
+  });
+  it("节点数上限 400", () => {
+    const items = Array.from({ length: 500 }, (_, i) => `{"text": "t${i}", "level": 1}`).join(",");
+    expect(parseOutlineResponse(`{"headings": [${items}]}`)).toHaveLength(400);
+  });
+});
+
+describe("buildOutlineChunks", () => {
+  it("短文本单段无重叠", () => {
+    const chunks = buildOutlineChunks("甲\n\n乙\n\n丙", 40000, 500);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].overlap).toBe(false);
+    expect(chunks[0].text).toBe("甲\n\n乙\n\n丙");
+  });
+  it("超长文本按段落边界切段，续段携带前段尾部重叠", () => {
+    const paras = Array.from({ length: 30 }, (_, i) => `P${i}${"x".repeat(2000)}`);
+    const chunks = buildOutlineChunks(paras.join("\n\n"), 10000, 500);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (let i = 1; i < chunks.length; i++) {
+      expect(chunks[i].overlap).toBe(true);
+      // text 以前一段尾部 500 字开头
+      expect(chunks[i].text.startsWith(chunks[i - 1].text.slice(-500))).toBe(true);
+      expect(chunks[i].bodyStart).toBeGreaterThan(0);
+    }
+  });
+  it("超长单段强制切", () => {
+    const chunks = buildOutlineChunks("a".repeat(25000), 10000, 500);
+    expect(chunks.length).toBe(3);
+  });
+});
+
+describe("mergeOutlineNodes", () => {
+  it("丢弃续段开头与累积尾部重复的标题（重叠区）", () => {
+    const acc = [{ text: "第1章", level: 1 }, { text: "1.1 甲", level: 2 }];
+    const next = [{ text: "1.1 甲", level: 2 }, { text: "1.2 乙", level: 2 }];
+    expect(mergeOutlineNodes(acc, next)).toEqual([
+      { text: "第1章", level: 1 },
+      { text: "1.1 甲", level: 2 },
+      { text: "1.2 乙", level: 2 },
+    ]);
+  });
+  it("无重复时顺序拼接", () => {
+    expect(mergeOutlineNodes([], [{ text: "A", level: 1 }])).toEqual([{ text: "A", level: 1 }]);
+  });
+});

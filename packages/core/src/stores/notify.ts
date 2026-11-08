@@ -1,10 +1,10 @@
-// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
+// 后台任务通知：长时 AI 任务状态（AI 梳理 / 知识点抽取 / 结构识别 / AI 出题 / AI 闪卡生成 / AI 学习计划生成），localStorage 持久化（切页/刷新不丢）
 import { defineStore } from "pinia";
 import { computed, onScopeDispose, ref } from "vue";
 import { getBridge, getBridgeSafe } from "@/bridge";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type BgTaskType = "organize" | "extract" | "gen_question" | "gen_flashcard" | "gen_plan";
+export type BgTaskType = "organize" | "extract" | "outline" | "gen_question" | "gen_flashcard" | "gen_plan";
 
 export interface BgTaskState {
   /** 唯一键：organize-{materialId} / extract-{materialId} / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
