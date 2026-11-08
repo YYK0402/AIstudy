@@ -196,7 +196,7 @@ export async function importChapterTree(
   // 已有章节一律不动，避免分册合并时打乱全书顺序、覆盖用户手动拖拽的顺序
   // 改挂：已有小节若预览父节点 ≠ 当前父节点则纠正（重新识别目录的核心价值）；
   // 预览父节点不存在（用户在预览里删了该行）时不动，防误挂
-  const reparents: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }> = [];
+  const reparents: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null; newLevel: number }> = [];
   for (const node of nodes) {
     const parentName = node.parentName;
     if (node.level < 2 || !parentName) continue;
@@ -206,7 +206,7 @@ export async function importChapterTree(
     if (!dup || dup.level !== node.level) continue;
     const target = existing.find((c) => c.level === node.level - 1 && norm(c.name) === norm(parentName));
     if (!target || dup.parentId === target.id) continue;
-    reparents.push({ chapter: dup, newParentId: target.id, newSort: null });
+    reparents.push({ chapter: dup, newParentId: target.id, newSort: null, newLevel: dup.level });
   }
   const moveErrors = reparents.length > 0 ? await applyParentAndSort(data, reparents) : [];
   // toc 映射落库：课程级替换（先删该课程旧映射），(materialId, materialPath) 幂等去重；
@@ -255,11 +255,12 @@ export async function importChapterTree(
 /**
  * 批量应用章节 parentId/sort 变更：换父时同步移动思源文档（目标文档缺失/移动失败 → 数据先行、错误聚合返回）。
  * newSort=null 表示「追加到 newParent 末尾」（应用时按当时兄弟 max sort + 1 计算，支持连续改挂不撞号）。
+ * newLevel = 变更后的最终 level，由调用方算好传入（拖拽=按新深度重算，改挂=原 level 不变）。
  * 返回移动失败的章节名列表。
  */
 async function applyParentAndSort(
   data: AppData,
-  items: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }>,
+  items: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null; newLevel: number }>,
 ): Promise<string[]> {
   const errors: string[] = [];
   for (const it of items) {
@@ -285,6 +286,8 @@ async function applyParentAndSort(
         .reduce((m, c) => Math.max(m, c.sort), 0) + 1;
     chapter.parentId = newParentId;
     chapter.sort = newSort;
+    // level 由调用方按新深度算好传入（保持「level === 实际深度」不变量，doc 同步消费方依赖）
+    chapter.level = it.newLevel;
   }
   return errors;
 }
@@ -363,15 +366,15 @@ export async function updateChapter(chapter: Chapter): Promise<void> {
   }
 }
 
-/** 批量应用章节 sort/parentId 变更（拖拽排序），单次保存；换父级时同步移动思源树对应文档 */
-export async function applyChapterMoves(moves: Array<{ id: number; parentId: number | null; sort: number }>): Promise<void> {
+/** 批量应用章节 sort/parentId/level 变更（拖拽排序），单次保存；换父级时同步移动思源树对应文档 */
+export async function applyChapterMoves(moves: Array<{ id: number; parentId: number | null; sort: number; level: number }>): Promise<void> {
   const data = await getData();
   const items = moves
     .map((mv) => {
       const chapter = data.chapters.find((c) => c.id === mv.id);
-      return chapter ? { chapter, newParentId: mv.parentId, newSort: mv.sort as number | null } : null;
+      return chapter ? { chapter, newParentId: mv.parentId, newSort: mv.sort as number | null, newLevel: mv.level } : null;
     })
-    .filter((x): x is { chapter: Chapter; newParentId: number | null; newSort: number | null } => x !== null);
+    .filter((x): x is { chapter: Chapter; newParentId: number | null; newSort: number | null; newLevel: number } => x !== null);
   const moveErrors = await applyParentAndSort(data, items);
   await saveData(data);
   if (moveErrors.length) {

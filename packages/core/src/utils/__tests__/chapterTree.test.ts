@@ -63,6 +63,25 @@ describe("computeChapterMove（N 级）", () => {
     const next = computeChapterMove(all, 4, 3, "inside")!;
     const moved = next.find((c) => c.id === 4)!;
     expect(moved.parentId).toBe(3);
+    // level 按新深度重算：target 3 是 level 3 → 拖入节点 level 4
+    expect(moved.level).toBe(4);
+  });
+
+  it("N 级：子树多代 level 全顺延（整体下沉 2 层）", () => {
+    const all = [
+      ch(1, null, 1, 1, "章1"),
+      ch(2, null, 1, 2, "章2"),
+      ch(21, 2, 2, 1, "2.1"),
+      ch(211, 21, 3, 1, "2.1.1"),
+      ch(11, 1, 2, 1, "1.1"),
+      ch(111, 11, 3, 1, "1.1.1"),
+      ch(1111, 111, 4, 1, "1.1.1.1"),
+    ];
+    // 11（L2，带 111/1111 两代子孙）整体挂到 211（L3）下 → 各级 +2
+    const next = computeChapterMove(all, 11, 211, "inside")!;
+    expect(next.find((c) => c.id === 11)!.level).toBe(4);
+    expect(next.find((c) => c.id === 111)!.level).toBe(5);
+    expect(next.find((c) => c.id === 1111)!.level).toBe(6);
   });
 
   it("N 级：跨父同级插入（before/after 按 target 父级列表）", () => {
@@ -75,6 +94,8 @@ describe("computeChapterMove（N 级）", () => {
     expect(m.parentId).toBe(1);
     const siblings = next.filter((c) => c.parentId === 1).sort((a, b) => a.sort - b.sort);
     expect(siblings.map((c) => c.id)).toEqual([2, 5, 3]);
+    // 新旧父同为 level 1 → level 不变
+    expect(m.level).toBe(2);
   });
 
   it("N 级：顶层节点可插到子级节点行的上/下沿（跨父）", () => {
@@ -84,6 +105,8 @@ describe("computeChapterMove（N 级）", () => {
     expect(m.parentId).toBe(1);
     const under1 = out.filter((c) => c.parentId === 1).sort((a, b) => a.sort - b.sort);
     expect(under1.map((c) => c.id)).toEqual([11, 2, 12]);
+    // 顶层下沉：新父 1 是 level 1 → level = 父 + 1
+    expect(m.level).toBe(2);
   });
 
   it("N 级：子级节点可拖到顶层行的上/下沿（升入顶层）", () => {
@@ -93,6 +116,8 @@ describe("computeChapterMove（N 级）", () => {
     expect(m.parentId).toBeNull();
     const tops = out.filter((c) => c.parentId === null).sort((a, b) => a.sort - b.sort);
     expect(tops.map((c) => c.id)).toEqual([1, 11, 2, 3]);
+    // 升入顶层：level 重算为 1
+    expect(m.level).toBe(1);
   });
 
   it("落点为自身子树返回 null", () => {

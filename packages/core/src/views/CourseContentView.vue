@@ -564,9 +564,10 @@ async function applyChapterDrop(dragId: number, targetId: number, pos: DropPos) 
   const moves = moved
     .filter((c) => {
       const o = oldMap.get(c.id);
-      return o !== undefined && (o.sort !== c.sort || o.parentId !== c.parentId);
+      // level 也计入变更：拖拽子树下沉/升入时，仅 level 变化的后代节点同样要落库
+      return o !== undefined && (o.sort !== c.sort || o.parentId !== c.parentId || o.level !== c.level);
     })
-    .map((c) => ({ id: c.id, parentId: c.parentId, sort: c.sort }));
+    .map((c) => ({ id: c.id, parentId: c.parentId, sort: c.sort, level: c.level }));
   if (moves.length === 0) return;
   await applyChapterMoves(moves);
   await loadChapters();
