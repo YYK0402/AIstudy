@@ -70,7 +70,6 @@ export const AI_TASKS = [
   { key: "grade_answer", name: "简答题 AI 阅卷" },
   { key: "gen_report", name: "学习报告生成" },
   { key: "infer_graph", name: "图谱关联关系推理" },
-  { key: "recognize_toc", name: "目录识别矫正" },
   { key: "organize_doc", name: "文档结构梳理" },
   { key: "gen_flashcard", name: "AI 闪卡生成" },
   { key: "gen_ask", name: "费曼提问生成" },
