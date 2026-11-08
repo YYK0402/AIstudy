@@ -1413,10 +1413,7 @@ export function startTocMergeTask(courseId: number, materialIds?: number[]): voi
         () => tocAbortFlag.aborted,
       );
       if (tocAbortFlag.aborted) { task.canceled(); return; }
-      // 预览弹窗在 Task 8 接入 openChapterPreview；本任务先只完成合并落库前预览由调用方处理
-      const latest = await getData();
-      const count = latest.materials.filter((m) => m.courseId === courseId).length;
-      void result; void count;
+      // 预览弹窗在 Task 8 经该事件接入；本任务只负责合并 + 派发事件
       const msg = result.failed.length > 0
         ? `目录合并完成，${result.failed.length} 份资料失败：${result.failed.map((f) => f.materialName).join("、")}`
         : "目录合并完成";
