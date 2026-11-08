@@ -407,7 +407,8 @@ export function buildGanttModel(
     bucket.slots.set(slot, list);
   };
 
-  // 任务 chapterId → 所属桶（命中顶层章返回 [桶, 章直属]，命中任意深度子章节返回 [顶层祖先桶, 子章节槽位]）
+  // 任务 chapterId → 所属桶（命中顶层章返回 [桶, 章直属]，命中任意深度子章节返回 [顶层祖先桶, 子章节槽位]；
+  // parentId 环/超深链致守卫耗尽时 top 停在非顶层章——必须校验桶存在（非顶层章无桶），否则降级未分组）
   const locate = (chId: number | null): { bucket: ChBucket; slot: string } => {
     if (chId != null) {
       const ch = chapterById.get(chId);
@@ -418,7 +419,7 @@ export function buildGanttModel(
           if (top.parentId === null) break;
           top = chapterById.get(top.parentId);
         }
-        if (top) {
+        if (top && buckets.has(top.id)) {
           const bucket = buckets.get(top.id)!;
           return { bucket, slot: isTopLevel(ch) ? "direct" : `u:${chId}` };
         }

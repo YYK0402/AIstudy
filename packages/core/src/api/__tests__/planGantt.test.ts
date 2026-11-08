@@ -254,6 +254,31 @@ describe("buildGanttModel", () => {
     expect(m.chapters.map((c) => c.name)).toEqual(["未分组"]);
   });
 
+  it("parentId 环（B↔C）：不抛错，环节点行落「未分组」（守卫耗尽后桶校验降级）", () => {
+    const chs = [
+      makeChapter({ id: 1, name: "第一章" }),
+      makeChapter({ id: 2, name: "节B", parentId: 3, level: 2, sort: 2 }),
+      makeChapter({ id: 3, name: "节C", parentId: 2, level: 2, sort: 3 }),
+    ];
+    const kps = [makeKp({ id: 9, name: "KP-环", chapterId: 2 })];
+    const tasks = [makeTask({ id: 9, kpId: 9, chapterId: 2 })];
+    const m = buildGanttModel(makePlan(), tasks, chs, kps, TODAY);
+    expect(m.chapters.map((c) => c.name)).toEqual(["未分组"]);
+    expect(m.chapters[0].rows.map((r) => r.name)).toEqual(["KP-环"]);
+  });
+
+  it("40 层深链（超过 locate 守卫 32）：不抛错，深链节点行落「未分组」", () => {
+    const chs: Chapter[] = [];
+    for (let i = 1; i <= 40; i++) {
+      chs.push(makeChapter({ id: i, name: `第${i}层`, parentId: i === 1 ? null : i - 1, level: i, sort: i }));
+    }
+    const kps = [makeKp({ id: 40, name: "KP-深链", chapterId: 40 })];
+    const tasks = [makeTask({ id: 40, kpId: 40, chapterId: 40 })];
+    const m = buildGanttModel(makePlan(), tasks, chs, kps, TODAY);
+    expect(m.chapters.map((c) => c.name)).toEqual(["未分组"]);
+    expect(m.chapters[0].rows.map((r) => r.name)).toEqual(["KP-深链"]);
+  });
+
   it("未排期 KP 不出现；空任务时章不出现", () => {
     const m = buildGanttModel(
       makePlan({ startDate: "2026-10-01" }),
