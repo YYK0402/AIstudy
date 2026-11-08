@@ -27,13 +27,13 @@ function countMastered(kps: HeatmapKpCell[]): number {
  */
 export function buildMasteryHeatmap(kps: KnowledgePoint[], chapters: Chapter[]): HeatmapRow[] {
   const tops = chapters
-    .filter((c) => c.level === "chapter")
+    .filter((c) => c.level === 1)
     .sort((a, b) => a.sort - b.sort);
   const topIds = new Set(tops.map((t) => t.id));
   // 小节 → 所属顶层章
   const unitOfTop = new Map<number, number>();
   for (const u of chapters) {
-    if (u.level === "unit" && u.parentId !== null && topIds.has(u.parentId)) {
+    if (u.level === 2 && u.parentId !== null && topIds.has(u.parentId)) {
       unitOfTop.set(u.id, u.parentId);
     }
   }

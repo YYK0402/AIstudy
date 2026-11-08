@@ -13,7 +13,7 @@ const baseData = (): AppData => ({
     },
   ],
   chapters: [
-    { id: 1, courseId: 1, parentId: null, siyuanBlockId: "doc-ch-1", name: "第一章", level: "chapter", sort: 1 },
+    { id: 1, courseId: 1, parentId: null, siyuanBlockId: "doc-ch-1", name: "第一章", level: 1, sort: 1 },
   ],
   docRegions: {
     "doc-course-1": { h: "h1", ids: [10] },

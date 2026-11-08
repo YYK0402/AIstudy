@@ -65,7 +65,7 @@ async function save() {
         courseId: props.courseId,
         name: trimmed,
         parentId: props.parentId,
-        level: props.parentId === null ? "chapter" : "unit",
+        level: props.parentId === null ? 1 : 2,
       });
     }
     emit("saved");

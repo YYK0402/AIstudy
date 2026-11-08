@@ -14,7 +14,7 @@ function course(over: Partial<Course> = {}): Course {
   return { id: 1, siyuanDocId: "doc-1", name: "高等数学", description: "微积分", target: "90+", totalCycle: "12 周", status: "active", createTime: T, modelId: 7, ...over };
 }
 function chapter(over: Partial<Chapter> = {}): Chapter {
-  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: "blk-1", name: "第一章", level: "chapter", sort: 1, ...over };
+  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: "blk-1", name: "第一章", level: 1, sort: 1, ...over };
 }
 function kp(over: Partial<KnowledgePoint> = {}): KnowledgePoint {
   return { id: 1, courseId: 1, chapterId: 1, blockId: "blk-kp", name: "极限", content: "极限的内容", mastery: "mastered", sourceAssetIds: "1", prevKpIds: "", chapterName: "第一章", sort: 1, createTime: T, ...over };
@@ -33,6 +33,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     knowledgePoints: [kp()],
     materials: [material()],
     materialChapters: [{ id: 1, materialId: 1, chapterId: 1 }],
+    tocMappings: [],
     questions: [question()],
     examPapers: [],
     answerRecords: [], questionAsks: [], wrongQuestions: [], studyPlans: [], studyTasks: [], explainRecords: [], reviewSchedules: [],

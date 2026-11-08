@@ -272,7 +272,7 @@ export function buildSiyuanParsedTree(input: SiyuanSyncBuildInput): SiyuanSyncBu
       id: c.id,
       name: c.name,
       level: c.level,
-      parentKey: c.level === "unit" && c.parentId !== null ? `id:${c.parentId}` : null,
+      parentKey: c.level === 2 && c.parentId !== null ? `id:${c.parentId}` : null,
       sort: c.sort,
     }));
 
@@ -373,7 +373,7 @@ export function nodeDocTarget(course: Course, chapters: Chapter[], node: number 
   }
   const ch = chapters.find((c) => c.id === node);
   if (!ch) return nodeDocTarget(course, chapters, null);
-  if (ch.level === "chapter" || ch.parentId === null) {
+  if (ch.level === 1 || ch.parentId === null) {
     return {
       docId: ch.siyuanBlockId,
       path: `/${cp}/${sanitizeDocSegment(ch.name)}`,
@@ -495,7 +495,7 @@ async function doNodeSync(courseId: number, node: number | null): Promise<void> 
         chapters = fresh.chapters.filter((c) => c.courseId === courseId);
         const ch = chapters.find((c) => c.id === node);
         if (!ch) return; // 幽灵节点（章已删）：目标回退课程文档且已确保存在，无可建内容
-        if (ch.level === "chapter" || ch.parentId === null) {
+        if (ch.level === 1 || ch.parentId === null) {
           target.parentID = freshCourse.siyuanDocId; // 顶章父文档；unit 级保持现有 parent 回退
         }
       }
@@ -735,7 +735,7 @@ export async function applySiyuanKpSync(courseId: number, preview: SiyuanKpSyncP
     const nb = await getNotebook();
     if (!nb) return null;
     const parentID =
-      ch.level === "unit" && ch.parentId !== null
+      ch.level === 2 && ch.parentId !== null
         ? await ensureNodeDocId(ch.parentId, null)
         : await ensureNodeDocId(null, null);
     if (!parentID) return null;

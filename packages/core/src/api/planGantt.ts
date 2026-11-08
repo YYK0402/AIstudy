@@ -379,9 +379,9 @@ export function buildGanttModel(
   const dates: string[] = colUnit === "day" ? columns.map((c) => c.start) : [];
 
   const kpById = new Map(knowledgePoints.map((k) => [k.id, k]));
-  const unitById = new Map(chapters.filter((c) => c.level === "unit").map((c) => [c.id, c]));
+  const unitById = new Map(chapters.filter((c) => c.level === 2).map((c) => [c.id, c]));
   const topLevel = chapters
-    .filter((c) => c.level === "chapter" || c.parentId == null)
+    .filter((c) => c.level === 1 || c.parentId == null)
     .sort((a, b) => a.sort - b.sort);
 
   const buckets = new Map<number, ChBucket>();
@@ -443,7 +443,7 @@ export function buildGanttModel(
     const units: GanttUnit[] = [];
     if (bucket.id != null) {
       const unitNodes = chapters
-        .filter((c) => c.parentId === bucket.id && c.level === "unit")
+        .filter((c) => c.parentId === bucket.id && c.level === 2)
         .sort((a, b) => a.sort - b.sort);
       for (const u of unitNodes) {
         const rows = (bucket.slots.get(`u:${u.id}`) ?? []).sort((a, b) => a.sort - b.sort);

@@ -160,8 +160,8 @@ describe("buildSiyuanParsedTree 读回分流", () => {
     id: 1, siyuanDocId: "doc-course", name: "测试课程", description: "", target: "",
     totalCycle: "", status: "active", createTime: "2026-11-01T00:00:00Z",
   };
-  const chA: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "docA", name: "章A", level: "chapter", sort: 1 };
-  const chB: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "docB", name: "节B", level: "unit", sort: 1 };
+  const chA: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "docA", name: "章A", level: 1, sort: 1 };
+  const chB: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "docB", name: "节B", level: 2, sort: 1 };
   const chapters = [chA, chB];
 
   function kp(over: Partial<KnowledgePoint> & { id: number }): KnowledgePoint {
@@ -320,7 +320,7 @@ function setup(): void {
     { id: 1, siyuanDocId: "doc-course", name: "测试课程", description: "", target: "", totalCycle: "", status: "active", createTime: "2026-11-01T00:00:00Z" },
   ];
   data.chapters = [
-    { id: 10, courseId: 1, parentId: null, siyuanBlockId: "docA", name: "章A", level: "chapter", sort: 1 },
+    { id: 10, courseId: 1, parentId: null, siyuanBlockId: "docA", name: "章A", level: 1, sort: 1 },
   ];
   data.knowledgePoints = [
     { id: 1, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "c", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-11-01T00:00:00Z" },
@@ -507,7 +507,7 @@ describe("写回竞态（课程顶层文档缺失时创建章文档）", () => {
   it("并行多章建文档 + 课程文档缺：课程文档只建一次，两章 parent 均为该课程文档", async () => {
     data.courses[0].siyuanDocId = null;
     data.chapters[0].siyuanBlockId = null;
-    data.chapters.push({ id: 11, courseId: 1, parentId: null, siyuanBlockId: null, name: "章B", level: "chapter", sort: 2 });
+    data.chapters.push({ id: 11, courseId: 1, parentId: null, siyuanBlockId: null, name: "章B", level: 1, sort: 2 });
     await scheduleKpRegionSync(1, 10, 0);
     await scheduleKpRegionSync(1, 11, 0);
     await flush();
@@ -632,7 +632,7 @@ describe("历史文档批量回填（bridge mock）", () => {
 
   it("unit 文档缺失且父章文档也缺失 → 先建父章（不带区）再建 unit（带区）", async () => {
     setup();
-    data.chapters.push({ id: 11, courseId: 1, parentId: 10, siyuanBlockId: null, name: "节A1", level: "unit", sort: 2 });
+    data.chapters.push({ id: 11, courseId: 1, parentId: 10, siyuanBlockId: null, name: "节A1", level: 2, sort: 2 });
     data.chapters[0].siyuanBlockId = null;
     data.knowledgePoints[0].chapterId = 11; // KP 直属 unit
     const kpDocSync = await import("../kpDocSync");
@@ -736,16 +736,16 @@ describe("syncChapterStructure（bridge mock）", () => {
   it("新建章（章+节）→ createDoc 挂对父 + 回填 siyuanBlockId；删章 → removeDoc + 清 docRegions", async () => {
     setup();
     data.docRegions = { docDel: { h: "x", ids: [] } };
-    data.chapters.push({ id: 90, courseId: 1, parentId: null, siyuanBlockId: "docDel", name: "待删章", level: "chapter", sort: 5 });
-    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: "chapter", sort: 2 };
-    const addedUnit: Chapter = { id: 21, courseId: 1, parentId: 20, siyuanBlockId: null, name: "新节", level: "unit", sort: 1 };
+    data.chapters.push({ id: 90, courseId: 1, parentId: null, siyuanBlockId: "docDel", name: "待删章", level: 1, sort: 5 });
+    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: 1, sort: 2 };
+    const addedUnit: Chapter = { id: 21, courseId: 1, parentId: 20, siyuanBlockId: null, name: "新节", level: 2, sort: 1 };
     const { syncChapterStructure } = await import("../kpDocSync");
     const diff: KpTreeDiff = {
       updated: [], added: [], removed: [], unchangedKps: 0,
       chaptersUpdated: [],
       chaptersAdded: [
-        { key: "new:0", name: "新章", level: "chapter", parentKey: null, sort: 2 },
-        { key: "new:1", name: "新节", level: "unit", parentKey: "new:0", sort: 1 },
+        { key: "new:0", name: "新章", level: 1, parentKey: null, sort: 2 },
+        { key: "new:1", name: "新节", level: 2, parentKey: "new:0", sort: 1 },
       ],
       chaptersRemoved: [{ id: 90, name: "待删章", siyuanBlockId: "docDel" }],
     };
@@ -765,8 +765,8 @@ describe("syncChapterStructure（bridge mock）", () => {
     setup();
     // ch10 为待删章（有思源文档 + 区状态）；ch11 为保留章
     data.chapters = [
-      { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-old-10", name: "章A", level: "chapter", sort: 1 },
-      { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-11", name: "章B", level: "chapter", sort: 2 },
+      { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-old-10", name: "章A", level: 1, sort: 1 },
+      { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-11", name: "章B", level: 1, sort: 2 },
     ];
     data.knowledgePoints = [
       { id: 1, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-11-01T00:00:00Z" },
@@ -798,12 +798,12 @@ describe("syncChapterStructure（bridge mock）", () => {
   it("课程顶层文档为 null：先补建课程文档再挂章", async () => {
     setup();
     data.courses[0].siyuanDocId = null;
-    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: "chapter", sort: 1 };
+    const addedTop: Chapter = { id: 20, courseId: 1, parentId: null, siyuanBlockId: null, name: "新章", level: 1, sort: 1 };
     const { syncChapterStructure } = await import("../kpDocSync");
     await syncChapterStructure(1, {
       updated: [], added: [], removed: [], unchangedKps: 0,
       chaptersUpdated: [],
-      chaptersAdded: [{ key: "new:0", name: "新章", level: "chapter", parentKey: null, sort: 1 }],
+      chaptersAdded: [{ key: "new:0", name: "新章", level: 1, parentKey: null, sort: 1 }],
       chaptersRemoved: [],
     }, [addedTop]);
     expect(calls.create.length).toBe(2); // 课程文档 + 章
@@ -820,8 +820,8 @@ describe("nodeDocTarget 斜杠路径", () => {
     id: 1, siyuanDocId: "dc", name: "自学/项目管理", description: "", target: "",
     totalCycle: "", status: "active", createTime: "", modelId: null,
   };
-  const ch: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "dc1", name: "第08章 项目风险管理", level: "chapter", sort: 1 };
-  const unit: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "dc2", name: "重点/难点/考点", level: "unit", sort: 1 };
+  const ch: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "dc1", name: "第08章 项目风险管理", level: 1, sort: 1 };
+  const unit: Chapter = { id: 11, courseId: 1, parentId: 10, siyuanBlockId: "dc2", name: "重点/难点/考点", level: 2, sort: 1 };
 
   it("节名含 /：path 段全角，titleLine/label 保持原样", () => {
     const t = nodeDocTarget(course, [ch, unit], 11);
@@ -832,7 +832,7 @@ describe("nodeDocTarget 斜杠路径", () => {
   });
 
   it("章名含 /：path 段全角", () => {
-    const ch2: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: "dc3", name: "12.2 自制/外购决策", level: "chapter", sort: 2 };
+    const ch2: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: "dc3", name: "12.2 自制/外购决策", level: 1, sort: 2 };
     const t = nodeDocTarget(course, [ch, ch2], 12);
     expect(t.path).toBe("/自学／项目管理/12.2 自制／外购决策");
   });
@@ -851,10 +851,10 @@ describe("相关知识点区（块引用）", () => {
     id: 1, siyuanDocId: "doc-course", name: "测试课程", description: "", target: "",
     totalCycle: "", status: "active", createTime: "", modelId: null,
   };
-  const ch1: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-ch1", name: "第一章", level: "chapter", sort: 1 };
-  const ch2: Chapter = { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-ch2", name: "第二章", level: "chapter", sort: 2 };
-  const chNoDoc: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: null, name: "未落库章", level: "chapter", sort: 3 };
-  const unit1: Chapter = { id: 13, courseId: 1, parentId: 10, siyuanBlockId: "doc-unit1", name: "第一节", level: "unit", sort: 1 };
+  const ch1: Chapter = { id: 10, courseId: 1, parentId: null, siyuanBlockId: "doc-ch1", name: "第一章", level: 1, sort: 1 };
+  const ch2: Chapter = { id: 11, courseId: 1, parentId: null, siyuanBlockId: "doc-ch2", name: "第二章", level: 1, sort: 2 };
+  const chNoDoc: Chapter = { id: 12, courseId: 1, parentId: null, siyuanBlockId: null, name: "未落库章", level: 1, sort: 3 };
+  const unit1: Chapter = { id: 13, courseId: 1, parentId: 10, siyuanBlockId: "doc-unit1", name: "第一节", level: 2, sort: 1 };
   const chapters = [ch1, ch2, chNoDoc, unit1];
 
   it("前置 KP 在章文档：生成指向该章文档的块引用", () => {

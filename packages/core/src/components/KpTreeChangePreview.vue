@@ -90,8 +90,8 @@ function chName(key: string | null): string {
   return props.chKeyNames.get(key) ?? "未知章节";
 }
 
-function chAddBadge(a: { level: "chapter" | "unit"; parentKey: string | null }): string {
-  return a.level === "chapter" ? "新增顶章" : `新增小节（${chName(a.parentKey)}）`;
+function chAddBadge(a: { level: number; parentKey: string | null }): string {
+  return a.level === 1 ? "新增顶章" : `新增小节（${chName(a.parentKey)}）`;
 }
 
 function kpLabel(id: number): string {

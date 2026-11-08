@@ -151,7 +151,7 @@ export async function importChapterTree(
     const dup = existing.find((c) => norm(c.name) === norm(name));
     if (dup) continue;
     const parent = node.parentName
-      ? existing.find((c) => c.level === "chapter" && norm(c.name) === norm(node.parentName!))
+      ? existing.find((c) => c.level === 1 && norm(c.name) === norm(node.parentName!))
       : null;
     const sort =
       data.chapters
@@ -186,12 +186,12 @@ export async function importChapterTree(
   const reparents: Array<{ chapter: Chapter; newParentId: number | null; newSort: number | null }> = [];
   for (const node of nodes) {
     const parentName = node.parentName;
-    if (node.level !== "unit" || !parentName) continue;
+    if (node.level !== 2 || !parentName) continue;
     const name = node.name.trim();
     if (!name) continue;
     const dup = existing.find((c) => norm(c.name) === norm(name));
-    if (!dup || dup.level !== "unit") continue;
-    const target = existing.find((c) => c.level === "chapter" && norm(c.name) === norm(parentName));
+    if (!dup || dup.level !== 2) continue;
+    const target = existing.find((c) => c.level === 1 && norm(c.name) === norm(parentName));
     if (!target || dup.parentId === target.id) continue;
     reparents.push({ chapter: dup, newParentId: target.id, newSort: null });
   }

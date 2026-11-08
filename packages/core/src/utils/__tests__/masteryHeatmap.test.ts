@@ -20,11 +20,11 @@ function kp(id: number, mastery: Mastery, chapterId: number | null, name = `kp${
 }
 
 function top(id: number, sort: number): Chapter {
-  return { id, courseId: 1, parentId: null, siyuanBlockId: null, name: `章${id}`, level: "chapter", sort };
+  return { id, courseId: 1, parentId: null, siyuanBlockId: null, name: `章${id}`, level: 1, sort };
 }
 
 function unit(id: number, parentId: number, sort: number): Chapter {
-  return { id, courseId: 1, parentId, siyuanBlockId: null, name: `节${id}`, level: "unit", sort };
+  return { id, courseId: 1, parentId, siyuanBlockId: null, name: `节${id}`, level: 2, sort };
 }
 
 describe("buildMasteryHeatmap", () => {

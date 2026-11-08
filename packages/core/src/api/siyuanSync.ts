@@ -27,7 +27,7 @@ export function convDocTarget(
   if (kp.chapterId == null) return fallback;
   const node = chapters.find((c) => c.id === kp.chapterId);
   if (!node) return fallback;
-  if (node.level === "chapter" || node.parentId == null) {
+  if (node.level === 1 || node.parentId == null) {
     return { path: `${base}/${sanitizeDocSegment(node.name)}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
   }
   const parent = chapters.find((c) => c.id === node.parentId);

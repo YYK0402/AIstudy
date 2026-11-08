@@ -24,7 +24,7 @@ export interface ParsedChapter {
   /** 现有章节 id；null = 文件中无标记（新增） */
   id: number | null;
   name: string;
-  level: "chapter" | "unit";
+  level: number;
   /** unit(H2) 所属顶章的 key；顶章(H1) 为 null */
   parentKey: string | null;
   sort: number;
@@ -72,7 +72,7 @@ export interface ChapterDiffUpdate {
 export interface ChapterDiffAdd {
   key: string;
   name: string;
-  level: "chapter" | "unit";
+  level: number;
   /** 父章 key（null = 顶章） */
   parentKey: string | null;
   sort: number;
@@ -242,7 +242,7 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
       const key = id !== null ? `id:${id}` : `new:${newChapterCounter++}`;
       const idx = unitCountPerTop.get(currentTopKey) ?? 0;
       unitCountPerTop.set(currentTopKey, idx + 1);
-      const unit: ParsedChapter = { key, id, name, level: "unit", parentKey: currentTopKey, sort: idx };
+      const unit: ParsedChapter = { key, id, name, level: 2, parentKey: currentTopKey, sort: idx };
       tree.chapters.push(unit);
       currentUnitKey = key;
       continue;
@@ -268,7 +268,7 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
       if (id !== null && seenChapterIds.has(id)) return fail(`重复的章节标记 ch:${id}`, lineNo);
       if (id !== null) seenChapterIds.add(id);
       const key = id !== null ? `id:${id}` : `new:${newChapterCounter++}`;
-      const top: ParsedChapter = { key, id, name, level: "chapter", parentKey: null, sort: topCount++ };
+      const top: ParsedChapter = { key, id, name, level: 1, parentKey: null, sort: topCount++ };
       tree.chapters.push(top);
       currentTopKey = key;
       currentUnitKey = null;
@@ -306,9 +306,9 @@ export function parseKpTreeMarkdown(text: string): ParseResult {
 /** 现有 KP 的归属节点（顶章 id / 小节 id / null），与导出 nodeOf 一致 */
 export function effectiveNodeOf(kp: Pick<KnowledgePoint, "chapterId">, chapters: Chapter[]): number | null {
   if (kp.chapterId === null) return null;
-  const topIds = new Set(chapters.filter((c) => c.level === "chapter").map((c) => c.id));
+  const topIds = new Set(chapters.filter((c) => c.level === 1).map((c) => c.id));
   if (topIds.has(kp.chapterId)) return kp.chapterId;
-  const unit = chapters.find((c) => c.level === "unit" && c.id === kp.chapterId);
+  const unit = chapters.find((c) => c.level === 2 && c.id === kp.chapterId);
   if (unit && unit.parentId !== null && topIds.has(unit.parentId)) return unit.id;
   return null;
 }
@@ -346,7 +346,7 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
   const parsedUnitIndex = new Map<string, number>();
   const parsedChSort = new Map<string, number>();
   for (const c of tree.chapters) {
-    if (c.level === "chapter") {
+    if (c.level === 1) {
       const idx = parsedTopIndex.get("__top__") ?? 0;
       parsedTopIndex.set("__top__", idx + 1);
       parsedChSort.set(c.key, idx);
@@ -402,7 +402,7 @@ export function computeKpTreeDiff(tree: ParsedKpTree, chapters: Chapter[], kps: 
     }
     const nameChanged = pc.name !== c.name;
     let parentChanged = false;
-    if (c.level === "unit") {
+    if (c.level === 2) {
       const parentCh = pc.parentKey !== null ? tree.chapters.find((x) => x.key === pc.parentKey) : null;
       const newParent = parentCh ? (parentCh.id !== null ? `id:${parentCh.id}` : "new") : "none";
       const curParent = c.parentId === null ? "none" : `id:${c.parentId}`;
@@ -436,9 +436,9 @@ function maxId(list: { id: number }[]): number {
 /** 归属节点的展示名（小节名优先，其次顶章名，未归章为空） */
 function chapterNameOf(chapterId: number | null, chapters: Chapter[]): string {
   if (chapterId === null) return "";
-  const unit = chapters.find((c) => c.id === chapterId && c.level === "unit");
+  const unit = chapters.find((c) => c.id === chapterId && c.level === 2);
   if (unit) return unit.name;
-  const top = chapters.find((c) => c.id === chapterId && c.level === "chapter");
+  const top = chapters.find((c) => c.id === chapterId && c.level === 1);
   if (top) return top.name;
   return "";
 }
@@ -528,7 +528,7 @@ export function applyKpTreeDiff(data: AppData, courseId: number, tree: ParsedKpT
     if (k.courseId !== courseId) return k;
     let refresh = updatedIds.has(k.id) || addedIds.has(k.id);
     if (!refresh && renamedIds.size > 0 && k.chapterId !== null) {
-      const unit = chapters.find((c) => c.id === k.chapterId && c.level === "unit");
+      const unit = chapters.find((c) => c.id === k.chapterId && c.level === 2);
       if (renamedIds.has(k.chapterId) || (unit && unit.parentId !== null && renamedIds.has(unit.parentId))) {
         refresh = true;
       }

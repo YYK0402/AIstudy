@@ -434,10 +434,10 @@ interface ChapterNode extends Chapter {
 
 const chapterTree = computed<ChapterNode[]>(() => {
   const sorted = [...chapters.value].sort((a, b) => a.sort - b.sort);
-  const chaptersOnly = sorted.filter((c) => c.level === "chapter");
+  const chaptersOnly = sorted.filter((c) => c.level === 1);
   return chaptersOnly.map((ch) => ({
     ...ch,
-    units: sorted.filter((c) => c.level === "unit" && c.parentId === ch.id),
+    units: sorted.filter((c) => c.level === 2 && c.parentId === ch.id),
   }));
 });
 
@@ -465,7 +465,7 @@ function kpChapterPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "未分配";
   const c = chapterById.value.get(kp.chapterId);
   if (!c) return "";
-  if (c.level === "unit" && c.parentId != null) {
+  if (c.level === 2 && c.parentId != null) {
     const parent = chapterById.value.get(c.parentId);
     return parent ? `${parent.name} / ${c.name}` : c.name;
   }

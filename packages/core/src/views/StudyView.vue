@@ -400,7 +400,7 @@ function kpPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "";
   const node = chapters.value.find((c) => c.id === kp.chapterId);
   if (!node) return kp.chapterName || "";
-  if (node.level === "chapter" || node.parentId == null) return node.name;
+  if (node.level === 1 || node.parentId == null) return node.name;
   const parent = chapters.value.find((c) => c.id === node.parentId);
   return parent ? `${parent.name} · ${node.name}` : node.name;
 }

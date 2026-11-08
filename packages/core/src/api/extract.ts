@@ -134,10 +134,10 @@ async function extractKnowledgePointsInner(
     .filter((c) => c.courseId === material.courseId)
     .sort((a, b) => a.sort - b.sort);
   const tocLines = courseChapters
-    .filter((ch) => ch.level === "chapter" || ch.parentId === null)
+    .filter((ch) => ch.level === 1 || ch.parentId === null)
     .map((ch) => {
       const units = courseChapters
-        .filter((c) => c.level === "unit" && c.parentId === ch.id)
+        .filter((c) => c.level === 2 && c.parentId === ch.id)
         .map((u) => `  ${u.name}`)
         .join("\n");
       return ch.name + (units ? "\n" + units : "");
@@ -168,7 +168,7 @@ async function extractKnowledgePointsInner(
       : undefined;
     // 该章下的小节列表：模型返回的 section 标题匹配到具体节后，知识点挂到节而非章
     const blockUnits = blockChapter
-      ? data.chapters.filter((c) => c.level === "unit" && c.parentId === blockChapter.id)
+      ? data.chapters.filter((c) => c.level === 2 && c.parentId === blockChapter.id)
       : [];
     const locator = block.title ? `章节：${block.title}` : `文本片段（第${i + 1}/${blocks.length}块）`;
     try {

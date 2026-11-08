@@ -110,10 +110,10 @@ async function confirm() {
   const nodes: ChapterTreeNode[] = [];
   for (const ch of chapterNodes.value) {
     if (ch.name.trim()) {
-      nodes.push({ name: ch.name.trim(), level: "chapter", parentName: null });
+      nodes.push({ name: ch.name.trim(), level: 1, parentName: null });
       for (const unit of ch.units) {
         if (unit.name.trim()) {
-          nodes.push({ name: unit.name.trim(), level: "unit", parentName: ch.name.trim() });
+          nodes.push({ name: unit.name.trim(), level: 2, parentName: ch.name.trim() });
         }
       }
     }

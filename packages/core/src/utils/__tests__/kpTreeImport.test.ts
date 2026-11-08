@@ -4,7 +4,7 @@ import { createEmptyData } from "../../types/appData";
 import { buildKpTreeMarkdown } from "../kpTreeExport";
 import { applyKpTreeDiff, computeKpTreeDiff, parseKpTreeMarkdown } from "../kpTreeImport";
 
-function chapter(id: number, level: "chapter" | "unit", parentId: number | null, sort: number, name: string): Chapter {
+function chapter(id: number, level: number, parentId: number | null, sort: number, name: string): Chapter {
   return { id, courseId: 1, parentId, siyuanBlockId: null, name, level, sort };
 }
 
@@ -36,9 +36,9 @@ function kp(
 
 const COURSE = { id: 1, name: "财务管理学" };
 const CHAPTERS = [
-  chapter(10, "chapter", null, 1, "第一章 存货"),
-  chapter(11, "unit", 10, 1, "第一节 存货计价"),
-  chapter(20, "chapter", null, 2, "第二章 固定资产"),
+  chapter(10, 1, null, 1, "第一章 存货"),
+  chapter(11, 2, 10, 1, "第一节 存货计价"),
+  chapter(20, 1, null, 2, "第二章 固定资产"),
 ];
 const KPS = [
   kp(1, 10, "known", 1, "kp1", "第一段内容。\n\n第二段内容。"),
@@ -71,9 +71,9 @@ describe("parseKpTreeMarkdown", () => {
     expect(tree.courseName).toBe("财务管理学");
     expect(tree.chapters).toHaveLength(3);
     const ch10 = tree.chapters.find((c) => c.id === 10)!;
-    expect(ch10).toMatchObject({ name: "第一章 存货", level: "chapter", parentKey: null });
+    expect(ch10).toMatchObject({ name: "第一章 存货", level: 1, parentKey: null });
     const ch11 = tree.chapters.find((c) => c.id === 11)!;
-    expect(ch11).toMatchObject({ name: "第一节 存货计价", level: "unit" });
+    expect(ch11).toMatchObject({ name: "第一节 存货计价", level: 2 });
     expect(ch11.parentKey).toBe(ch10.key);
     const kp1 = tree.kps.find((k) => k.id === 1)!;
     expect(kp1.name).toBe("kp1");
@@ -113,7 +113,7 @@ describe("parseKpTreeMarkdown", () => {
     expect(fresh.chapterKey).toBe(tree.chapters.find((c) => c.id === 10)!.key);
     const newUnit = tree.chapters.find((c) => c.name === "新小节")!;
     expect(newUnit.id).toBeNull();
-    expect(newUnit.level).toBe("unit");
+    expect(newUnit.level).toBe(2);
     expect(tree.kps.find((k) => k.name === "小节里的新条目")!.chapterKey).toBe(newUnit.key);
   });
 
@@ -224,7 +224,7 @@ describe("computeKpTreeDiff", () => {
     const tree = roundTrip(md);
     const diff = computeKpTreeDiff(tree, CHAPTERS, KPS);
     expect(diff.chaptersAdded).toHaveLength(1);
-    expect(diff.chaptersAdded[0]).toMatchObject({ name: "第三章 新章", level: "chapter" });
+    expect(diff.chaptersAdded[0]).toMatchObject({ name: "第三章 新章", level: 1 });
     expect(diff.added).toHaveLength(1);
     expect(diff.added[0].name).toBe("新知识点");
     expect(diff.added[0].chapterKey).toBe(diff.chaptersAdded[0].key);
@@ -276,7 +276,7 @@ describe("applyKpTreeDiff", () => {
     const next = applyKpTreeDiff(makeData(), 1, tree, diff);
     expect(next.chapters).toHaveLength(4);
     const newCh = next.chapters.find((c) => c.name === "第三章 新章")!;
-    expect(newCh.level).toBe("chapter");
+    expect(newCh.level).toBe(1);
     expect(newCh.parentId).toBeNull();
     const newKp = next.knowledgePoints.find((k) => k.name === "新知识点")!;
     expect(newKp.id).toBeGreaterThan(4);
@@ -295,7 +295,7 @@ describe("applyKpTreeDiff", () => {
     const data = makeData();
     // 另一课程的实体（不应被动）
     data.courses.push({ id: 2, siyuanDocId: null, name: "课程二", description: "", target: "", totalCycle: "", status: "active", createTime: "2026-01-01T00:00:00Z" });
-    data.chapters.push(chapter(30, "chapter", null, 1, "课程二章"));
+    data.chapters.push(chapter(30, 1, null, 1, "课程二章"));
     data.knowledgePoints.push(kp(90, 30, "mastered", 1, "课程二kp"));
     const next = applyKpTreeDiff(data, 1, tree, diff);
     expect(next.knowledgePoints.find((k) => k.id === 3)).toBeUndefined();

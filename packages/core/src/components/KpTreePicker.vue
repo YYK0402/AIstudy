@@ -83,7 +83,7 @@ watch(
     const next = new Set(expanded.value);
     let changed = false;
     for (const c of chs) {
-      if ((c.level === "chapter" || c.parentId === null) && !next.has(c.id)) {
+      if ((c.level === 1 || c.parentId === null) && !next.has(c.id)) {
         next.add(c.id);
         changed = true;
       }
@@ -101,14 +101,14 @@ const chapterById = computed(() => new Map(props.chapters.map((c) => [c.id, c]))
 const chapterSort = (id: number) => chapterById.value.get(id)?.sort ?? 0;
 
 const topChapters = computed(() =>
-  props.chapters.filter((c) => c.level === "chapter" || c.parentId === null).sort((a, b) => a.sort - b.sort),
+  props.chapters.filter((c) => c.level === 1 || c.parentId === null).sort((a, b) => a.sort - b.sort),
 );
 
 // 章节 → 小节列表（按 sort），预计算替代每行 filter+sort
 const unitsByChapter = computed(() => {
   const map = new Map<number, Chapter[]>();
   for (const c of props.chapters) {
-    if (c.level === "unit" && c.parentId != null) {
+    if (c.level === 2 && c.parentId != null) {
       let list = map.get(c.parentId);
       if (!list) {
         list = [];
@@ -189,7 +189,7 @@ function isNodePartial(nodeId: number): boolean {
 function orderKey(kp: KnowledgePoint): [number, number, number, number] {
   const node = kp.chapterId != null ? chapterById.value.get(kp.chapterId) : undefined;
   if (!node) return [9999, 9999, kp.sort, kp.id];
-  if (node.level === "unit" && node.parentId != null) {
+  if (node.level === 2 && node.parentId != null) {
     return [chapterSort(node.parentId), node.sort, kp.sort, kp.id];
   }
   return [chapterSort(node.id), -1, kp.sort, kp.id];

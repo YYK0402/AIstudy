@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { expandChapterNodeIds, kpsOfChapter, kpCountByNode } from "../chapterScope";
 import type { Chapter, KnowledgePoint } from "../../api";
 
-const ch1: Chapter = { id: 1, courseId: 1, level: "chapter", parentId: null, name: "一章", siyuanBlockId: null, sort: 1 };
-const ch2: Chapter = { id: 2, courseId: 1, level: "chapter", parentId: null, name: "二章", siyuanBlockId: null, sort: 2 };
-const u11: Chapter = { id: 11, courseId: 1, level: "unit", parentId: 1, name: "一节", siyuanBlockId: null, sort: 1 };
-const u12: Chapter = { id: 12, courseId: 1, level: "unit", parentId: 1, name: "二节", siyuanBlockId: null, sort: 2 };
-const u21: Chapter = { id: 21, courseId: 1, level: "unit", parentId: 2, name: "三节", siyuanBlockId: null, sort: 1 };
+const ch1: Chapter = { id: 1, courseId: 1, level: 1, parentId: null, name: "一章", siyuanBlockId: null, sort: 1 };
+const ch2: Chapter = { id: 2, courseId: 1, level: 1, parentId: null, name: "二章", siyuanBlockId: null, sort: 2 };
+const u11: Chapter = { id: 11, courseId: 1, level: 2, parentId: 1, name: "一节", siyuanBlockId: null, sort: 1 };
+const u12: Chapter = { id: 12, courseId: 1, level: 2, parentId: 1, name: "二节", siyuanBlockId: null, sort: 2 };
+const u21: Chapter = { id: 21, courseId: 1, level: 2, parentId: 2, name: "三节", siyuanBlockId: null, sort: 1 };
 
 function kp(id: number, chapterId: number | null): KnowledgePoint {
   return {

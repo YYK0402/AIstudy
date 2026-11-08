@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Chapter, KnowledgePoint, Mastery, Question, WrongQuestion } from "../../types/appData";
 import { buildKpTreeMarkdown } from "../kpTreeExport";
 
-function chapter(id: number, level: "chapter" | "unit", parentId: number | null, sort: number, name: string): Chapter {
+function chapter(id: number, level: number, parentId: number | null, sort: number, name: string): Chapter {
   return { id, courseId: 1, parentId, siyuanBlockId: null, name, level, sort };
 }
 
@@ -60,9 +60,9 @@ function wrong(id: number, qId: number, status: "active" | "graduated" = "active
 
 const COURSE = { id: 1, name: "财务管理学" };
 const CHAPTERS = [
-  chapter(10, "chapter", null, 1, "第一章 存货"),
-  chapter(11, "unit", 10, 1, "第一节 存货计价"),
-  chapter(20, "chapter", null, 2, "第二章 固定资产"),
+  chapter(10, 1, null, 1, "第一章 存货"),
+  chapter(11, 2, 10, 1, "第一节 存货计价"),
+  chapter(20, 1, null, 2, "第二章 固定资产"),
 ];
 const KPS = [
   kp(1, 10, "known", 1, "kp1", "第一段内容。\n\n第二段内容。"),

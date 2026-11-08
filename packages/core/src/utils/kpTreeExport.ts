@@ -79,13 +79,13 @@ export function buildKpTreeMarkdown(
   }
 
   const sortByIds = (list: KnowledgePoint[]) => [...list].sort((a, b) => a.sort - b.sort);
-  const tops = chapters.filter((c) => c.level === "chapter").sort((a, b) => a.sort - b.sort);
+  const tops = chapters.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort);
   const topIds = new Set(tops.map((t) => t.id));
   const unitsOf = (topId: number): Chapter[] =>
-    chapters.filter((c) => c.level === "unit" && c.parentId === topId).sort((a, b) => a.sort - b.sort);
+    chapters.filter((c) => c.level === 2 && c.parentId === topId).sort((a, b) => a.sort - b.sort);
 
   // KP 归属节点：顶章直属 / 小节 / 未归章（空 chapterId 或指向不存在节点）
-  const unitById = new Map(chapters.filter((c) => c.level === "unit").map((c) => [c.id, c]));
+  const unitById = new Map(chapters.filter((c) => c.level === 2).map((c) => [c.id, c]));
   function nodeOf(k: KnowledgePoint): number | null {
     if (k.chapterId === null) return null;
     if (topIds.has(k.chapterId)) return k.chapterId;

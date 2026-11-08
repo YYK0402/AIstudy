@@ -466,11 +466,11 @@ export async function generateStudyPlan(
     for (const kp of dk) {
       if (kp.chapterId == null) continue;
       const node = chapterById.get(kp.chapterId);
-      const chId = node?.level === "unit" && node.parentId != null ? node.parentId : kp.chapterId;
+      const chId = node?.level === 2 && node.parentId != null ? node.parentId : kp.chapterId;
       chapterLastDay.set(chId, date);
     }
   }
-  for (const ch of courseChapters.filter((c) => c.level === "chapter").sort((a, b) => a.sort - b.sort)) {
+  for (const ch of courseChapters.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort)) {
     const lastDate = chapterLastDay.get(ch.id);
     if (!lastDate) continue;
     data.studyTasks.push({

@@ -14,7 +14,7 @@ describe("SAMPLE_COURSE 数据完整性", () => {
     const cid = SAMPLE_COURSE.course.id;
     for (const c of SAMPLE_COURSE.chapters) {
       expect(c.courseId).toBe(cid);
-      expect(c.level).toBe("chapter");
+      expect(c.level).toBe(1);
     }
   });
 

@@ -29,7 +29,7 @@ function course(over: Partial<Course> = {}): Course {
   };
 }
 function chapter(over: Partial<Chapter> = {}): Chapter {
-  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: "blk-1", name: "第一章", level: "chapter", sort: 1, ...over };
+  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: "blk-1", name: "第一章", level: 1, sort: 1, ...over };
 }
 function kp(over: Partial<KnowledgePoint> = {}): KnowledgePoint {
   return {
@@ -109,6 +109,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     ],
     materials: [material(), material({ id: 2, courseId: 2, name: "力学.pdf", assetPath: "/assets/def.pdf", siyuanDocId: "doc-mat2" })],
     materialChapters: [mc(), mc({ id: 2, materialId: 2, chapterId: 2 })],
+    tocMappings: [],
     questions: [question(), question({ id: 2, courseId: 2, kpIds: "2", paperId: null })],
     examPapers: [paper()],
     answerRecords: [],
@@ -233,7 +234,7 @@ describe("remapCoursePackage", () => {
     const src = makeData({
       // 目标课程 id=10，内部 id 独立（章 11/12，含父子；知识点 21 指向章 11，prevKp 指向 22）
       courses: [course({ id: 10, name: "化学", siyuanDocId: "doc-10" })],
-      chapters: [chapter({ id: 11, courseId: 10, name: "有机" }), chapter({ id: 12, courseId: 10, parentId: 11, name: "烃", level: "unit" })],
+      chapters: [chapter({ id: 11, courseId: 10, name: "有机" }), chapter({ id: 12, courseId: 10, parentId: 11, name: "烃", level: 2 })],
       knowledgePoints: [kp({ id: 21, courseId: 10, chapterId: 11, name: "烷烃", prevKpIds: "22", sourceAssetIds: "31" }), kp({ id: 22, courseId: 10, chapterId: 12, name: "烯烃" })],
       materials: [material({ id: 31, courseId: 10, name: "化学.pdf", assetPath: "/assets/chem.pdf" })],
       materialChapters: [mc({ id: 41, materialId: 31, chapterId: 11 })],

@@ -24,20 +24,20 @@ export function computeChapterMove(all: Chapter[], dragId: number, targetId: num
 
   let newParentId: number | null;
   if (pos === "inside") {
-    if (targetCopy.level !== "chapter" || dragCopy.level !== "unit") return null;
+    if (targetCopy.level !== 1 || dragCopy.level !== 2) return null;
     newParentId = targetId;
-  } else if (targetCopy.level === "chapter") {
-    if (dragCopy.level !== "chapter") return null;
+  } else if (targetCopy.level === 1) {
+    if (dragCopy.level !== 1) return null;
     newParentId = null;
   } else {
-    if (dragCopy.level !== "unit") return null;
+    if (dragCopy.level !== 2) return null;
     newParentId = targetCopy.parentId;
   }
 
   dragCopy.parentId = newParentId;
 
-  if (dragCopy.level === "chapter") {
-    let top = next.filter((c) => c.level === "chapter" && c.parentId === null).sort((a, b) => a.sort - b.sort);
+  if (dragCopy.level === 1) {
+    let top = next.filter((c) => c.level === 1 && c.parentId === null).sort((a, b) => a.sort - b.sort);
     top = top.filter((c) => c.id !== dragId);
     const ti = top.findIndex((c) => c.id === targetId);
     if (ti < 0) return null;
@@ -49,7 +49,7 @@ export function computeChapterMove(all: Chapter[], dragId: number, targetId: num
     const pid = newParentId;
     if (pid === null) return null;
     const list = next
-      .filter((c) => c.level === "unit" && c.parentId === pid)
+      .filter((c) => c.level === 2 && c.parentId === pid)
       .filter((c) => c.id !== dragId)
       .sort((a, b) => a.sort - b.sort);
     if (pos === "inside") {
@@ -65,7 +65,7 @@ export function computeChapterMove(all: Chapter[], dragId: number, targetId: num
     // 旧父级（若不同）小节序号重排
     if (oldParentId !== null && oldParentId !== newParentId) {
       next
-        .filter((c) => c.level === "unit" && c.parentId === oldParentId)
+        .filter((c) => c.level === 2 && c.parentId === oldParentId)
         .sort((a, b) => a.sort - b.sort)
         .forEach((c, i) => {
           c.sort = i + 1;

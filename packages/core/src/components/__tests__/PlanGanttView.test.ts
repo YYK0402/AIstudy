@@ -18,7 +18,7 @@ function makePlan(): StudyPlan {
 }
 
 function makeChapter(): Chapter {
-  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: "chapter", sort: 1 };
+  return { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: 1, sort: 1 };
 }
 
 function makeKp(): KnowledgePoint {

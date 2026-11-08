@@ -67,12 +67,12 @@ function toNode(id: number, name: string, kps: KnowledgePoint[]): MasteryTreeNod
  */
 export function buildMasteryTree(kps: KnowledgePoint[], chapters: Chapter[]): MasteryTree {
   const tops = chapters
-    .filter((c) => c.level === "chapter")
+    .filter((c) => c.level === 1)
     .sort((a, b) => a.sort - b.sort);
   const topIds = new Set(tops.map((t) => t.id));
   const unitOfTop = new Map<number, number>();
   for (const u of chapters) {
-    if (u.level === "unit" && u.parentId !== null && topIds.has(u.parentId)) {
+    if (u.level === 2 && u.parentId !== null && topIds.has(u.parentId)) {
       unitOfTop.set(u.id, u.parentId);
     }
   }
@@ -95,7 +95,7 @@ export function buildMasteryTree(kps: KnowledgePoint[], chapters: Chapter[]): Ma
 
   const chaptersOut = tops.map((t) => {
     const units = chapters
-      .filter((c) => c.level === "unit" && c.parentId === t.id)
+      .filter((c) => c.level === 2 && c.parentId === t.id)
       .sort((a, b) => a.sort - b.sort)
       .map((u) => toNode(u.id, u.name, byNode.get(u.id) ?? []));
     // 章节点 = 章直属 + 全部小节

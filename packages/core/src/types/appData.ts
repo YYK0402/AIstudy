@@ -64,7 +64,8 @@ export interface Chapter {
   parentId: number | null;
   siyuanBlockId: string | null;
   name: string;
-  level: "chapter" | "unit";
+  /** 深度：1=章根，2=节，3+=小节（可变深度） */
+  level: number;
   sort: number;
 }
 
@@ -110,11 +111,25 @@ export interface Material {
   createTime: string;
   /** 来源：upload 上传文件 / paste 粘贴文本 / siyuan 思源绑定；缺省按 assetPath 推断（兼容旧数据） */
   source?: string;
+  /** 资料大纲（JSON：`{text: string; level: number}[]` 扁平文档序）；outline-first 抽取的输入 */
+  outline?: string;
+  /** 大纲抽取状态：none 未抽 / done 完成 / partial 部分完成 */
+  outlineStatus?: "none" | "done" | "partial";
 }
 
 export interface MaterialChapter {
   id: number;
   materialId: number;
+  chapterId: number;
+}
+
+/** 资料 outline 节点 → 章节的映射（outline-first：按 outline 节点路径建章并记录对应关系） */
+export interface TocMapping {
+  id: number;
+  materialId: number;
+  courseId: number;
+  /** 资料 outline 节点路径，如「第1章>1.1 概述」 */
+  materialPath: string;
   chapterId: number;
 }
 
@@ -375,6 +390,8 @@ export interface AppData {
   knowledgePoints: KnowledgePoint[];
   materials: Material[];
   materialChapters: MaterialChapter[];
+  /** 资料 outline 节点 → 章节映射（outline-first 建章时写入） */
+  tocMappings: TocMapping[];
   questions: Question[];
   examPapers: ExamPaper[];
   answerRecords: AnswerRecord[];
@@ -419,6 +436,7 @@ export function createEmptyData(): AppData {
     knowledgePoints: [],
     materials: [],
     materialChapters: [],
+    tocMappings: [],
     questions: [],
     examPapers: [],
     answerRecords: [],

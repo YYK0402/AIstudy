@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
 import { setBridge } from "../../bridge";
@@ -79,5 +79,26 @@ describe("getDataSnapshot 快照缓存", () => {
     await saveData(baseData);
     await getDataSnapshot();
     expect(getDataCalls).toBe(2);
+  });
+});
+
+describe("getData 数据升级", () => {
+  afterEach(() => {
+    setBridge({
+      getData: async () => baseData,
+      saveData: async () => saveRes,
+    } as unknown as StudyBridge);
+  });
+
+  it("getData 返回前完成数据升级", async () => {
+    const raw: AppData = { ...createEmptyData(), chapters: [{ id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "c", level: "chapter" as unknown as number, sort: 1 }] };
+    setBridge({
+      getData: async () => raw,
+      saveData: async () => saveRes,
+    } as unknown as StudyBridge);
+    invalidateSnapshot();
+    const d = await getData();
+    expect(d.chapters[0].level).toBe(1);
+    expect(d.tocMappings).toEqual([]);
   });
 });

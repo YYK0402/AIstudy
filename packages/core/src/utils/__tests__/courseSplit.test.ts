@@ -22,9 +22,9 @@ function makeData(): AppData {
   data.reminders = { lastReminderDate: "2026-01-02" };
 
   data.chapters = [
-    { id: 10, courseId: 1, parentId: null, siyuanBlockId: null, name: "章A", level: "chapter", sort: 1 },
-    { id: 11, courseId: 2, parentId: null, siyuanBlockId: null, name: "章B", level: "chapter", sort: 1 },
-    { id: 12, courseId: 99, parentId: null, siyuanBlockId: null, name: "孤儿章", level: "chapter", sort: 1 },
+    { id: 10, courseId: 1, parentId: null, siyuanBlockId: null, name: "章A", level: 1, sort: 1 },
+    { id: 11, courseId: 2, parentId: null, siyuanBlockId: null, name: "章B", level: 1, sort: 1 },
+    { id: 12, courseId: 99, parentId: null, siyuanBlockId: null, name: "孤儿章", level: 1, sort: 1 },
   ];
   data.knowledgePoints = [
     { id: 100, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "c", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-01-01T00:00:00Z" },
@@ -209,7 +209,7 @@ describe("hasCourseEntities", () => {
 
 describe("normalizeCourseData", () => {
   it("补齐缺失字段", () => {
-    const out = normalizeCourseData({ chapters: [{ id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "x", level: "chapter", sort: 1 }] });
+    const out = normalizeCourseData({ chapters: [{ id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "x", level: 1, sort: 1 }] });
     expect(out.chapters).toHaveLength(1);
     expect(out.questions).toEqual([]);
     expect(out.conversationsDocs).toBeUndefined();

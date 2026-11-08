@@ -102,8 +102,8 @@ interface ChapterTreeRow {
 const chapterTree = computed<ChapterTreeRow[]>(() => {
   const sorted = [...chapters.value].sort((a, b) => a.sort - b.sort || a.id - b.id);
   return sorted
-    .filter((c) => c.level === "chapter")
-    .map((ch) => ({ id: ch.id, name: ch.name, units: sorted.filter((c) => c.level === "unit" && c.parentId === ch.id) }));
+    .filter((c) => c.level === 1)
+    .map((ch) => ({ id: ch.id, name: ch.name, units: sorted.filter((c) => c.level === 2 && c.parentId === ch.id) }));
 });
 
 const selectedLabel = computed(() => chapters.value.find((c) => c.id === chapterId.value)?.name ?? "");

@@ -26,8 +26,8 @@ function makeData(): AppData {
   data.providers = [{ id: 9, name: "p", baseUrl: "http://x", apiKey: "enc1:k", timeout: 60000, enabled: true, createTime: "2026-01-01T00:00:00Z" }];
   data.cryptoKeyMaterial = "abcd";
   data.chapters = [
-    { id: 10, courseId: 1, parentId: null, siyuanBlockId: null, name: "章A", level: "chapter", sort: 1 },
-    { id: 11, courseId: 2, parentId: null, siyuanBlockId: null, name: "章B", level: "chapter", sort: 1 },
+    { id: 10, courseId: 1, parentId: null, siyuanBlockId: null, name: "章A", level: 1, sort: 1 },
+    { id: 11, courseId: 2, parentId: null, siyuanBlockId: null, name: "章B", level: 1, sort: 1 },
   ];
   data.knowledgePoints = [
     { id: 100, courseId: 1, chapterId: 10, blockId: null, name: "KP1", content: "c", mastery: "unlearn", sourceAssetIds: "", prevKpIds: "", chapterName: "章A", sort: 1, createTime: "2026-01-01T00:00:00Z" },

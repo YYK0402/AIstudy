@@ -20,11 +20,11 @@ function kp(id: number, mastery: Mastery, chapterId: number | null = null): Know
 }
 
 function top(id: number, sort: number, name = `章${id}`): Chapter {
-  return { id, courseId: 1, parentId: null, siyuanBlockId: null, name, level: "chapter", sort };
+  return { id, courseId: 1, parentId: null, siyuanBlockId: null, name, level: 1, sort };
 }
 
 function unit(id: number, parentId: number | null, sort: number, name = `节${id}`): Chapter {
-  return { id, courseId: 1, parentId, siyuanBlockId: null, name, level: "unit", sort };
+  return { id, courseId: 1, parentId, siyuanBlockId: null, name, level: 2, sort };
 }
 
 describe("levelOf", () => {

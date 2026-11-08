@@ -92,6 +92,7 @@ function makeData(over: Partial<AppData> = {}): AppData {
     knowledgePoints: [],
     materials: [],
     materialChapters: [],
+    tocMappings: [],
     questions: [],
     examPapers: [],
     answerRecords: [],

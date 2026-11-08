@@ -31,7 +31,7 @@ function makeChapter(over: Partial<Chapter> = {}): Chapter {
     parentId: null,
     siyuanBlockId: null,
     name: "第一章",
-    level: "chapter",
+    level: 1,
     sort: 1,
     ...over,
   };
@@ -210,7 +210,7 @@ describe("buildGanttModel", () => {
   it("章 → 节 → KP 分组顺序（教材序），章直属排节后", () => {
     const chs = [
       makeChapter({ id: 1, name: "第一章", sort: 1 }),
-      makeChapter({ id: 2, name: "第二节", parentId: 1, level: "unit", sort: 2 }),
+      makeChapter({ id: 2, name: "第二节", parentId: 1, level: 2, sort: 2 }),
       makeChapter({ id: 3, name: "第一章A", sort: 0 }),
     ];
     const kps = [

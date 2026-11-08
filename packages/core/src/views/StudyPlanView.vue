@@ -644,7 +644,7 @@ function buildKpLines(list: StudyTask[]): KpLine[] {
 /** 当日详情行：章 → 节 → 知识点（教材序），末尾单列无知识点的测评任务 */
 function buildDayRows(list: StudyTask[]): DayRow[] {
   const lines = buildKpLines(list);
-  const topLevel = chapters.value.filter((c) => c.level === "chapter").sort((a, b) => a.sort - b.sort);
+  const topLevel = chapters.value.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort);
   const rows: DayRow[] = [];
   const covered = new Set<number>();
   for (const ch of topLevel) {
@@ -757,7 +757,7 @@ const coverageGroups = computed<CoverageGroup[]>(() => {
     };
   };
   const topLevel = chapters.value
-    .filter((c) => c.level === "chapter" || c.parentId == null)
+    .filter((c) => c.level === 1 || c.parentId == null)
     .sort((a, b) => a.sort - b.sort);
   const groups: CoverageGroup[] = [];
   const placed = new Set<number>();

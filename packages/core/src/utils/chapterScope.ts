@@ -5,9 +5,9 @@ import type { Chapter, KnowledgePoint } from "../api";
 export function expandChapterNodeIds(chapters: Chapter[], chapterId: number): Set<number> {
   const ids = new Set<number>([chapterId]);
   const ch = chapters.find((c) => c.id === chapterId);
-  if (ch && ch.level === "chapter") {
+  if (ch && ch.level === 1) {
     for (const u of chapters) {
-      if (u.level === "unit" && u.parentId === chapterId) ids.add(u.id);
+      if (u.level === 2 && u.parentId === chapterId) ids.add(u.id);
     }
   }
   return ids;
@@ -30,7 +30,7 @@ export function kpCountByNode(chapters: Chapter[], kps: KnowledgePoint[]): Map<n
     if (k.chapterId == null) continue;
     counts.set(k.chapterId, (counts.get(k.chapterId) ?? 0) + 1);
     const node = byId.get(k.chapterId);
-    if (node?.level === "unit" && node.parentId != null) {
+    if (node?.level === 2 && node.parentId != null) {
       counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
     }
   }

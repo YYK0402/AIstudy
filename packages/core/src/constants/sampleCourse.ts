@@ -19,10 +19,10 @@ export const SAMPLE_COURSE: CoursePackageData = {
     createTime: T,
   },
   chapters: [
-    { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章 鸦片战争与南京条约", level: "chapter", sort: 1 },
-    { id: 2, courseId: 1, parentId: null, siyuanBlockId: null, name: "第二章 战争的社会影响", level: "chapter", sort: 2 },
-    { id: 3, courseId: 1, parentId: null, siyuanBlockId: null, name: "第三章 洋务运动", level: "chapter", sort: 3 },
-    { id: 4, courseId: 1, parentId: null, siyuanBlockId: null, name: "第四章 辛亥革命", level: "chapter", sort: 4 },
+    { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章 鸦片战争与南京条约", level: 1, sort: 1 },
+    { id: 2, courseId: 1, parentId: null, siyuanBlockId: null, name: "第二章 战争的社会影响", level: 1, sort: 2 },
+    { id: 3, courseId: 1, parentId: null, siyuanBlockId: null, name: "第三章 洋务运动", level: 1, sort: 3 },
+    { id: 4, courseId: 1, parentId: null, siyuanBlockId: null, name: "第四章 辛亥革命", level: 1, sort: 4 },
   ],
   knowledgePoints: [
     {
