@@ -1023,7 +1023,7 @@ git commit -m "feat: 阶段② 结构识别——recognize_outline 分段识别 
   - `seedNodesFromChapters(chapters: Chapter[], courseId: number): MergeNode[]`
   - `parseMergeResponse(content: string, inputCount: number, outlineCount: number): { nodes: { id: number; parent: number | null; name: string; variants: string[] }[]; mapping: { seq: number; node: number }[] }`
   - `mergeCourseToc(courseId: number, materialIds?: number[], onProgress?: (done: number, total: number) => void, isAborted?: () => boolean): Promise<MergeResult>`
-  - `startTocMergeTask(courseId: number, materialIds?: number[]): void` / `cancelTocMergeTask(courseId: number): void`（bgTask taskType `"toc"`，taskId `course-<id>-toc`；完成后 `useModalStore().openChapterPreview(courseId, result, null, 资料数)`——签名 Task 8 改，本任务先按现有 `openChapterPreview(courseId, headings, source, count)` 的**占位调用**写：`void result` + `task.done(msg)`，Task 8 替换为真正弹窗）
+  - `startTocMergeTask(courseId: number, materialIds?: number[]): void` / `cancelTocMergeTask(courseId: number): void`（bgTask taskType `"toc"`，taskId `course-<id>-toc`；完成后派发 `siyuan-ai-study:toc-merged` 自定义事件（detail={courseId, result}），**不** import stores/modal——弹窗接线在 Task 8 由课程视图监听事件实现，避免 api 层依赖组件层）
 
 - [ ] **Step 1: 写失败测试（纯函数部分）**
 
