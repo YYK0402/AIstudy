@@ -356,6 +356,8 @@ export interface CourseData {
   knowledgePoints: KnowledgePoint[];
   materials: Material[];
   materialChapters: MaterialChapter[];
+  /** 资料 outline 节点 → 章节映射（outline-first 建章时写入） */
+  tocMappings: TocMapping[];
   questions: Question[];
   examPapers: ExamPaper[];
   answerRecords: AnswerRecord[];
@@ -464,6 +466,7 @@ export function createEmptyCourseData(): CourseData {
     knowledgePoints: [],
     materials: [],
     materialChapters: [],
+    tocMappings: [],
     questions: [],
     examPapers: [],
     answerRecords: [],

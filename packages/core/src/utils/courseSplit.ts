@@ -15,6 +15,7 @@ const DIRECT_KEYS = [
   "chapters",
   "knowledgePoints",
   "materials",
+  "tocMappings",
   "questions",
   "examPapers",
   "studyPlans",
@@ -152,6 +153,7 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     knowledgePoints: [...global.knowledgePoints],
     materials: [...global.materials],
     materialChapters: [...global.materialChapters],
+    tocMappings: [...global.tocMappings],
     questions: [...global.questions],
     examPapers: [...global.examPapers],
     answerRecords: [...global.answerRecords],
@@ -171,6 +173,7 @@ export function mergeAppData(global: AppData, courses: Map<number, CourseData>):
     data.knowledgePoints.push(...cd.knowledgePoints);
     data.materials.push(...cd.materials);
     data.materialChapters.push(...cd.materialChapters);
+    data.tocMappings.push(...cd.tocMappings);
     data.questions.push(...cd.questions);
     data.examPapers.push(...cd.examPapers);
     data.answerRecords.push(...cd.answerRecords);
@@ -200,6 +203,7 @@ export function hasCourseEntities(data: AppData): boolean {
       cd.knowledgePoints,
       cd.materials,
       cd.materialChapters,
+      cd.tocMappings,
       cd.questions,
       cd.examPapers,
       cd.answerRecords,
@@ -227,6 +231,7 @@ export function normalizeCourseData(raw: unknown): CourseData {
   if (arr(p.knowledgePoints)) out.knowledgePoints = p.knowledgePoints!;
   if (arr(p.materials)) out.materials = p.materials!;
   if (arr(p.materialChapters)) out.materialChapters = p.materialChapters!;
+  if (arr(p.tocMappings)) out.tocMappings = p.tocMappings!;
   if (arr(p.questions)) out.questions = p.questions!;
   if (arr(p.examPapers)) out.examPapers = p.examPapers!;
   if (arr(p.answerRecords)) out.answerRecords = p.answerRecords!;

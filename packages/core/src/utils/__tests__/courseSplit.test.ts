@@ -34,6 +34,10 @@ function makeData(): AppData {
     { id: 200, courseId: 1, name: "资料1", assetPath: "a.pdf", fileType: "pdf", contentText: "t", headings: "[]", siyuanDocId: null, status: "done", createTime: "2026-01-01T00:00:00Z" },
   ];
   data.materialChapters = [{ id: 300, materialId: 200, chapterId: 10 }];
+  data.tocMappings = [
+    { id: 350, materialId: 200, courseId: 1, materialPath: "第一章>1.1 概述", chapterId: 10 },
+    { id: 351, materialId: 200, courseId: 99, materialPath: "孤儿资料", chapterId: 12 },
+  ];
   data.questions = [
     { id: 400, courseId: 1, kpIds: "100", title: "Q1", options: "[]", answer: "A", analysis: "", qType: "single", difficulty: "medium", source: "manual", paperId: null, createTime: "2026-01-01T00:00:00Z" },
     { id: 401, courseId: 2, kpIds: "101", title: "Q2", options: "[]", answer: "B", analysis: "", qType: "single", difficulty: "easy", source: "manual", paperId: null, createTime: "2026-01-01T00:00:00Z" },
@@ -127,6 +131,13 @@ describe("splitAppData", () => {
     expect(global.conversationsDocs).toEqual({ "888": { docId: "conv-orphan" } });
   });
 
+  it("tocMappings 按 courseId 归属，孤儿保留在全局部分", () => {
+    const { global, courses } = splitAppData(makeData());
+    expect(courses.get(1)!.tocMappings.map((t) => t.id)).toEqual([350]);
+    expect(courses.get(2)!.tocMappings).toEqual([]);
+    expect(global.tocMappings.map((t) => t.id)).toEqual([351]);
+  });
+
   it("conversationsDocs 按 key 拆分到对应课程", () => {
     const { courses } = splitAppData(makeData());
     expect(courses.get(1)!.conversationsDocs).toEqual({ "10": { docId: "conv-ch10" } });
@@ -166,6 +177,7 @@ describe("mergeAppData", () => {
     expect(byId(merged.knowledgePoints)).toEqual(byId(original.knowledgePoints));
     expect(byId(merged.materials)).toEqual(byId(original.materials));
     expect(byId(merged.materialChapters)).toEqual(byId(original.materialChapters));
+    expect(byId(merged.tocMappings)).toEqual(byId(original.tocMappings));
     expect(byId(merged.questions)).toEqual(byId(original.questions));
     expect(byId(merged.examPapers)).toEqual(byId(original.examPapers));
     expect(byId(merged.answerRecords)).toEqual(byId(original.answerRecords));
