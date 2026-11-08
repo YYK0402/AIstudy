@@ -1018,7 +1018,7 @@ git commit -m "feat: 阶段② 结构识别——recognize_outline 分段识别 
 - Consumes: Task 4 `runOutlineRecognition`；Task 2 `OutlineNode`/`buildOutlineTree`；Task 1 `Chapter`/`Material`/`TocMapping`；`getData`、`callAi` 等基建同 Task 4
 - Produces:
   - `interface MergeNode { id: number; parent: number | null; name: string; variants: string[]; chapterId: number | null }`（id=数组下标；`chapterId`=对应既有章节 id，新节点为 null）
-  - `interface RawMapping { materialIdx: number; materialSeq: number; nodeId: number }`
+  - `interface RawMapping { materialId: number; materialSeq: number; nodeId: number }`（实现裁决：materialId 显式 id，原 materialIdx 下标在子集合并时错位，Task 8 修复轮 55ebf0f 改）
   - `interface MergeResult { nodes: MergeNode[]; mappings: RawMapping[]; failed: { materialName: string; reason: string; outline: OutlineNode[] }[] }`
   - `seedNodesFromChapters(chapters: Chapter[], courseId: number): MergeNode[]`
   - `parseMergeResponse(content: string, inputCount: number, outlineCount: number): { nodes: { id: number; parent: number | null; name: string; variants: string[] }[]; mapping: { seq: number; node: number }[] }`
@@ -1170,7 +1170,7 @@ export interface MergeNode {
 }
 
 export interface RawMapping {
-  materialIdx: number;
+  materialId: number;
   /** 资料 outline 内节点序号（全局，非分片局部） */
   materialSeq: number;
   nodeId: number;
@@ -1355,7 +1355,7 @@ export async function mergeCourseToc(
         const oldById = new Map(nodes.map((n) => [n.id, n.chapterId]));
         nodes = parsed.nodes.map((n) => ({ ...n, chapterId: oldById.has(n.id) ? (oldById.get(n.id) ?? null) : null }));
         for (const mp of parsed.mapping) {
-          mappings.push({ materialIdx: i, materialSeq: part.start + mp.seq, nodeId: mp.node });
+          mappings.push({ materialId: mat.id, materialSeq: part.start + mp.seq, nodeId: mp.node });
         }
       }
     } catch (e) {
@@ -1538,8 +1538,8 @@ function mergeFixture(): MergeResult {
       { id: 1, parent: 0, name: "1.1", variants: [], chapterId: null },
     ],
     mappings: [
-      { materialIdx: 0, materialSeq: 0, nodeId: 0 },
-      { materialIdx: 0, materialSeq: 1, nodeId: 1 },
+      { materialId: 10, materialSeq: 0, nodeId: 0 },
+      { materialId: 10, materialSeq: 1, nodeId: 1 },
     ],
     failed: [],
   };
@@ -1576,7 +1576,7 @@ if (toc) {
   const seen = new Set<string>();
   let mid = data.tocMappings.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
   for (const rm of toc.result.mappings) {
-    const material = toc.materials[rm.materialIdx];
+    const material = byId.get(rm.materialId); // 资料按显式 id 查（防子集合并下标错位）
     if (!material) continue;
     const path = pathOf(material, rm.materialSeq);
     const key = `${material.id}:${path}`;
@@ -2032,7 +2032,7 @@ git commit -m "feat: 阶段④ 按规范节点抽取——映射挂接/兄弟边
 
 - [ ] **Step 1: 改 `importChapterTree` 签名（先做，弹窗依赖）**
 
-`kp.ts`：`toc?: { result: MergeResult; materials: Material[] }` → `toc?: { result: MergeResult }`，`materials` 改内部 `queryMaterials(courseId)` 获取（资料自然序，与 Task 6 测试同步更新：`mergeFixture` 的 `materialIdx` 按自然序对应）。跑 `npx vitest run packages/core/src/api/__tests__/kp.test.ts` 确认绿。
+`kp.ts`：`toc?: { result: MergeResult; materials: Material[] }` → `toc?: { result: MergeResult }`，`materials` 改内部 `queryMaterials(courseId)` 按 `rm.materialId` 建 Map 查（Task 8 修复轮契约：RawMapping 用显式 materialId）。跑 `npx vitest run packages/core/src/api/__tests__/kp.test.ts` 确认绿。
 
 - [ ] **Step 2: 写失败测试（递归组件）**
 
@@ -2102,7 +2102,7 @@ describe("PreviewTreeNode", () => {
 （`<script setup lang="ts">` 中 `defineProps<{ node: PreviewNode; depth: number }>()` + `const emit = defineEmits<{ add: [number]; remove: [number] }>()`；`PreviewNode` 接口定义在本组件并 export，弹窗 import 复用。样式全部进 `style.css`：`.tp-variants`（淡色小字）、`.tp-from`（徽章）、`.tp-warn`（橙色）等。）
 
 `ChapterTreePreviewModal.vue` 重写（要点）：
-- `watch(chapterPreviewOpen)`：`modalStore.chapterPreviewResult` → 转 `PreviewNode[]`：`MergeNode[]`（扁平）按 parent 建递归树（id 保持 MergeNode.id）；`from` 由 `mappings` 反查（`materialIdx` → 资料名，弹窗打开时 `queryMaterials(courseId)` 取名）；`unlocated` 由该节点映射对应 outline 节点的定位状态算（`alignOutlineSpans` 复算，`spans[seq].start < 0`）
+- `watch(chapterPreviewOpen)`：`modalStore.chapterPreviewResult` → 转 `PreviewNode[]`：`MergeNode[]`（扁平）按 parent 建递归树（id 保持 MergeNode.id）；`from` 由 `mappings` 反查（`materialId` → 资料名，弹窗打开时 `queryMaterials(courseId)` 建 id→名 Map）；`unlocated` 由该节点映射对应 outline 节点的定位状态算（`alignOutlineSpans` 复算，`spans[seq].start < 0`）
 - 渲染 `<PreviewTreeNode v-for="n in tree" @add="addNode" @remove="removeNode">`；`addNode(nodeId)` 在 `children` 末尾推 `{ id: nextId++, name: "", variants: [], from: [], unlocated: false, chapterId: null, children: [] }`；`removeNode` 过滤子树
 - 失败资料区：`result.failed.length > 0` 时渲染列表（资料名 + 原因 + 其 outline 原文行 + 提示「可确认后手工「＋子」补章」）
 - `confirm()`：
