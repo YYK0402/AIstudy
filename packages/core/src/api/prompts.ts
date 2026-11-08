@@ -18,17 +18,19 @@ export interface PromptTemplateView {
 /** 设置页读取全部任务的模板状态 */
 export async function getPromptTemplateViews(): Promise<PromptTemplateView[]> {
   const data = await getData();
-  return PROMPT_TASKS.map((meta) => {
-    const custom = data.promptTemplates?.[meta.key];
+  return Object.entries(PROMPT_TASKS).map(([key, meta]) => {
+    const custom = data.promptTemplates?.[key];
     const isCustom =
       !!custom && typeof custom.system === "string" && typeof custom.user === "string";
     return {
-      key: meta.key,
+      key,
       name: meta.name,
       desc: meta.desc,
       vars: meta.vars,
-      current: isCustom ? { system: custom!.system, user: custom!.user } : { ...meta.defaultTemplate },
-      def: { ...meta.defaultTemplate },
+      current: isCustom
+        ? { system: custom!.system, user: custom!.user }
+        : { system: meta.system, user: meta.user },
+      def: { system: meta.system, user: meta.user },
       isCustom,
     };
   });
@@ -40,7 +42,7 @@ export async function savePromptTemplate(taskKey: string, tpl: PromptTemplateDef
   if (!meta) throw new Error(`未知提示词任务：${taskKey}`);
   const data = await getData();
   if (!data.promptTemplates) data.promptTemplates = {};
-  if (tpl.system === meta.defaultTemplate.system && tpl.user === meta.defaultTemplate.user) {
+  if (tpl.system === meta.system && tpl.user === meta.user) {
     delete data.promptTemplates[taskKey];
   } else {
     data.promptTemplates[taskKey] = { system: tpl.system, user: tpl.user };
