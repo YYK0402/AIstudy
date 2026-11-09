@@ -324,6 +324,7 @@ import {
 import { useDataSavedRefresh } from "../composables/useDataSaved";
 import { taskTypeLabel } from "../constants/tasks";
 import type { StudyPlan, StudyTask, Chapter, KnowledgePoint, Mastery, ReviewDueItem } from "../api";
+import { groupCoverageKps, groupKpLines } from "../utils/planGrouping";
 import { useConfirm } from "../composables/useConfirm";
 import { getBridge } from "@/bridge";
 
@@ -641,33 +642,12 @@ function buildKpLines(list: StudyTask[]): KpLine[] {
   });
 }
 
-/** 当日详情行：章 → 节 → 知识点（教材序），末尾单列无知识点的测评任务 */
+/** 当日详情行：章 → 节 → … → 知识点 N 级（教材序，utils/planGrouping），末尾单列无知识点的测评任务 */
 function buildDayRows(list: StudyTask[]): DayRow[] {
   const lines = buildKpLines(list);
-  const topLevel = chapters.value.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort);
-  const rows: DayRow[] = [];
-  const covered = new Set<number>();
-  for (const ch of topLevel) {
-    const unitNodes = chapters.value.filter((c) => c.parentId === ch.id).sort((a, b) => a.sort - b.sort);
-    const inCh = lines.filter(
-      (n) => n.chapterId != null && (n.chapterId === ch.id || unitNodes.some((u) => u.id === n.chapterId)),
-    );
-    if (!inCh.length) continue;
-    rows.push({ kind: "chapter", label: ch.name });
-    for (const u of unitNodes) {
-      const kps = inCh.filter((n) => n.chapterId === u.id).sort((a, b) => a.sort - b.sort);
-      if (!kps.length) continue;
-      rows.push({ kind: "unit", label: u.name });
-      for (const line of kps) rows.push({ kind: "kp", line });
-    }
-    for (const line of inCh.filter((n) => n.chapterId === ch.id).sort((a, b) => a.sort - b.sort)) {
-      rows.push({ kind: "kp", line });
-    }
-    inCh.forEach((n) => covered.add(n.kpId));
-  }
-  for (const line of lines.filter((n) => !covered.has(n.kpId)).sort((a, b) => a.sort - b.sort)) {
-    rows.push({ kind: "kp", line });
-  }
+  const rows: DayRow[] = groupKpLines(lines, chapters.value).map((r) =>
+    r.kind === "kp" ? { kind: "kp", line: r.line } : r,
+  );
   // 无知识点的任务单独归组：整体复习/练习 → 「其他任务」，测评 → 「测评」
   const noKp = list.filter((t) => t.kpId == null).sort((a, b) => a.sort - b.sort);
   const others = noKp.filter((t) => t.taskType !== "test");
@@ -756,33 +736,16 @@ const coverageGroups = computed<CoverageGroup[]>(() => {
       unscheduled: list.length === 0,
     };
   };
-  const topLevel = chapters.value
-    .filter((c) => c.level === 1 || c.parentId == null)
-    .sort((a, b) => a.sort - b.sort);
-  const groups: CoverageGroup[] = [];
-  const placed = new Set<number>();
-  for (const ch of topLevel) {
-    const unitNodes = chapters.value.filter((c) => c.parentId === ch.id).sort((a, b) => a.sort - b.sort);
-    const rows: CoverageGroup["rows"] = [];
-    for (const u of unitNodes) {
-      const unitKps = knowledgePoints.value.filter((k) => k.chapterId === u.id).sort((a, b) => a.sort - b.sort);
-      unitKps.forEach((kp, i) => {
-        // 节标题只在该节首行显示
-        rows.push({ unit: i === 0 ? u.name : undefined, row: buildRow(kp) });
-        placed.add(kp.id);
-      });
-    }
-    for (const kp of knowledgePoints.value.filter((k) => k.chapterId === ch.id).sort((a, b) => a.sort - b.sort)) {
-      rows.push({ row: buildRow(kp) });
-      placed.add(kp.id);
-    }
-    if (rows.length) groups.push({ label: ch.name, rows });
+  // N 级分组（utils/planGrouping）：子节点先、章直属 KP 后，节标题绑首行
+  const { groups, ungrouped } = groupCoverageKps(knowledgePoints.value, chapters.value);
+  const out: CoverageGroup[] = groups.map((g) => ({
+    label: g.label,
+    rows: g.rows.map((r) => ({ unit: r.unit, row: buildRow(r.kp) })),
+  }));
+  if (ungrouped.length) {
+    out.push({ label: "未分组", rows: ungrouped.map((kp) => ({ row: buildRow(kp) })) });
   }
-  const rest = knowledgePoints.value.filter((k) => !placed.has(k.id)).sort((a, b) => a.sort - b.sort);
-  if (rest.length) {
-    groups.push({ label: "未分组", rows: rest.map((kp) => ({ row: buildRow(kp) })) });
-  }
-  return groups;
+  return out;
 });
 
 const coverageStats = computed(() => {
