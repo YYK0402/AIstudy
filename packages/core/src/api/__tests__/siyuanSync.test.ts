@@ -169,4 +169,28 @@ describe("convDocTarget 斜杠路径", () => {
     const t = convDocTarget(course, [ch, unit], { ...kp, chapterId: null });
     expect(t.path).toBe("/自学／项目管理/学习对话");
   });
+
+  it("L3 章节：路径与 label 为完整祖先链（章/节/小节）", () => {
+    const l3: Chapter = { id: 12, courseId: 1, parentId: 11, siyuanBlockId: null, name: "8.3.5.1 小节", level: 3, sort: 1 };
+    const t = convDocTarget(course, [ch, unit, l3], { ...kp, chapterId: 12 });
+    expect(t.path).toBe("/自学／项目管理/第08章 项目风险管理/8.3.5 度量【多选题／简答题】/8.3.5.1 小节/学习对话");
+    expect(t.label).toBe("第08章 项目风险管理 · 8.3.5 度量【多选题/简答题】 · 8.3.5.1 小节");
+    expect(t.key).toBe("12");
+    expect(t.parentID).toBeNull();
+  });
+
+  it("回归红线：L1 顶层章路径/label 与旧行为逐字节一致", () => {
+    const t = convDocTarget(course, [ch, unit], { ...kp, chapterId: 10 });
+    expect(t.path).toBe("/自学／项目管理/第08章 项目风险管理/学习对话");
+    expect(t.label).toBe("第08章 项目风险管理");
+    expect(t.parentID).toBe("dc1");
+  });
+
+  it("回归红线：孤儿 L2（parentId 悬空）回退节点自身路径/label", () => {
+    const orphan: Chapter = { id: 13, courseId: 1, parentId: 404, siyuanBlockId: "dc3", name: "孤儿节", level: 2, sort: 1 };
+    const t = convDocTarget(course, [ch, unit, orphan], { ...kp, chapterId: 13 });
+    expect(t.path).toBe("/自学／项目管理/孤儿节/学习对话");
+    expect(t.label).toBe("孤儿节");
+    expect(t.parentID).toBe("dc3");
+  });
 });

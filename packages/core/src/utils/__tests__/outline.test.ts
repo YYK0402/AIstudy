@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Chapter } from "../../api";
 import {
   alignOutlineSpans, buildChapterTree, buildChapterTreeFlat, buildOutlineTree,
-  chapterPathText, isDescendant, nearestDocAncestorId, nearestTopAncestorId, nodePathOf,
+  chapterAncestorChain, chapterPathText, isDescendant, nearestDocAncestorId, nearestTopAncestorId, nodePathOf,
 } from "../outline";
 
 const text = [
@@ -140,6 +140,17 @@ describe("nearestDocAncestorId / chapterPathText / isDescendant", () => {
   });
   it("chapterPathText 自根到自身", () => {
     expect(chapterPathText(chapters, 3)).toBe("n1>n2>n3");
+  });
+  it("chapterAncestorChain 自根到自身（含任意深度）", () => {
+    expect(chapterAncestorChain(chapters, 4).map((c) => c.id)).toEqual([1, 2, 3, 4]);
+    expect(chapterAncestorChain(chapters, 1).map((c) => c.id)).toEqual([1]);
+  });
+  it("chapterAncestorChain 孤儿节点（parentId 指向已删）只含自身", () => {
+    const withOrphan = [...chapters, ch(9, 99, 4, 1, "孤儿")];
+    expect(chapterAncestorChain(withOrphan, 9).map((c) => c.id)).toEqual([9]);
+  });
+  it("chapterAncestorChain 节点不存在返回空", () => {
+    expect(chapterAncestorChain(chapters, 404)).toEqual([]);
   });
   it("isDescendant 链上判定", () => {
     expect(isDescendant(chapters, 1, 4)).toBe(true);

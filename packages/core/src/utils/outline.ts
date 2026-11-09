@@ -191,15 +191,20 @@ export function isDescendant(chapters: Chapter[], ancestorId: number, nodeId: nu
   return false;
 }
 
-/** 节点完整路径文本（根 > ... > 自身） */
-export function chapterPathText(chapters: Chapter[], nodeId: number): string {
+/** 节点祖先链（根 → … → 自身）；节点不存在/链断/环（守卫 16）时返回已解析到的部分 */
+export function chapterAncestorChain(chapters: Chapter[], nodeId: number): Chapter[] {
   const byId = new Map(chapters.map((c) => [c.id, c]));
-  const parts: string[] = [];
+  const chain: Chapter[] = [];
   let cur: Chapter | undefined = byId.get(nodeId);
   let guard = 0;
   while (cur && guard++ < 16) {
-    parts.unshift(cur.name);
+    chain.unshift(cur);
     cur = cur.parentId === null ? undefined : byId.get(cur.parentId);
   }
-  return parts.join(">");
+  return chain;
+}
+
+/** 节点完整路径文本（根 > ... > 自身） */
+export function chapterPathText(chapters: Chapter[], nodeId: number): string {
+  return chapterAncestorChain(chapters, nodeId).map((c) => c.name).join(">");
 }

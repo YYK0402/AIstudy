@@ -3,6 +3,7 @@ import { getData, saveData } from "./storage";
 import { getSettings } from "./settings";
 import { createDoc, ensureFolder } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
+import { chapterAncestorChain } from "../utils/outline";
 import { getBridge } from "@/bridge";
 
 const CONV_BEGIN = "<!-- ai-study:conversations:begin -->";
@@ -27,17 +28,12 @@ export function convDocTarget(
   if (kp.chapterId == null) return fallback;
   const node = chapters.find((c) => c.id === kp.chapterId);
   if (!node) return fallback;
-  if (node.level === 1 || node.parentId == null) {
-    return { path: `${base}/${sanitizeDocSegment(node.name)}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
-  }
-  const parent = chapters.find((c) => c.id === node.parentId);
-  if (!parent) {
-    return { path: `${base}/${sanitizeDocSegment(node.name)}/学习对话`, key: String(node.id), label: node.name, parentID: node.siyuanBlockId };
-  }
+  // 完整祖先链（顶层章 → … → 直属节点）：路径与 label 均 N 级，深度≤2 与旧两级构造逐字节一致
+  const chain = chapterAncestorChain(chapters, node.id);
   return {
-    path: `${base}/${sanitizeDocSegment(parent.name)}/${sanitizeDocSegment(node.name)}/学习对话`,
+    path: `${base}/${chain.map((c) => sanitizeDocSegment(c.name)).join("/")}/学习对话`,
     key: String(node.id),
-    label: `${parent.name} · ${node.name}`,
+    label: chain.map((c) => c.name).join(" · "),
     parentID: node.siyuanBlockId,
   };
 }

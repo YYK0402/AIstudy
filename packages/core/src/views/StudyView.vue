@@ -222,6 +222,7 @@ import KpSelectModal from "../components/KpSelectModal.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
+import { chapterPathText } from "../utils/outline";
 import { getBridge } from "@/bridge";
 
 const courseStore = useCourseStore();
@@ -395,14 +396,12 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-/** 章 · 节 路径（KP 现挂到节，回退章） */
+/** 章节完整路径（顶层章 · 节 · 小节 …，任意深度） */
 function kpPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "";
   const node = chapters.value.find((c) => c.id === kp.chapterId);
   if (!node) return kp.chapterName || "";
-  if (node.level === 1 || node.parentId == null) return node.name;
-  const parent = chapters.value.find((c) => c.id === node.parentId);
-  return parent ? `${parent.name} · ${node.name}` : node.name;
+  return chapterPathText(chapters.value, kp.chapterId).split(">").join(" · ");
 }
 
 function sourceNames(kp: KnowledgePoint): string {
