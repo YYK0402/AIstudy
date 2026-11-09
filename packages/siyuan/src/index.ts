@@ -650,10 +650,26 @@ export default class AiStudyPlugin extends Plugin {
         // 磁盘缺失按空结构处理（与首启空态基线登记一致，避免误报）
         const comparable =
           name === DATA_STORAGE && diskJson === null ? JSON.stringify(createEmptyData()) : diskJson;
-        if (comparable !== baseline) changed.push(name);
+        if (comparable !== baseline && !this.isSemanticallySameAsBaseline(baseline, disk)) {
+          changed.push(name);
+        }
       }
     }
     return changed;
+  }
+
+  /**
+   * 磁盘与基线语义相等（忽略键序/空白）。T6 归一化写盘按语义比较：磁盘旧形态可能与
+   * 基线（模板键序）语义相同而字节不同，字节比对会误报「外部变更」使保存永久阻塞，
+   * 故字节不一致时补一次语义复核。解析失败返回 false（fail-closed，按外部变更处理）。
+   */
+  private isSemanticallySameAsBaseline(baseline: string, disk: unknown): boolean {
+    if (disk == null || disk === "") return false;
+    try {
+      return canonicalJson(disk) === canonicalJson(JSON.parse(baseline) as unknown);
+    } catch {
+      return false;
+    }
   }
 
   /** 强制真实读盘（readPetalFileRaw 不经过 this.data 缓存）；读失败返回 ""（按缺失处理，fail-closed 由调用方判定） */

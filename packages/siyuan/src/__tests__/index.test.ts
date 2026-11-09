@@ -10,6 +10,7 @@ import { mergeAppData, normalizeCourseData } from "../../../core/src/utils/cours
 type PluginInternals = {
   loadCourseFile(courseId: number): Promise<CourseData | null>;
   readPetalFileRaw(name: string): Promise<unknown>;
+  detectExternalModifications(global: AppData, courses: Map<number, CourseData>): Promise<string[]>;
   setMergedView(view: AppData | null): void;
   initBaselines(): void;
   writtenBaselines: Map<string, string>;
@@ -164,5 +165,60 @@ describe("loadCourseFile 归一化一次性写盘", () => {
     expect(cd?.tocMappings).toEqual([]);
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+describe("detectExternalModifications 语义比对加固", () => {
+  // content 与 baseline 必不同（模拟用户真实改动触发读盘比对）
+  const changedContent = (base: CourseData): CourseData => ({
+    ...base,
+    chapters: [...base.chapters, { ...base.chapters[0], id: 999 }],
+  });
+
+  it("磁盘键序与基线不同但语义相同 → 不判外部变更（T6 语义写盘防误报死锁）", async () => {
+    const normalized = normalizeCourseData(LEGACY_COURSE);
+    const reshuffled = shuffleKeysDeep(normalized) as CourseData;
+    expect(JSON.stringify(reshuffled)).not.toBe(JSON.stringify(normalized));
+    const internals = makePlugin({ "course-1": reshuffled });
+    internals.writtenBaselines.set("course-1", JSON.stringify(normalized));
+    const changed = await internals.detectExternalModifications(
+      createEmptyData(),
+      new Map([[1, changedContent(normalized)]]),
+    );
+    expect(changed).not.toContain("course-1");
+  });
+
+  it("磁盘值真实变更 → 仍判外部变更（加固不吞真实冲突）", async () => {
+    const normalized = normalizeCourseData(LEGACY_COURSE);
+    const tampered = { ...normalized, chapters: [] };
+    const internals = makePlugin({ "course-1": tampered });
+    internals.writtenBaselines.set("course-1", JSON.stringify(normalized));
+    const changed = await internals.detectExternalModifications(
+      createEmptyData(),
+      new Map([[1, changedContent(normalized)]]),
+    );
+    expect(changed).toContain("course-1");
+  });
+
+  it("磁盘损坏（非 JSON）→ 仍判外部变更（fail-closed）", async () => {
+    const normalized = normalizeCourseData(LEGACY_COURSE);
+    const internals = makePlugin({ "course-1": "not-a-json{" });
+    internals.writtenBaselines.set("course-1", JSON.stringify(normalized));
+    const changed = await internals.detectExternalModifications(
+      createEmptyData(),
+      new Map([[1, changedContent(normalized)]]),
+    );
+    expect(changed).toContain("course-1");
+  });
+
+  it("磁盘缺失 → 保持原 changed 语义（语义复核不误放行）", async () => {
+    const normalized = normalizeCourseData(LEGACY_COURSE);
+    const internals = makePlugin({}); // course-1 不在磁盘
+    internals.writtenBaselines.set("course-1", JSON.stringify(normalized));
+    const changed = await internals.detectExternalModifications(
+      createEmptyData(),
+      new Map([[1, changedContent(normalized)]]),
+    );
+    expect(changed).toContain("course-1");
   });
 });
