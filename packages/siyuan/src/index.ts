@@ -148,7 +148,8 @@ export default class AiStudyPlugin extends Plugin {
     }
   }
 
-  /** 逐文件比对磁盘内容与已写盘基线；任一不符（或读取失败无法判定）视为存在外部变更。
+  /** 逐文件比对磁盘内容与已写盘基线；任一语义不符（或读取失败无法判定）视为存在外部变更。
+   *  字节一致即跳过；字节不一致但语义相等（仅键序/空白差异，T6 旧形态磁盘）不算外部变更。
    *  用 readPetalFileRaw 原始读盘：loadData 会把读到的原始文件内容回填进 this.data 缓存，
    *  "data" 文件回填的是仅全局视图（无课程实体），回显判定为"无外部变更"时缓存即被污染 */
   private async hasExternalChange(): Promise<boolean> {
@@ -159,7 +160,12 @@ export default class AiStudyPlugin extends Plugin {
       } catch {
         return true;
       }
-      if (JSON.stringify(disk ?? null) !== baseline) return true;
+      // 与 detectExternalModifications 同口径：磁盘键序差异（语义相等）不算外部变更——
+      // T6 归一化写盘按语义比较，旧形态磁盘键序可能不同于基线（模板序），
+      // 纯字节比对会在每次写盘回显时误判，触发无效的重建读盘
+      if (JSON.stringify(disk ?? null) !== baseline && !this.isSemanticallySameAsBaseline(baseline, disk)) {
+        return true;
+      }
     }
     return false;
   }
