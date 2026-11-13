@@ -25,6 +25,30 @@ export interface ReformatResult {
   failed: number;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 限流（429）/服务端错误（5xx）/超时可退避重试；422 内容敏感过滤等不可重试 */
+export function isRetryableError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /429|rate.?limit|HTTP 5\d\d|超时|timeout/i.test(msg);
+}
+
+const RETRY_DELAYS = [10000, 30000, 60000];
+
+async function callAiWithRetry(
+  input: Parameters<typeof callAi>[0],
+): Promise<Awaited<ReturnType<typeof callAi>>> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callAi(input);
+    } catch (e) {
+      if (e instanceof AiCanceledError) throw e;
+      if (attempt >= RETRY_DELAYS.length || !isRetryableError(e)) throw e;
+      await sleep(RETRY_DELAYS[attempt]);
+    }
+  }
+}
+
 /** 解析 AI 的 {"content": "..."}（围栏/包装对象容忍）；不可用返回 null */
 export function parseReformatContent(raw: string): string | null {
   const parsed = parseJsonCandidates(extractJsonCandidates(raw, "object"));
@@ -58,7 +82,7 @@ export async function reformatKpContents(
       if (i >= targets.length) return;
       const kp = targets[i];
       try {
-        const res = await callAi({
+        const res = await callAiWithRetry({
           providerId: binding.providerId,
           modelId: binding.modelId,
           taskKey: "kp_reformat",
@@ -85,6 +109,7 @@ export async function reformatKpContents(
       onProgress?.({ done, total: targets.length });
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  // 并发 2：降低对供应商速率限制的冲击（429 由 callAiWithRetry 退避兜底）
+  await Promise.all([worker(), worker()]);
   return { done, changed, failed };
 }

@@ -16,7 +16,7 @@ vi.mock("../ai", () => ({
   AiCanceledError: class AiCanceledError extends Error {},
 }));
 
-const { needsReformat, parseReformatContent, reformatKpContents } = await import("../kpReformat");
+const { needsReformat, parseReformatContent, isRetryableError, reformatKpContents } = await import("../kpReformat");
 
 const LONG =
   "按不确定性，项目可分为封闭性项目、半封闭性项目、半开放性项目和开放性项目，其中封闭性项目不确定性最低，开放性项目不确定性最高、信息缺口最大。" +
@@ -84,6 +84,18 @@ describe("parseReformatContent", () => {
     expect(parseReformatContent("不是 JSON")).toBe(null);
     expect(parseReformatContent('{"other": 1}')).toBe(null);
     expect(parseReformatContent('{"content": ""}')).toBe(null);
+  });
+});
+
+describe("isRetryableError", () => {
+  it("429/5xx/超时可重试", () => {
+    expect(isRetryableError(new Error("LLM 请求失败: HTTP 429 rate_limit_error"))).toBe(true);
+    expect(isRetryableError(new Error("LLM 请求失败: HTTP 500 internal"))).toBe(true);
+    expect(isRetryableError(new Error("request timeout"))).toBe(true);
+  });
+  it("422 内容过滤/404 不可重试", () => {
+    expect(isRetryableError(new Error("LLM 请求失败: HTTP 422 input new_sensitive"))).toBe(false);
+    expect(isRetryableError(new Error("HTTP 404 not found"))).toBe(false);
   });
 });
 
