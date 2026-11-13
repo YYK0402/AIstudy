@@ -33,7 +33,6 @@ export async function inferGraphRelations(courseId: number, reset = true): Promi
   let totalEdges = 0;
   for (let i = 0; i < kps.length; i += GRAPH_BATCH_SIZE) {
     const batch = kps.slice(i, i + GRAPH_BATCH_SIZE);
-    const byId = new Map(batch.map((k) => [k.id, k]));
     const kpLines = batch.map((k) => `- ${k.id}. ${k.name}：${truncateText(k.content, 120) || "暂无描述"}`).join("\n");
     const graphVars = { kpLines };
     const graphTpl = resolvePromptTemplate(data, "infer_graph");
@@ -58,19 +57,22 @@ export async function inferGraphRelations(courseId: number, reset = true): Promi
       parsed = null;
     }
     const items = Array.isArray(parsed) ? parsed : [];
+    // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+    const latest = await getData();
+    const latestById = new Map(latest.knowledgePoints.filter((k) => k.courseId === courseId).map((k) => [k.id, k]));
     for (const it of items) {
       const rec = (it ?? {}) as { kpId?: unknown; prevKpIds?: unknown };
       if (typeof rec !== "object") continue;
       const kpId = Number(rec.kpId);
-      const kp = byId.get(kpId);
+      const kp = latestById.get(kpId);
       if (!kp) continue;
       const prevs = Array.isArray(rec.prevKpIds)
-        ? [...new Set(rec.prevKpIds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && byId.has(n) && n !== kpId))]
+        ? [...new Set(rec.prevKpIds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && latestById.has(n) && n !== kpId))]
         : [];
       kp.prevKpIds = prevs.join(",");
       totalEdges += prevs.length;
     }
-    await saveData(data);
+    await saveData(latest);
   }
   // 关系变更 → 刷新受影响文档的「相关知识点」区（区由应用全权生成，KP 区哈希不变也能穿透 skip）
   const chapters = data.chapters.filter((c) => c.courseId === courseId);

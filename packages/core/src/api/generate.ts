@@ -269,8 +269,10 @@ export async function generateQuestions(
       );
     }
 
+    // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+    const latest = await getData();
     const questions: Question[] = [];
-    let nextQuestionId = nextId(data.questions);
+    let nextQuestionId = nextId(latest.questions);
     for (const item of validItems) {
       // 模型漏给 kpIds 时回退绑定全部所选知识点，避免产生无归属题
       const bound = item.kpIds.filter((n) => kpIdSet.has(n));
@@ -291,8 +293,8 @@ export async function generateQuestions(
       if (item.blanks) q.blanks = item.blanks;
       questions.push(q);
     }
-    data.questions.push(...questions);
-    await saveData(data);
+    latest.questions.push(...questions);
+    await saveData(latest);
     const suffix = answerInvalid > 0 ? `，${answerInvalid} 道题答案异常已剔除` : "";
     qTask.done(`已生成 ${questions.length} 道题${suffix}`);
     return questions;

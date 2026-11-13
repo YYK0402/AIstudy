@@ -95,7 +95,9 @@ export async function sendQuizAsk(courseId: number, qId: number, userText: strin
   });
   const content = (res.content || "").trim();
   if (!content) throw new Error("AI 未返回回答，请重试");
-  upsertAskSession(data, courseId, qId, "assistant", content);
-  await saveData(data);
+  // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+  const latest = await getData();
+  upsertAskSession(latest, courseId, qId, "assistant", content);
+  await saveData(latest);
   return content;
 }

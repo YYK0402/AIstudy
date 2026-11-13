@@ -63,13 +63,15 @@ export async function submitExplain(kp: KnowledgePoint, userContent: string, dur
     throw new Error("AI 评估结果无法解析，请重试");
   }
 
-  const courseKp = data.knowledgePoints.find((k) => k.id === kp.id);
+  // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+  const latest = await getData();
+  const courseKp = latest.knowledgePoints.find((k) => k.id === kp.id);
   if (!courseKp) {
     throw new Error("知识点不存在，可能已被删除");
   }
 
   const record: ExplainRecord = {
-    id: nextId(data.explainRecords),
+    id: nextId(latest.explainRecords),
     courseId: courseKp.courseId,
     kpId: courseKp.id,
     userContent,
@@ -78,31 +80,31 @@ export async function submitExplain(kp: KnowledgePoint, userContent: string, dur
     createTime: now(),
     askPrompt: kp.askPrompt || "",
   };
-  data.explainRecords.push(record);
+  latest.explainRecords.push(record);
   const masteryNotes: string[] = [];
   const planNotes: string[] = [];
   if (result.score >= EXPLAIN_PASS_SCORE) {
-    ensureReviewTouchpointInData(data, courseKp.id);
+    ensureReviewTouchpointInData(latest, courseKp.id);
     // 达标 → 勾掉当天 learn/review 任务
-    planNotes.push(...completeKpTasksInData(data, courseKp.id, ["learn", "review"]));
+    planNotes.push(...completeKpTasksInData(latest, courseKp.id, ["learn", "review"]));
   }
   // 讲解 ≥80 且该知识点无未移出当前错题本记录 → 掌握度升一级
-  if (result.score >= EXPLAIN_MASTER_SCORE && !kpHasOpenWrong(data, courseKp.id)) {
-    const change = adjustMasteryInData(data, courseKp.id, 1);
+  if (result.score >= EXPLAIN_MASTER_SCORE && !kpHasOpenWrong(latest, courseKp.id)) {
+    const change = adjustMasteryInData(latest, courseKp.id, 1);
     if (change) masteryNotes.push(`${courseKp.name} ${change}`);
   }
   // 讲解不达标（<60）→ 追加薄弱复习任务
   if (result.score < EXPLAIN_PASS_SCORE) {
-    appendWeakPointTaskInData(data, courseKp.courseId, courseKp.id, "review");
+    appendWeakPointTaskInData(latest, courseKp.courseId, courseKp.id, "review");
   }
-  logStudyInData(data, {
+  logStudyInData(latest, {
     courseId: courseKp.courseId,
     kpId: courseKp.id,
     taskId: null,
     action: "explain",
     durationSec,
   });
-  await saveData(data);
+  await saveData(latest);
   return { ...result, masteryNotes, planNotes };
 }
 
@@ -167,9 +169,13 @@ export async function generateKpAskPrompt(kp: KnowledgePoint, force = false): Pr
   });
   const prompt = extractAskPrompt(res.content);
   if (!prompt) throw new Error("AI 未返回有效提问，请重试");
-  stored.askPrompt = prompt;
-  stored.askPromptContent = askPromptSignature(stored);
-  await saveData(data);
+  // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+  const latest = await getData();
+  const latestKp = latest.knowledgePoints.find((k) => k.id === kp.id);
+  if (!latestKp) throw new Error("知识点不存在，可能已被删除");
+  latestKp.askPrompt = prompt;
+  latestKp.askPromptContent = askPromptSignature(latestKp);
+  await saveData(latest);
   return prompt;
 }
 

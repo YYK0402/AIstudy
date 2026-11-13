@@ -418,13 +418,15 @@ export async function generateStudyPlan(
     }
   }
 
+  // 落库前重新取最新数据，防 AI 调用期间其他写入被覆盖（脏写）
+  const latest = await getData();
   // 覆盖式：清除本课程旧计划及其任务
-  const oldPlanIds = new Set(data.studyPlans.filter((p) => p.courseId === courseId).map((p) => p.id));
-  data.studyPlans = data.studyPlans.filter((p) => !oldPlanIds.has(p.id));
-  data.studyTasks = data.studyTasks.filter((t) => !oldPlanIds.has(t.planId));
+  const oldPlanIds = new Set(latest.studyPlans.filter((p) => p.courseId === courseId).map((p) => p.id));
+  latest.studyPlans = latest.studyPlans.filter((p) => !oldPlanIds.has(p.id));
+  latest.studyTasks = latest.studyTasks.filter((t) => !oldPlanIds.has(t.planId));
 
   const plan: StudyPlan = {
-    id: nextId(data.studyPlans),
+    id: nextId(latest.studyPlans),
     courseId,
     planContent:
       aiContent ||
@@ -435,7 +437,7 @@ export async function generateStudyPlan(
     dailyHour: input.dailyHour,
     createTime: now(),
   };
-  data.studyPlans.push(plan);
+  latest.studyPlans.push(plan);
 
   const dateCounts: Record<string, number> = {};
   const bumpSort = (date: string): number => {
@@ -446,8 +448,8 @@ export async function generateStudyPlan(
   // 骨架：每知识点一条 learn 任务（100% 覆盖、100% 挂 kpId）
   for (const { date, kps: dk } of dayKps) {
     for (const kp of dk) {
-      data.studyTasks.push({
-        id: nextId(data.studyTasks),
+      latest.studyTasks.push({
+        id: nextId(latest.studyTasks),
         planId: plan.id,
         chapterId: kp.chapterId,
         kpId: kp.id,
@@ -460,7 +462,7 @@ export async function generateStudyPlan(
     }
   }
   // 章末测评 + 结业模考：系统确定性排期（章末=该章最后一个学习日；无模型配置也能出、位置精确）
-  const courseChapters = data.chapters.filter((c) => c.courseId === courseId);
+  const courseChapters = latest.chapters.filter((c) => c.courseId === courseId);
   const chapterById = new Map(courseChapters.map((c) => [c.id, c]));
   // KP 归属最近 level-1 祖先（子树全深度 KP 计入该顶层章最后学习日）；幽灵节点跳过
   const chapterLastDay = new Map<number, string>();
@@ -475,8 +477,8 @@ export async function generateStudyPlan(
   for (const ch of courseChapters.filter((c) => c.level === 1).sort((a, b) => a.sort - b.sort)) {
     const lastDate = chapterLastDay.get(ch.id);
     if (!lastDate) continue;
-    data.studyTasks.push({
-      id: nextId(data.studyTasks),
+    latest.studyTasks.push({
+      id: nextId(latest.studyTasks),
       planId: plan.id,
       chapterId: ch.id,
       kpId: null,
@@ -487,8 +489,8 @@ export async function generateStudyPlan(
       sort: bumpSort(lastDate),
     });
   }
-  data.studyTasks.push({
-    id: nextId(data.studyTasks),
+  latest.studyTasks.push({
+    id: nextId(latest.studyTasks),
     planId: plan.id,
     chapterId: null,
     kpId: null,
@@ -501,8 +503,8 @@ export async function generateStudyPlan(
   // AI 穿插的 review/practice
   for (const item of extraItems) {
     const kp = item.kpId ? kps.find((k) => k.id === item.kpId) : undefined;
-    data.studyTasks.push({
-      id: nextId(data.studyTasks),
+    latest.studyTasks.push({
+      id: nextId(latest.studyTasks),
       planId: plan.id,
       chapterId: kp?.chapterId ?? null,
       kpId: item.kpId || null,
@@ -514,7 +516,7 @@ export async function generateStudyPlan(
     });
   }
 
-  await saveData(data);
+  await saveData(latest);
   return { plan, tasks: await queryStudyTasks(plan.id) };
 }
 

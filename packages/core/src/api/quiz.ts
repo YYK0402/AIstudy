@@ -155,6 +155,8 @@ export async function submitAnswer(
   let score: string;
   let feedback = "";
   let record: AnswerRecord;
+  // 简答判分走长 AI 调用，期间内存对象可能被替换（保存失败回滚/外部变更），最终落库须用重取的最新对象
+  let writeData: AppData = data;
   const assistedPatch: Pick<AnswerRecord, "assisted"> = options?.assisted ? { assisted: true } : {};
 
   if (question.qType === "essay" || question.qType === "translation") {
@@ -184,9 +186,16 @@ export async function submitAnswer(
     isCorrect = graded.score >= 60;
     score = String(graded.score);
     feedback = graded.feedback;
-    record.isCorrect = isCorrect;
-    record.score = score;
-    record.graded = true;
+    // 落库前重新取最新数据，防 AI 判分期间其他写入被覆盖（脏写）
+    const latest = await getData();
+    const latestRecord = latest.answerRecords.find((r) => r.id === record.id);
+    if (!latestRecord) {
+      throw new Error("作答记录已删除，无法回填判分结果");
+    }
+    latestRecord.isCorrect = isCorrect;
+    latestRecord.score = score;
+    latestRecord.graded = true;
+    writeData = latest;
   } else if (isPassageType(question.qType) && question.blanks) {
     // 文章题（填空/选填/完形）：逐空判分，score=正确率，全对才算对
     const g = gradePassage(userAnswer, question.answer);
@@ -218,16 +227,16 @@ export async function submitAnswer(
     data.answerRecords.push(record);
   }
 
-  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(data, question, isCorrect, options);
+  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(writeData, question, isCorrect, options);
 
-  logStudyInData(data, {
+  logStudyInData(writeData, {
     courseId: question.courseId,
     kpId: parseQuestionKpIds(question)[0] ?? null,
     taskId: null,
     action: "answer",
     durationSec,
   });
-  await saveData(data);
+  await saveData(writeData);
   return { isCorrect, score, feedback, masteryNotes, planNotes };
 }
 
@@ -244,12 +253,18 @@ export async function regradeAnswer(
   }
   const graded = await callAiGrade(data, question, record.userAnswer);
   const isCorrect = graded.score >= 60;
-  record.isCorrect = isCorrect;
-  record.score = String(graded.score);
-  record.graded = true;
-  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(data, question, isCorrect, options);
-  await saveData(data);
-  return { isCorrect, score: record.score, feedback: graded.feedback, masteryNotes, planNotes };
+  // 落库前重新取最新数据，防 AI 判分期间其他写入被覆盖（脏写）
+  const latest = await getData();
+  const latestRecord = latest.answerRecords.find((r) => r.id === recordId);
+  if (!latestRecord) {
+    throw new Error("作答记录已删除，无法回填判分结果");
+  }
+  latestRecord.isCorrect = isCorrect;
+  latestRecord.score = String(graded.score);
+  latestRecord.graded = true;
+  const { masteryNotes, planNotes } = applyGradeSideEffectsInData(latest, question, isCorrect, options);
+  await saveData(latest);
+  return { isCorrect, score: latestRecord.score, feedback: graded.feedback, masteryNotes, planNotes };
 }
 
 // 归一化作答：中文逗号统一为半角再按逗号拆分排序（AI 生成的多选答案可能用「，」分隔）
