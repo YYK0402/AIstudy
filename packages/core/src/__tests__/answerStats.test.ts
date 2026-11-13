@@ -19,8 +19,8 @@ function question(id: number, qType: Question["qType"]): Question {
   };
 }
 
-function record(id: number, qId: number, isCorrect: boolean, score: string): AnswerRecord {
-  return { id, qId, userAnswer: "x", isCorrect, score, createTime: "2026-01-01T00:00:00Z" };
+function record(id: number, qId: number, isCorrect: boolean, score: string, assisted?: boolean): AnswerRecord {
+  return { id, qId, userAnswer: "x", isCorrect, score, createTime: "2026-01-01T00:00:00Z", ...(assisted ? { assisted: true } : {}) };
 }
 
 const monthly: AnswerStatsMonthly[] = [
@@ -41,6 +41,8 @@ describe("aggregateAnswers", () => {
       correct: 2,
       essayTotalScore: 75,
       essayCount: 1,
+      assistedTotal: 0,
+      assistedCorrect: 0,
     });
   });
 
@@ -52,11 +54,41 @@ describe("aggregateAnswers", () => {
       correct: 8,
       essayTotalScore: 450,
       essayCount: 5,
+      assistedTotal: 0,
+      assistedCorrect: 0,
     });
   });
 
   it("空输入全 0", () => {
-    expect(aggregateAnswers([], [], [])).toEqual({ total: 0, correct: 0, essayTotalScore: 0, essayCount: 0 });
+    expect(aggregateAnswers([], [], [])).toEqual({
+      total: 0,
+      correct: 0,
+      essayTotalScore: 0,
+      essayCount: 0,
+      assistedTotal: 0,
+      assistedCorrect: 0,
+    });
+  });
+
+  it("受助口径：仅统计 assisted 记录，答对单独计；旧归档缺字段按 0", () => {
+    const questions = [question(1, "single"), question(2, "single")];
+    const records = [
+      record(1, 1, true, "100", true), // 受助对
+      record(2, 2, false, "0", true), // 受助错
+      record(3, 1, true, "100"), // 独立对
+    ];
+    const oldMonthly: AnswerStatsMonthly[] = [
+      { courseId: 1, month: "2026-01", total: 4, correct: 2, essayTotalScore: 0, essayCount: 0 }, // 无受助字段
+      { courseId: 1, month: "2026-02", total: 3, correct: 1, essayTotalScore: 0, essayCount: 0, assistedTotal: 2, assistedCorrect: 1 },
+    ];
+    expect(aggregateAnswers(records, questions, oldMonthly)).toEqual({
+      total: 10,
+      correct: 5,
+      essayTotalScore: 0,
+      essayCount: 0,
+      assistedTotal: 4,
+      assistedCorrect: 2,
+    });
   });
 });
 

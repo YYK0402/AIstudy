@@ -5,6 +5,10 @@ export interface AnswerAggregates {
   correct: number;
   essayTotalScore: number;
   essayCount: number;
+  /** 受助作答数（该题本轮用过 AI 问答） */
+  assistedTotal: number;
+  /** 受助答对数 */
+  assistedCorrect: number;
 }
 
 /**
@@ -18,12 +22,16 @@ export function aggregateAnswers(
   monthly: AnswerStatsMonthly[],
 ): AnswerAggregates {
   const qById = new Map(questions.map((q) => [q.id, q]));
-  const out: AnswerAggregates = { total: 0, correct: 0, essayTotalScore: 0, essayCount: 0 };
+  const out: AnswerAggregates = { total: 0, correct: 0, essayTotalScore: 0, essayCount: 0, assistedTotal: 0, assistedCorrect: 0 };
   for (const r of records) {
     const q = qById.get(r.qId);
     if (!q) continue;
     out.total += 1;
     if (r.isCorrect) out.correct += 1;
+    if (r.assisted) {
+      out.assistedTotal += 1;
+      if (r.isCorrect) out.assistedCorrect += 1;
+    }
     if (q.qType === "essay") {
       const n = Number(r.score);
       if (Number.isFinite(n)) {
@@ -37,6 +45,8 @@ export function aggregateAnswers(
     out.correct += m.correct;
     out.essayTotalScore += m.essayTotalScore;
     out.essayCount += m.essayCount;
+    out.assistedTotal += m.assistedTotal ?? 0;
+    out.assistedCorrect += m.assistedCorrect ?? 0;
   }
   return out;
 }

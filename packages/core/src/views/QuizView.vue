@@ -300,7 +300,8 @@
           <div v-if="revealed && quizResult!.masteryNotes.length" class="mastery-note" style="margin:0 14px">↓ 掌握度：{{ quizResult!.masteryNotes.join(" · ") }}</div>
           <div v-if="revealed && quizResult!.planNotes.length" class="plan-note" style="margin:0 14px">✓ 计划任务已自动勾选：{{ quizResult!.planNotes.join("、") }}</div>
           <div v-if="revealed && currentQuestion!.analysis" class="analysis" style="margin:0 14px 14px">{{ displayAnalysis(currentQuestion!) }}</div>
-          <div v-if="revealed" style="display:flex;justify-content:flex-end;margin:0 14px 14px">
+          <!-- AI 问答作答前后都可用：作答前求助的会话按「受助」口径标记后续作答 -->
+          <div style="display:flex;justify-content:flex-end;margin:0 14px 14px">
             <button class="btn ghost sm" @click="askModalOpen = true">
               <AppIcon name="spark" :size="14" /> AI 问答
             </button>
@@ -522,6 +523,7 @@
         :open="askModalOpen"
         :question="currentQuestion"
         @close="askModalOpen = false"
+        @asked="markAssisted"
       />
     </template>
   </div>
@@ -777,6 +779,13 @@ function goReview(i: number) {
 }
 // ===== 回看 AI 问答（弹窗 AskModal 自管会话；此处只管开关） =====
 const askModalOpen = ref(false);
+/** 本轮刷题中用过 AI 问答的题目 id（AskModal 每成功一轮记一次）；提交作答时据此标记「受助」口径 */
+const assistedQIds = ref(new Set<number>());
+function markAssisted(qId: number) {
+  const s = new Set(assistedQIds.value);
+  s.add(qId);
+  assistedQIds.value = s;
+}
 /** 本轮刷题的测评来源：仅章节组卷（?set=）/结业模考（?exam=1）入口开刷时非空，答完最后一题据此自动勾 test 任务 */
 const currentTestContext = ref<TestTaskContext | null>(null);
 /** 本轮自动勾掉的测评任务标题（小结展示用） */
@@ -1096,6 +1105,7 @@ function beginQuiz(list: Question[], context: TestTaskContext | null = null, rev
   revealMode.value = reveal ?? quizRevealDefault.value;
   reviewing.value = false;
   askModalOpen.value = false;
+  assistedQIds.value = new Set();
   markedIds.value = new Set();
   answerDrafts.value = {};
   gradingAll.value = false;
@@ -1345,7 +1355,9 @@ async function submitCurrent(secOverride?: number) {
   if (!q || quizResult.value) return;
   submitting.value = true;
   try {
-    const result = await submitAnswer(q, userAnswer.value, secOverride ?? elapsedQuestionSec());
+    const result = await submitAnswer(q, userAnswer.value, secOverride ?? elapsedQuestionSec(), {
+      assisted: assistedQIds.value.has(q.id),
+    });
     quizResult.value = result;
     answeredResults.value.push({
       isCorrect: result.isCorrect,

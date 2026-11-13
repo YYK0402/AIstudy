@@ -82,6 +82,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "asked", qId: number): void;
 }>();
 
 const POS_KEY = "ai-study.ask-pos";
@@ -179,6 +180,8 @@ async function send() {
   try {
     const reply = await sendQuizAsk(q.courseId, q.id, text);
     turns.value.push({ role: "assistant", content: reply, createTime: new Date().toISOString() });
+    // 受助口径：该题本轮用过 AI 问答，后续作答按「受助」计
+    emit("asked", q.id);
   } catch (e) {
     console.error("回看问答失败:", e);
     askError.value = e instanceof Error ? e.message : "问答失败，请重试";

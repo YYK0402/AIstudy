@@ -18,6 +18,10 @@ export interface CourseStats {
     accuracy: string;
     essayAvgScore: string;
     wrongCount: number;
+    /** 受助作答数（该题本轮用过 AI 问答） */
+    assistedTotal: number;
+    /** 受助答对数 */
+    assistedCorrect: number;
   };
   explain: {
     total: number;
@@ -86,6 +90,8 @@ export async function queryCourseStats(courseId: number): Promise<CourseStats> {
       accuracy: answerAgg.total ? Math.round((answerAgg.correct / answerAgg.total) * 100) + "%" : "",
       essayAvgScore: avgOf(answerAgg.essayTotalScore, answerAgg.essayCount),
       wrongCount: data.wrongQuestions.filter((w) => qIdSet.has(w.qId) && (w.status ?? "active") !== "graduated").length,
+      assistedTotal: answerAgg.assistedTotal,
+      assistedCorrect: answerAgg.assistedCorrect,
     },
     explain: {
       total: explainRecords.length,

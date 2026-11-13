@@ -173,6 +173,13 @@ export interface AnswerRecord {
   createTime: string;
   /** 简答/翻译题：AI 判分完成标记（判分失败时保留作答、等待重新判分）。缺失视为 true（旧数据） */
   graded?: boolean;
+  /**
+   * 受助作答，两种触发：
+   * 1. 本轮刷题中作答前对该题用过 AI 问答（AskModal）≥1 轮；
+   * 2. 复习触点揭示参考答案后重答（错题简答重写）。
+   * 报告展示「独立 / 受助」口径；旧数据无此字段按独立计。
+   */
+  assisted?: boolean;
 }
 
 /** 回看题目 AI 问答的一轮对话 */
@@ -344,6 +351,10 @@ export interface AnswerStatsMonthly {
   essayTotalScore: number;
   /** 当月有效简答题数 */
   essayCount: number;
+  /** 当月受助作答数（旧归档缺失按 0 计） */
+  assistedTotal?: number;
+  /** 当月受助答对数（旧归档缺失按 0 计） */
+  assistedCorrect?: number;
 }
 
 /**

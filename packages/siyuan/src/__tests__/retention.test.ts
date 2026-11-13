@@ -27,8 +27,8 @@ function log(id: number, day: [number, number, number], duration: number, course
   return { id, courseId, kpId: null, taskId: null, action: "quiz", duration, createTime: localIso(day[0], day[1], day[2]) };
 }
 
-function rec(id: number, qId: number, isCorrect: boolean, score: string, day: [number, number, number]): AnswerRecord {
-  return { id, qId, userAnswer: "x", isCorrect, score, createTime: localIso(day[0], day[1], day[2]) };
+function rec(id: number, qId: number, isCorrect: boolean, score: string, day: [number, number, number], assisted?: boolean): AnswerRecord {
+  return { id, qId, userAnswer: "x", isCorrect, score, createTime: localIso(day[0], day[1], day[2]), ...(assisted ? { assisted: true } : {}) };
 }
 
 describe("getRetentionDays", () => {
@@ -122,8 +122,29 @@ describe("applyRetention（answerRecords）", () => {
     expect(n).toBe(2);
     expect(data.answerRecords.map((r) => r.id)).toEqual([4]);
     expect(data.answerStatsMonthly).toEqual([
-      { courseId: 1, month: "2026-06", total: 2, correct: 1, essayTotalScore: 75, essayCount: 1 },
+      { courseId: 1, month: "2026-06", total: 2, correct: 1, essayTotalScore: 75, essayCount: 1, assistedTotal: 0, assistedCorrect: 0 },
     ]);
+  });
+
+  it("受助口径：assisted 记录单独计数，答对再细分；与旧归档（缺字段）合并不产生 NaN", () => {
+    const data = baseData();
+    // 旧归档无受助字段（旧数据形态）
+    data.answerStatsMonthly = [
+      { courseId: 1, month: "2026-05", total: 3, correct: 2, essayTotalScore: 0, essayCount: 0 },
+    ];
+    data.answerRecords = [
+      rec(1, 10, true, "100", [2026, 6, 1], true), // 受助对
+      rec(2, 10, false, "0", [2026, 6, 2], true), // 受助错
+      rec(3, 10, true, "100", [2026, 6, 3]), // 独立对
+    ];
+    const n = applyRetention(data, REF);
+    expect(n).toBe(3);
+    expect(data.answerStatsMonthly).toHaveLength(2);
+    const june = data.answerStatsMonthly.find((m) => m.month === "2026-06");
+    expect(june).toEqual({ courseId: 1, month: "2026-06", total: 3, correct: 2, essayTotalScore: 0, essayCount: 0, assistedTotal: 2, assistedCorrect: 1 });
+    // 旧归档归一化：缺失受助字段补 0（不产生 NaN）
+    const may = data.answerStatsMonthly.find((m) => m.month === "2026-05");
+    expect(may).toEqual({ courseId: 1, month: "2026-05", total: 3, correct: 2, essayTotalScore: 0, essayCount: 0, assistedTotal: 0, assistedCorrect: 0 });
   });
 
   it("保留期内的记录不受影响", () => {

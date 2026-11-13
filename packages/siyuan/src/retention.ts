@@ -36,6 +36,8 @@ interface AnswerAgg {
   correct: number;
   essayTotalScore: number;
   essayCount: number;
+  assistedTotal: number;
+  assistedCorrect: number;
 }
 
 function archiveStudyLogs(data: AppData, cutoffDay: string): number {
@@ -74,7 +76,10 @@ function parseScoreNum(score: string): number | null {
 function archiveAnswerRecords(data: AppData, cutoffDay: string): number {
   const qTypeById = new Map(data.questions.map((q) => [q.id, q.qType]));
   const agg = new Map<string, AnswerAgg>();
-  for (const e of data.answerStatsMonthly) agg.set(`${e.courseId}|${e.month}`, e);
+  // 旧归档无受助字段，补齐 0 防止 += 得 NaN
+  for (const e of data.answerStatsMonthly) {
+    agg.set(`${e.courseId}|${e.month}`, { ...e, assistedTotal: e.assistedTotal ?? 0, assistedCorrect: e.assistedCorrect ?? 0 });
+  }
   const qCourse = new Map(data.questions.map((q) => [q.id, q.courseId]));
   const keep: AnswerRecord[] = [];
   let n = 0;
@@ -94,11 +99,15 @@ function archiveAnswerRecords(data: AppData, cutoffDay: string): number {
     const k = `${courseId}|${month}`;
     let a = agg.get(k);
     if (!a) {
-      a = { courseId, month, total: 0, correct: 0, essayTotalScore: 0, essayCount: 0 };
+      a = { courseId, month, total: 0, correct: 0, essayTotalScore: 0, essayCount: 0, assistedTotal: 0, assistedCorrect: 0 };
       agg.set(k, a);
     }
     a.total += 1;
     if (r.isCorrect) a.correct += 1;
+    if (r.assisted) {
+      a.assistedTotal += 1;
+      if (r.isCorrect) a.assistedCorrect += 1;
+    }
     // 与 report 口径一致：仅统计现存题目且 qType=essay 的作答；题目已删（qId 查不到）按非简答计
     if (qTypeById.get(r.qId) === "essay") {
       const score = parseScoreNum(r.score);

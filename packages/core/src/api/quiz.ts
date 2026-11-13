@@ -148,13 +148,14 @@ export async function submitAnswer(
   question: Question,
   userAnswer: string,
   durationSec = 0,
-  options?: { fromReview?: boolean },
+  options?: { fromReview?: boolean; assisted?: boolean },
 ): Promise<AnswerResult> {
   const data = await getData();
   let isCorrect: boolean;
   let score: string;
   let feedback = "";
   let record: AnswerRecord;
+  const assistedPatch: Pick<AnswerRecord, "assisted"> = options?.assisted ? { assisted: true } : {};
 
   if (question.qType === "essay" || question.qType === "translation") {
     // 先落盘作答记录（graded=false）：AI 判分失败/中断也不丢作答
@@ -166,6 +167,7 @@ export async function submitAnswer(
       score: "0",
       createTime: now(),
       graded: false,
+      ...assistedPatch,
     };
     data.answerRecords.push(record);
     await saveData(data);
@@ -198,6 +200,7 @@ export async function submitAnswer(
       isCorrect,
       score,
       createTime: now(),
+      ...assistedPatch,
     };
     data.answerRecords.push(record);
   } else {
@@ -210,6 +213,7 @@ export async function submitAnswer(
       isCorrect,
       score,
       createTime: now(),
+      ...assistedPatch,
     };
     data.answerRecords.push(record);
   }

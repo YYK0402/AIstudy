@@ -14,7 +14,8 @@
         <div class="stat"><div class="k">知识点掌握</div><div class="v">{{ stats.kp.total }}<span> 个</span></div>
           <div v-if="stats.kp.total" class="sub">{{ masteredCount }}/{{ stats.kp.total }} 已掌握</div></div>
         <div class="stat"><div class="k">答题正确率</div><div class="v">{{ stats.quiz.accuracy || "—" }}</div>
-          <div v-if="stats.quiz.total" class="sub">共答 {{ stats.quiz.total }} 题 · 错题 {{ stats.quiz.wrongCount }}</div></div>
+          <div v-if="stats.quiz.total" class="sub">共答 {{ stats.quiz.total }} 题 · 错题 {{ stats.quiz.wrongCount }}</div>
+          <div v-if="stats.quiz.assistedTotal" class="sub">独立 {{ stats.quiz.total - stats.quiz.assistedTotal }} 题 · 受助 {{ stats.quiz.assistedTotal }} 题（对 {{ stats.quiz.assistedCorrect }}）</div></div>
         <div class="stat"><div class="k">讲解均分</div><div class="v">{{ stats.explain.avgScore || "—" }}
           <template v-if="stats.explain.total"><span> / 100</span></template></div>
           <div v-if="stats.explain.total" class="sub">共讲解 {{ stats.explain.total }} 次</div></div>
@@ -180,7 +181,7 @@ const currentCourseId = () => courseStore.currentCourseId;
 
 const stats = ref<CourseStats>({
   kp: { total: 0, distribution: { unlearn: 0, known: 0, mastered: 0, proficient: 0 } },
-  quiz: { total: 0, correct: 0, accuracy: "", essayAvgScore: "", wrongCount: 0 },
+  quiz: { total: 0, correct: 0, accuracy: "", essayAvgScore: "", wrongCount: 0, assistedTotal: 0, assistedCorrect: 0 },
   explain: { total: 0, avgScore: "" },
   review: { touchpoints: 0, totalReviews: 0 },
   plan: { done: 0, total: 0 },
