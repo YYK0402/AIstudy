@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Sidebar from "./components/Sidebar.vue";
 import Topbar from "./components/Topbar.vue";
 import TabBar from "./components/TabBar.vue";
@@ -40,6 +40,17 @@ import { useModalStore } from "./stores/modal";
 import { useCourseStore } from "./stores/course";
 import { CHANGELOG, changelogSince } from "./constants/changelog";
 import { isNewerVersion } from "./utils/version";
+import { shouldBlockSpecialClick } from "./utils/anchorNav";
+
+// 中键 / Cmd(·Ctrl)+点击应用内链接会触发浏览器「新窗口打开」，
+// 思源桌面版 Electron 将其转给 shell.openExternal 跳出系统浏览器；capture 阶段拦截。
+// 注意：中键产生的是 auxclick 事件（不是 click），两类都要监听
+function onInAppLinkSpecialClick(e: MouseEvent): void {
+  const a = (e.target as Element | null)?.closest?.("a[href]");
+  if (!a) return;
+  const href = a.getAttribute("href") ?? "";
+  if (shouldBlockSpecialClick(href, e)) e.preventDefault();
+}
 
 const modalStore = useModalStore();
 const courseStore = useCourseStore();
@@ -56,6 +67,8 @@ const SEEN_KEY = "aiStudy.seenChangelogVersion";
 const pendingSeenUpdate = ref<string | null>(null);
 
 onMounted(() => {
+  appRoot.value?.addEventListener("click", onInAppLinkSpecialClick, true);
+  appRoot.value?.addEventListener("auxclick", onInAppLinkSpecialClick, true);
   // 移动端 Sidebar 不挂载：App 兜底首载课程列表（幂等）
   // 注：今日任务提醒的触发点在 mount.ts（每次开页签都尝试，单实例 DOM 迁移时
   // onMounted 不重跑；当日去重在 maybeShowDailyReminder 内部）
@@ -75,6 +88,11 @@ onMounted(() => {
       localStorage.setItem(SEEN_KEY, current);
     }
   }
+});
+
+onBeforeUnmount(() => {
+  appRoot.value?.removeEventListener("click", onInAppLinkSpecialClick, true);
+  appRoot.value?.removeEventListener("auxclick", onInAppLinkSpecialClick, true);
 });
 
 watch(
