@@ -8,9 +8,11 @@
 //   难度: 中等             （可选，简单/中等/困难，默认中等）
 //   题型: 单选             （可选，单选/多选/判断/简答，缺省自动推断）
 //   知识点: 知识点甲, 知识点乙  （可选，按名称匹配本课程知识点）
+// 也支持未排版整卷原文：大题标题 + 行首题号，答案在文末答案区或每题内联（走 examSegmenter 智能切题）
 import type { KnowledgePoint, QuestionType, QuestionDifficulty } from "../api";
 import { isPassageType } from "../api/constants";
 import { parsePassageBlanks } from "./passage";
+import { segmentExamPaper, type SegmentResult } from "./examSegmenter";
 
 export interface ImportedQuestionDraft {
   title: string;
@@ -47,6 +49,8 @@ export interface ImportParseResult {
   paperName?: string;
   /** 解析到的年份（来自 markdown 头部） */
   paperYear?: number;
+  /** 实际使用的解析模式 */
+  mode: "structured" | "segmented";
 }
 
 const QTYPE_MAP: Record<string, QuestionType> = {
@@ -166,6 +170,33 @@ function parseBlock(
     }
   }
 
+  const r = buildDraft(
+    { title, options, answerRaw, hasAnswer, analysis, qType, difficulty, kpNames },
+    kpByName,
+  );
+  if (r.draft) return { draft: r.draft, warning: warning || undefined };
+  return { error: r.error, warning: warning || undefined };
+}
+
+/** 草稿构建：题型推断 / 选项规整 / 答案匹配 / 知识点匹配 / 文章题空位（结构化块与整卷切题共用） */
+interface DraftInput {
+  title: string;
+  options: string[];
+  answerRaw: string;
+  hasAnswer: boolean;
+  analysis: string;
+  /** 显式题型（「题型:」行或大题标题提示），null=自动推断 */
+  qType: QuestionType | null;
+  difficulty: QuestionDifficulty;
+  kpNames: string[];
+}
+
+function buildDraft(
+  inp: DraftInput,
+  kpByName: Map<string, KnowledgePoint>,
+): { draft?: ImportedQuestionDraft; error?: string } {
+  const { title, options, answerRaw, hasAnswer, analysis, difficulty, kpNames } = inp;
+  let qType: QuestionType | null = inp.qType;
   if (!title) return { error: "缺少题干" };
 
   const isJudgeWord = (s: string) => JUDGE_RIGHT.has(s) || JUDGE_WRONG.has(s);
@@ -261,8 +292,71 @@ function parseBlock(
       blanks,
       unmatchedKpNames,
     },
-    warning: warning || undefined,
   };
+}
+
+/** 大题标题 → 题型提示（「选择题」这类不指明单/多选的返回 null 走推断） */
+const SECTION_TYPE_HINTS: Array<[RegExp, QuestionType]> = [
+  [/选择填空|选填/, "banked"],
+  [/完形/, "cloze"],
+  [/单选|单项选择题/, "single"],
+  [/多选|多项选择/, "multiple"],
+  [/判断/, "judge"],
+  [/填空/, "fill"],
+  [/简答|论述|问答|名词解释|材料分析|案例分析/, "essay"],
+  [/翻译/, "translation"],
+];
+
+function hintFromSection(sectionName: string): QuestionType | null {
+  for (const [re, t] of SECTION_TYPE_HINTS) {
+    if (re.test(sectionName)) return t;
+  }
+  return null;
+}
+
+function convertSegmented(seg: SegmentResult, kpByName: Map<string, KnowledgePoint>) {
+  const drafts: ImportedQuestionDraft[] = [];
+  const errors: ImportError[] = [];
+  const warnings: ImportWarning[] = [];
+  for (const w of seg.warnings) warnings.push({ line: 0, reason: w });
+  for (const q of seg.questions) {
+    const r = buildDraft(
+      {
+        title: q.title,
+        options: q.options,
+        answerRaw: q.answer,
+        hasAnswer: q.answer.trim() !== "",
+        analysis: q.analysis,
+        qType: hintFromSection(q.sectionName),
+        difficulty: "medium",
+        kpNames: [],
+      },
+      kpByName,
+    );
+    if (r.draft) drafts.push(r.draft);
+    else errors.push({ line: q.line, reason: r.error ?? "无法解析" });
+  }
+  return { drafts, errors, warnings };
+}
+
+/** 行首题号行数（识别用，粗略） */
+function countNumberedLines(text: string): number {
+  const re = /^\s*\d{1,3}\s*[.、．)）]\s*\S/gm;
+  return (text.match(re) ?? []).length;
+}
+
+/**
+ * 导入模式分流：
+ * - 有 --- 块分隔 → 结构化（既有路径）
+ * - 有单题「答案:」行且（题号≤1 或带 知识点/难度/题型 元信息行）→ 结构化
+ * - 其余（编号整卷、答案在文末答案区或每题内联）→ 整卷智能切题
+ */
+export function detectImportMode(text: string): "structured" | "segmented" {
+  if (/^\s*-{3,}\s*$/m.test(text)) return "structured";
+  const inlineAnswer = /^(?:[-*]\s*)?(?:正确答案|答案)\s*[:：]\s*\S/m.test(text);
+  const metaLine = /^(?:[-*]\s*)?(?:知识点|难度|题型)\s*[:：]/m.test(text);
+  if (inlineAnswer && (countNumberedLines(text) <= 1 || metaLine)) return "structured";
+  return "segmented";
 }
 
 export function parseQuestionsMarkdown(
@@ -272,6 +366,15 @@ export function parseQuestionsMarkdown(
   const kpByName = new Map(knowledgePoints.map((k) => [k.name, k]));
   const drafts: ImportedQuestionDraft[] = [];
   const errors: ImportError[] = [];
+
+  // 整卷智能切题：无编号题目时（未编号单题粘贴）回落结构化路径兜底
+  if (detectImportMode(text) === "segmented") {
+    const seg = segmentExamPaper(text);
+    if (seg.questions.length > 0) {
+      const conv = convertSegmented(seg, kpByName);
+      return { ...conv, paperName: seg.paperName, paperYear: seg.paperYear, mode: "segmented" };
+    }
+  }
 
   // 解析头部元数据（试卷名称/年份）
   const lines = text.split(/\r?\n/);
@@ -300,7 +403,7 @@ export function parseQuestionsMarkdown(
     else errors.push({ line: block.start, reason: error ?? "无法解析" });
     if (warning) warnings.push({ line: block.start, reason: warning });
   }
-  return { drafts, errors, warnings, paperName, paperYear };
+  return { drafts, errors, warnings, paperName, paperYear, mode: "structured" };
 }
 
 export const IMPORT_SAMPLE = `# 2024考研政治真题

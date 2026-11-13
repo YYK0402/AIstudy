@@ -1,8 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { IMPORT_SAMPLE, parseQuestionsMarkdown } from "../questionImport";
+import { IMPORT_SAMPLE, detectImportMode, parseQuestionsMarkdown } from "../questionImport";
 import type { KnowledgePoint } from "../../api";
 
 const kps = [{ id: 11, name: "货币时间价值" }] as KnowledgePoint[];
+
+const RAW_PAPER = `# 2024年考研政治真题
+一、单选题（每题 2 分，共 10 分）
+1. 下列对货币时间价值理解正确的是？
+A. 资金的现值
+B. 资金随时间推移产生的增值
+C. 未来资金的折现
+D. 风险报酬
+
+二、多选题（每题 3 分，共 9 分）
+2. 下列属于货币政策工具的有？
+A. 存款准备金率
+B. 公开市场操作
+C. 再贴现率
+D. 税收政策
+
+三、简答题（每题 5 分，共 10 分）
+3. 简述货币时间价值的含义。
+
+【参考答案】
+1. B
+2. A B C
+3. 资金在投资过程中随时间推移产生的增值。`;
 
 describe("parseQuestionsMarkdown", () => {
   it("解析内置示例单选题", () => {
@@ -138,5 +161,57 @@ describe("parseQuestionsMarkdown", () => {
     const { paperName, paperYear } = parseQuestionsMarkdown("# 2024考研政治真题\n1. 题干\nA. 甲\nB. 乙\n答案: A", []);
     expect(paperName).toBe("2024考研政治真题");
     expect(paperYear).toBe(2024);
+  });
+});
+
+describe("parseQuestionsMarkdown - 整卷智能切题", () => {
+  it("detectImportMode 分流判定", () => {
+    expect(detectImportMode(IMPORT_SAMPLE)).toBe("structured");
+    expect(detectImportMode("题干\nA. 甲\nB. 乙\n答案: A")).toBe("structured");
+    expect(detectImportMode("1. 题干\nA. 甲\nB. 乙\n答案: A\n知识点: 货币时间价值")).toBe("structured");
+    expect(detectImportMode(RAW_PAPER)).toBe("segmented");
+    expect(
+      detectImportMode("1. 甲？\nA. 一\nB. 二\n答案: B\n2. 乙？\nA. 三\nB. 四\n答案: C"),
+    ).toBe("segmented");
+  });
+
+  it("原始整卷（文末答案区）切题并缝合，答案转选项文本", () => {
+    const r = parseQuestionsMarkdown(RAW_PAPER, []);
+    expect(r.mode).toBe("segmented");
+    expect(r.errors).toHaveLength(0);
+    expect(r.drafts).toHaveLength(3);
+    expect(r.drafts[0].qType).toBe("single");
+    expect(r.drafts[0].answer).toBe("资金随时间推移产生的增值");
+    expect(r.drafts[1].qType).toBe("multiple");
+    expect(r.drafts[1].answer).toBe("存款准备金率,公开市场操作,再贴现率");
+    expect(r.drafts[2].qType).toBe("essay");
+    expect(r.drafts[2].answer).toBe("资金在投资过程中随时间推移产生的增值。");
+    expect(r.paperName).toBe("2024年考研政治真题");
+    expect(r.paperYear).toBe(2024);
+  });
+
+  it("每题内联答案（P2）两题均切出", () => {
+    const text = "1. 甲？\nA. 一\nB. 二\n答案: B\n2. 乙？\nA. 三\nB. 四\nC. 五\nD. 六\n答案: C";
+    const r = parseQuestionsMarkdown(text, []);
+    expect(r.mode).toBe("segmented");
+    expect(r.errors).toHaveLength(0);
+    expect(r.drafts).toHaveLength(2);
+    expect(r.drafts[0].answer).toBe("二");
+    expect(r.drafts[1].answer).toBe("五");
+  });
+
+  it("答案区缺某题答案 → 该题报错，其余题正常", () => {
+    const text = "1. 甲？\nA. 一\nB. 二\n2. 乙？\nA. 三\nB. 四\n【参考答案】\n1. A";
+    const r = parseQuestionsMarkdown(text, []);
+    expect(r.drafts).toHaveLength(1);
+    expect(r.drafts[0].answer).toBe("一");
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].reason).toContain("答案");
+  });
+
+  it("未编号单题粘贴回落结构化路径（行为不变）", () => {
+    const { drafts, errors } = parseQuestionsMarkdown("题目\nA. 甲\nB. 乙", []);
+    expect(drafts).toHaveLength(0);
+    expect(errors[0].reason).toContain("答案");
   });
 });

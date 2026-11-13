@@ -3,12 +3,14 @@
   <div class="modal-mask" :class="{ open }" @click.self="$emit('close')">
     <div class="modal modal--lg">
       <h2>导入真题</h2>
-      <p class="s" style="margin:4px 0 12px">按约定格式粘贴 Markdown（每块一题，块间用 --- 分隔），解析后可编辑导入；未匹配知识点不阻断，导入后可批量绑定。</p>
+      <p class="s" style="margin:4px 0 12px">
+        按约定格式粘贴 Markdown（每块一题，块间用 --- 分隔）；也可直接粘贴整卷原文（自动切题，支持文末集中答案区或每题内联「答案：」）。解析后可编辑导入；未匹配知识点不阻断，导入后可批量绑定。
+      </p>
       <div class="field">
         <textarea
           v-model="text"
           rows="10"
-          placeholder="粘贴真题 Markdown…&#10;&#10;格式示例：&#10;# 2024考研政治真题&#10;1. 题干...&#10;A. 选项A&#10;答案: A&#10;---&#10;2. ..."
+          placeholder="粘贴真题 Markdown 或整卷原文…&#10;&#10;结构化示例：&#10;# 2024考研政治真题&#10;1. 题干...&#10;A. 选项A&#10;答案: A&#10;---&#10;2. ...&#10;&#10;整卷原文示例：&#10;一、单选题&#10;1. 题干...&#10;A. 选项A&#10;...&#10;【参考答案】&#10;1. A"
         ></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
           <button class="btn ghost sm" @click="text = IMPORT_SAMPLE">粘贴示例</button>
@@ -40,15 +42,16 @@
 
       <div v-if="report" class="qimp-report">
         <p class="s">
-          解析完成：<b class="t-success">成功 {{ report.drafts.length }} 题</b>
+          解析完成（{{ report.mode === "segmented" ? "整卷智能切题" : "结构化解析" }}）：
+          <b class="t-success">成功 {{ report.drafts.length }} 题</b>
           <template v-if="report.errors.length"> · <b class="t-danger">失败 {{ report.errors.length }} 题</b></template>
           <template v-if="report.paperName"> · 识别试卷：<b>{{ report.paperName }}</b></template>
         </p>
         <div v-if="report.errors.length" class="qimp-errors">
-          <p v-for="e in report.errors" :key="e.line + e.reason" class="qimp-err">第 {{ e.line }} 行：{{ e.reason }}</p>
+          <p v-for="e in report.errors" :key="e.line + e.reason" class="qimp-err">{{ e.line > 0 ? `第 ${e.line} 行：` : "" }}{{ e.reason }}</p>
         </div>
         <div v-if="report.warnings.length" class="qimp-warnings">
-          <p v-for="w in report.warnings" :key="w.line + w.reason" class="qimp-warn-line">第 {{ w.line }} 行：{{ w.reason }}</p>
+          <p v-for="w in report.warnings" :key="w.line + w.reason" class="qimp-warn-line">{{ w.line > 0 ? `第 ${w.line} 行：` : "" }}{{ w.reason }}</p>
         </div>
         <div v-if="report.drafts.length" class="qimp-list">
           <div v-for="(d, i) in report.drafts" :key="i" class="qimp-item">
