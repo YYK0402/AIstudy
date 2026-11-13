@@ -354,7 +354,9 @@
 .card h3.kp-head { flex-wrap: wrap; row-gap: 8px; }
 .kp-head-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kp-head-title .kp-chapter-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--as-accent-strong); font-weight: 500; }
-.kp-head-actions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; flex-wrap: wrap; row-gap: 6px; }
+/* max-width:100% 把按钮块约束在 h3 宽度内（two-col 窄列时触发块内换行）；
+   不能用 flex-shrink:0——块宽度会等于内容宽度直接溢出卡片 */
+.kp-head-actions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; flex-wrap: wrap; row-gap: 6px; }
 .kp-head-actions .kp-count { font-size: 11px; color: var(--as-text-faint); font-weight: 400; }
 
 /* 按钮 */
