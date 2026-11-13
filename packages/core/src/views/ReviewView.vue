@@ -22,7 +22,7 @@
           <button class="btn primary sm" @click="revealTarget">揭示</button>
         </template>
         <template v-else>
-          <div v-if="targetKp.content" class="review-body">{{ targetKp.content }}</div>
+          <div v-if="targetKp.content" class="review-body md-body" v-html="renderMarkdown(targetKp.content)"></div>
           <div v-else class="recall-mask">（该知识点暂无参考描述，凭印象自评）</div>
           <div class="grade-row">
             <span class="grade-label">这次回想记得有多牢？</span>
@@ -96,7 +96,7 @@
                   <button class="btn primary sm" @click="reveal(item.schedule.id)">揭示</button>
                 </template>
                 <template v-else>
-                  <div v-if="item.knowledgePoint.content" class="review-body">{{ item.knowledgePoint.content }}</div>
+                  <div v-if="item.knowledgePoint.content" class="review-body md-body" v-html="renderMarkdown(item.knowledgePoint.content)"></div>
                   <div v-else class="recall-mask">（该知识点暂无参考描述，凭印象自评）</div>
                   <div class="grade-row">
                     <span class="grade-label">这次回想记得有多牢？</span>
@@ -176,6 +176,7 @@
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { renderMarkdown } from "../utils/markdown";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import EmptyState from "../components/EmptyState.vue";

@@ -99,7 +99,7 @@
                 <span class="tag" :class="selectedKp.mastery"><span class="d"></span>{{ masteryLabel(selectedKp.mastery) }}</span>
                 <span v-if="kpPath(selectedKp)" class="kp-path">{{ kpPath(selectedKp) }}</span>
               </div>
-              <div v-if="selectedKp.content" class="kp-body"><p>{{ selectedKp.content }}</p></div>
+              <div v-if="selectedKp.content" class="kp-body md-body" v-html="renderMarkdown(selectedKp.content)"></div>
               <div v-else class="s t-faint">该知识点暂无参考描述</div>
               <div class="src">
                 <AppIcon name="book" :size="13" /> 资料来源：{{ sourceNames(selectedKp) || "（未关联资料）" }}
@@ -214,6 +214,7 @@ import {
   generateKpAskPrompt,
   isAskPromptFresh,
 } from "../api";
+import { renderMarkdown } from "../utils/markdown";
 import StudyTaskRow from "../components/StudyTaskRow.vue";
 import { taskAction } from "../constants/tasks";
 import { capStudySec } from "../constants/study";

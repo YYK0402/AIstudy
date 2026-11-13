@@ -141,7 +141,8 @@
         </div>
         <div class="kd-section">
           <div class="kd-label">描述</div>
-          <div class="kd-content">{{ selectedKp.content || "暂无描述" }}</div>
+          <div v-if="selectedKp.content" class="kd-content md-body" v-html="renderMarkdown(selectedKp.content)"></div>
+          <div v-else class="kd-content">暂无描述</div>
         </div>
         <div class="kd-section">
           <div class="kd-label">前置知识点（先学这些再学它）</div>
@@ -180,6 +181,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import EmptyState from "../components/EmptyState.vue";
 import KnowledgeGraph from "../components/KnowledgeGraph.vue";
 import { buildRelationView } from "../utils/graphLayout";
+import { renderMarkdown } from "../utils/markdown";
 import { clearGraphPositions, loadGraphPositions, saveGraphPositions } from "../utils/graphPositions";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";

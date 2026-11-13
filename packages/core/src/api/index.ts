@@ -65,3 +65,5 @@ export type {
 } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
 export type { PromptTaskMeta, PromptVarInfo } from "./promptTemplates";
+export { reformatKpContents, needsReformat, parseReformatContent } from "./kpReformat";
+export type { ReformatProgress, ReformatResult } from "./kpReformat";

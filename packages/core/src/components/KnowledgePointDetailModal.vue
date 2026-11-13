@@ -10,7 +10,8 @@
         </div>
         <div class="kd-section">
           <div class="kd-label">内容</div>
-          <div class="kd-content">{{ kp.content || "暂无描述" }}</div>
+          <div v-if="kp.content" class="kd-content md-body" v-html="renderMarkdown(kp.content)"></div>
+          <div v-else class="kd-content">暂无描述</div>
         </div>
         <div class="kd-section">
           <div class="kd-label">归属章节</div>
@@ -49,6 +50,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { openSiyuanDoc } from "../api";
+import { renderMarkdown } from "../utils/markdown";
 import type { KnowledgePoint } from "../api";
 import { getBridge } from "@/bridge";
 

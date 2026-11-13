@@ -70,6 +70,9 @@
               <button v-if="unassignedCount > 0 && chapters.length > 0" class="btn sm ghost" :disabled="relinking" @click="autoRelink">
                 <AppIcon name="spark" :size="14" /> {{ relinking ? "归位中…" : "自动归位" }}
               </button>
+              <button v-if="!kpBatchMode" class="btn sm ghost" title="AI 将单段内容的知识点重写为结构化排版（保留原意/数值/术语，只调排版）" :disabled="reformatNeeds === 0 || reformatting" @click="startReformat">
+                <AppIcon name="spark" :size="14" /> {{ reformatting ? `整理中 ${reformatDone}/${reformatTotal}` : `AI 整理内容（${reformatNeeds}）` }}
+              </button>
               <button v-if="!kpBatchMode" class="btn sm ghost" title="批量删除知识点" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
               <button v-else class="btn sm ghost" @click="exitKpBatchMode">取消</button>
             </template>
@@ -290,6 +293,8 @@ import {
   deleteChapter,
   deleteChapters,
   relinkUnassignedKps,
+  reformatKpContents,
+  needsReformat,
   deleteKnowledgePoints,
   materialSourceLabel,
   applyChapterMoves,
@@ -658,6 +663,42 @@ async function autoRelink() {
     getBridge().showMessage(e instanceof Error ? e.message : "自动归位失败", 4000, "error");
   } finally {
     relinking.value = false;
+  }
+}
+
+// AI 整理内容：单段知识点 → 结构化排版（批量，进度显示在按钮上）
+const reformatting = ref(false);
+const reformatDone = ref(0);
+const reformatTotal = ref(0);
+const reformatNeeds = computed(
+  () => knowledgePoints.value.filter((k) => k.courseId === currentCourseId() && needsReformat(k.content)).length,
+);
+async function startReformat() {
+  const id = currentCourseId();
+  if (!id || reformatting.value) return;
+  const n = reformatNeeds.value;
+  if (n === 0) return;
+  if (!(await confirm({ message: `AI 将把 ${n} 个单段内容的知识点重写为结构化排版（保留原意/数值/术语，只调排版），会进行批量 AI 调用。确定继续？` }))) return;
+  reformatting.value = true;
+  reformatDone.value = 0;
+  reformatTotal.value = n;
+  try {
+    const res = await reformatKpContents(id, (p) => {
+      reformatDone.value = p.done;
+    });
+    getBridge().showMessage(
+      res.failed > 0
+        ? `整理完成：${res.changed} 个已更新，${res.failed} 个失败`
+        : `整理完成：${res.changed} 个知识点内容已更新`,
+      4000,
+      res.failed > 0 ? "error" : "info",
+    );
+    await loadKnowledgePoints();
+  } catch (e) {
+    console.error("AI 整理内容失败:", e);
+    getBridge().showMessage(e instanceof Error ? e.message : "AI 整理内容失败", 4000, "error");
+  } finally {
+    reformatting.value = false;
   }
 }
 
