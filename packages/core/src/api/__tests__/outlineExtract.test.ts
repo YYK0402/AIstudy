@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildOutlineChunks, mergeOutlineNodes, parseOutlineResponse } from "../outlineExtract";
 
 describe("parseOutlineResponse", () => {
@@ -25,9 +25,15 @@ describe("parseOutlineResponse", () => {
   it("缺 headings 数组抛错", () => {
     expect(() => parseOutlineResponse('{"foo": 1}')).toThrow(/headings/);
   });
-  it("节点数上限 400", () => {
-    const items = Array.from({ length: 500 }, (_, i) => `{"text": "t${i}", "level": 1}`).join(",");
-    expect(parseOutlineResponse(`{"headings": [${items}]}`)).toHaveLength(400);
+  it("节点数上限 1000（L3）", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const items = Array.from({ length: 1100 }, (_, i) => `{"text": "t${i}", "level": 1}`).join(",");
+      expect(parseOutlineResponse(`{"headings": [${items}]}`)).toHaveLength(1000);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
@@ -91,3 +97,27 @@ describe("mergeOutlineNodes", () => {
     ]);
   });
 });
+
+
+describe("mergeOutlineNodes 归一化去重（L3）", () => {
+  it("重叠标题仅空白差异：去重不产生重复节点", () => {
+    const acc = [{ text: "1.1 概述", level: 2 }];
+    const next = [
+      { text: "1.1   概述", level: 2 },
+      { text: "1.2 细节", level: 2 },
+    ];
+    expect(mergeOutlineNodes(acc, next)).toEqual([
+      { text: "1.1 概述", level: 2 },
+      { text: "1.2 细节", level: 2 },
+    ]);
+  });
+  it("重叠但 level 不同：不合并", () => {
+    const acc = [{ text: "1.1 概述", level: 2 }];
+    const next = [
+      { text: "1.1 概述", level: 3 },
+      { text: "1.1.1 子节", level: 3 },
+    ];
+    expect(mergeOutlineNodes(acc, next)).toHaveLength(3);
+  });
+});
+

@@ -3,14 +3,15 @@
 // ② 不作为独立 bg 任务暴露：由目录合并（mergeCourseToc）对无 outline 资料内联补跑；
 // 重试经资料菜单「重新识别结构」（先清 outline 再触发合并）
 import { getData, saveData } from "./storage";
-import { callAi, AiCanceledError, findTaskBinding } from "./ai";
+import { callAiWithRetry, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { alignOutlineSpans, type OutlineNode } from "../utils/outline";
 import { stripThinkBlocks } from "../utils/aiJson";
 
 const OUTLINE_CHUNK_SIZE = 40000;
 const OUTLINE_TAIL_OVERLAP = 500;
-const MAX_OUTLINE_NODES = 400;
+// 防 AI 失控输出的护栏（L3：400→1000，容纳大型文档真实标题量，截断时告警）
+const MAX_OUTLINE_NODES = 1000;
 
 /** 校验 AI 输出的单个标题项；非法（非对象/空文本/level 越界/目录点线）返回 null */
 function asOutlineNode(item: unknown): OutlineNode | null {
@@ -40,7 +41,11 @@ export function parseOutlineResponse(content: string): OutlineNode[] {
   }
   const o = obj as { headings?: unknown };
   if (!Array.isArray(o.headings)) throw new Error("AI 返回缺少 headings 数组");
-  return o.headings.map(asOutlineNode).filter((n): n is OutlineNode => n !== null).slice(0, MAX_OUTLINE_NODES);
+  const valid = o.headings.map(asOutlineNode).filter((n): n is OutlineNode => n !== null);
+  if (valid.length > MAX_OUTLINE_NODES) {
+    console.warn(`outline 节点 ${valid.length} 超过上限 ${MAX_OUTLINE_NODES}，仅保留前 ${MAX_OUTLINE_NODES}（尾部标题丢失，建议拆分资料重新识别）`);
+  }
+  return valid.slice(0, MAX_OUTLINE_NODES);
 }
 
 export interface OutlineChunk {
@@ -82,7 +87,9 @@ export function buildOutlineChunks(text: string, size = OUTLINE_CHUNK_SIZE, tail
 /** 累积合并：丢弃 next 开头与 acc 尾部重叠的节点（有界最长后缀-前缀匹配，重叠窗 ≤3；
  *  只认「next 前 d 个 === acc 末尾 d 个」的整窗匹配，避免合法连续同名标题被误丢） */
 export function mergeOutlineNodes(acc: OutlineNode[], next: OutlineNode[]): OutlineNode[] {
-  const same = (a: OutlineNode, b: OutlineNode): boolean => a.text === b.text && a.level === b.level;
+  // L3：重叠去重按归一化文本（去空白）比较——AI 跨段复述同一标题时可能多出/少空格，精确相等会漏配导致重复节点
+  const same = (a: OutlineNode, b: OutlineNode): boolean =>
+    a.text.replace(/\s+/g, "") === b.text.replace(/\s+/g, "") && a.level === b.level;
   for (let d = Math.min(3, next.length - 1); d >= 1; d--) {
     if (acc.length < d) continue;
     let matched = true;
@@ -117,7 +124,7 @@ export async function runOutlineRecognition(
     onProgress?.(chunk.index, chunk.total);
     // 携带前面已识别大纲，保证跨段层级一致
     const context = acc.length ? acc.map((h) => `L${h.level} ${h.text}`).join("\n") : "（空，本段是首段）";
-    const res = await callAi({
+    const res = await callAiWithRetry({
       providerId: binding.providerId,
       modelId: binding.modelId,
       taskKey: "recognize_outline",
@@ -126,7 +133,7 @@ export async function runOutlineRecognition(
         { role: "system", content: renderPrompt(tpl.system, {}) },
         { role: "user", content: renderPrompt(tpl.user, { context, chunk: chunk.text }) },
       ],
-    });
+    }, isAborted);
     acc = mergeOutlineNodes(acc, parseOutlineResponse(res.content));
   }
   const { unlocated } = alignOutlineSpans(mat.contentText, acc);
