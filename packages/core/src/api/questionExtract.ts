@@ -2,7 +2,7 @@
 // AI 按节点识别正文中实际出现的题目（例题/练习/考点条目，不新编），
 // 题干归一化去重、kpNames → kpIds、source=material 入库
 import { getData } from "./storage";
-import { callAi, AiCanceledError, findTaskBinding, cancelAiCall } from "./ai";
+import { callAiWithRetry, AiCanceledError, findTaskBinding, cancelAiCall } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { buildChapterTree, chapterPathText, type NestedChapter } from "../utils/outline";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
@@ -149,7 +149,7 @@ export async function extractNodeQuestions(
     if (isAborted?.()) throw new AiCanceledError();
     onProgress?.(i, chunks.length);
     const partNote = chunks.length > 1 ? `\n（本节点正文较长，以下为第 ${i + 1}/${chunks.length} 片）` : "";
-    const res = await callAi({
+    const res = await callAiWithRetry({
       providerId: binding.providerId,
       modelId: binding.modelId,
       taskKey: "extract_question",
@@ -168,7 +168,7 @@ export async function extractNodeQuestions(
           }),
         },
       ],
-    });
+    }, isAborted);
     raw = raw.concat(parseQuestionItems(res.content));
   }
   onProgress?.(chunks.length, chunks.length);

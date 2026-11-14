@@ -4,7 +4,7 @@ import { getData, saveData } from "./storage";
 import { removeCsvIds } from "../utils/csvIds";
 import { nextId, now, truncateText } from "./format";
 import { MATERIAL_SOURCE_LABELS } from "./constants";
-import { findTaskBinding, callAi, cancelAiCall, AiCanceledError } from "./ai";
+import { findTaskBinding, callAiWithRetry, cancelAiCall, AiCanceledError } from "./ai";
 import { stripThinkBlocks } from "../utils/aiJson";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask } from "./bgTask";
@@ -129,7 +129,7 @@ export async function organizeDocWithAi(
     const chunk = chunks[i];
     let cleaned = chunk;
     try {
-      const res = await callAi({
+      const res = await callAiWithRetry({
         providerId: binding.providerId,
         modelId: binding.modelId,
         taskKey: "organize_doc",
@@ -138,7 +138,7 @@ export async function organizeDocWithAi(
           { role: "system", content: renderPrompt(tpl.system, {}) },
           { role: "user", content: renderPrompt(tpl.user, { chunk }) },
         ],
-      });
+      }, isAborted);
       let candidate = res.content.trim();
       const fence = candidate.match(/^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/);
       if (fence) candidate = fence[1].trim();
