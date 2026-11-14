@@ -52,6 +52,42 @@ export const PROMPT_TASKS: Record<string, PromptTaskMeta> = {
 节点正文：
 {{text}}`,
   },
+  extract_question: {
+    name: "文档题目识别",
+    desc: "按章节节点识别正文中实际出现的题目（例题/练习/考点条目）并入题库，不新编题目",
+    vars: [
+      { name: "courseName", desc: "课程名称" },
+      { name: "chapter", desc: "当前节点名（章节/小节标题路径）" },
+      { name: "siblings", desc: "兄弟节点名单（不得抽取其内容，无兄弟时为「（无）」）" },
+      { name: "nodeKps", desc: "该节点知识点名单（kpNames 从中选取，无则为「（无）」）" },
+      { name: "existingQuestions", desc: "课程已有题目题干名单（不要重复识别，无则为「（无）」）" },
+      { name: "text", desc: "该节点的完整正文（可能由多份资料拼成）" },
+    ],
+    system: `你是题目识别助手。用户给你课程中某个章节/小节节点的完整正文（可能由多份资料拼成），以及兄弟节点名单、该节点知识点名单和课程已有题目名单，要求只识别该节点范围内正文中实际出现的题目。
+
+严格要求：
+1. 输入正文就是该节点自身的全部内容，严格在此范围内识别；发现属于兄弟节点（名单已给）的内容，不要识别。
+2. 只识别正文中真实出现的题目：例题、练习题、带题干的知识考点条目（如「8.1.1 项目风险的定义【名词解释】」）。不得新编题目、不得扩写成题目组；没有题干的知识性陈述（纯定义/原理描述）不识别。
+3. 考点条目识别为简答题（qType="essay"），题干取条目名称（不含编号与【】标注），answer 留空。
+4. 客观题型（single 单选 / multiple 多选 / judge 判断）的答案必须真实出现在正文中（题干后、答案区或题目标注）；找不到答案的不要输出该题，绝不猜测答案。
+5. qType 取值：single / multiple / judge / essay / fill / banked / cloze / translation；无法确定题型时用 essay。
+6. 选项写入 options 数组（2-8 条，纯选项文本，不含 A. 等选项字母）；无选项的题 options 为空数组，且不得标为 single/multiple（无选项的单选/多选用 essay）。
+7. analysis 取正文中该题的解析文字；没有则留空。
+8. 课程已有题目（名单已给）不要重复识别。
+9. kpNames：从该节点知识点名单中选出与该题最相关的知识点名称（0-3 个，无相关则空数组），必须逐字来自名单。
+
+输出格式：只输出 JSON 数组，不要输出任何其他内容。无题目时输出 []。
+[{"qType": "essay", "title": "项目风险的定义", "options": [], "answer": "", "analysis": "", "kpNames": ["项目风险"]}
+, {"qType": "single", "title": "项目的一次性是指", "options": ["时间上的有限性", "成果的独特性", "组织的一次性"], "answer": "A", "analysis": "", "kpNames": ["项目的特性"]}]`,
+    user: `课程：{{courseName}}
+当前节点：{{chapter}}
+兄弟节点（不得识别其内容）：{{siblings}}
+该节点知识点（kpNames 从中选取）：{{nodeKps}}
+课程已有题目（不要重复识别）：{{existingQuestions}}
+
+节点正文：
+{{text}}`,
+  },
   gen_plan: {
     name: "AI 学习计划生成",
     desc: "在系统学习骨架上穿插补充复习/练习任务",

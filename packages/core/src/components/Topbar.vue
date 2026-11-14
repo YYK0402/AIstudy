@@ -87,6 +87,8 @@ import {
   cancelOrganizeTask,
   startExtractTask,
   cancelExtractTask,
+  startExtractQuestionTask,
+  cancelExtractQuestionTask,
   cancelTocMergeTask,
 } from "../api";
 import { useDataSavedRefresh } from "../composables/useDataSaved";
@@ -157,6 +159,7 @@ const sortedTasks = computed(() =>
 const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
   organize: "AI 梳理",
   extract: "知识点抽取",
+  qextract: "题目识别",
   toc: "目录合并",
   gen_question: "AI 出题",
   gen_flashcard: "AI 闪卡",
@@ -216,6 +219,7 @@ async function viewToc(t: BgTaskState) {
 function retryTask(t: BgTaskState) {
   if (t.materialId == null) return;
   if (t.taskType === "extract") startExtractTask(t.materialId, t.courseId);
+  else if (t.taskType === "qextract") startExtractQuestionTask(t.materialId, t.courseId);
   else startOrganizeTask(t.materialId, t.courseId);
 }
 
@@ -226,6 +230,7 @@ function cancelTask(t: BgTaskState) {
   }
   if (t.materialId == null) return;
   if (t.taskType === "extract") void cancelExtractTask(t.materialId);
+  else if (t.taskType === "qextract") void cancelExtractQuestionTask(t.materialId);
   else cancelOrganizeTask(t.materialId);
 }
 

@@ -182,6 +182,14 @@
               <span class="t-danger" v-else-if="extractTaskOf(m)!.status === 'failed'">✗ {{ extractTaskOf(m)!.message }}</span>
               <span v-else class="s">{{ extractTaskOf(m)!.message }}</span>
             </div>
+            <div v-if="qExtractTaskOf(m)" class="s" style="margin-top:4px">
+              <span class="t-accent" v-if="qExtractTaskOf(m)!.status === 'running'">
+                <AppIcon name="refresh" :size="12" /> {{ qExtractTaskOf(m)!.message }}
+              </span>
+              <span class="t-success" v-else-if="qExtractTaskOf(m)!.status === 'done'">✓ {{ qExtractTaskOf(m)!.message }}</span>
+              <span class="t-danger" v-else-if="qExtractTaskOf(m)!.status === 'failed'">✗ {{ qExtractTaskOf(m)!.message }}</span>
+              <span v-else class="s">{{ qExtractTaskOf(m)!.message }}</span>
+            </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="btn sm ghost" @click="previewMaterial = m">预览</button>
@@ -191,6 +199,9 @@
               </button>
               <button class="btn sm ghost" :disabled="extractTaskOf(m)?.status === 'running'" @click="extract(m)">
                 {{ extractTaskOf(m)?.status === "running" ? "抽取中…" : "抽取知识点" }}
+              </button>
+              <button class="btn sm ghost" :disabled="qExtractTaskOf(m)?.status === 'running'" @click="startQExtract(m)">
+                {{ qExtractTaskOf(m)?.status === "running" ? "识别中…" : "📝 提取题目" }}
               </button>
               <button class="btn sm ghost" @click="del(m)">删除</button>
               <span class="row-more">
@@ -302,6 +313,7 @@ import {
   updateKnowledgePoint,
   startOrganizeTask,
   startExtractTask,
+  startExtractQuestionTask,
   docsEnabled,
   getSettings,
   getData,
@@ -336,6 +348,9 @@ function orgTaskOf(m: Material) {
 }
 function extractTaskOf(m: Material) {
   return notifyStore.taskOf(materialTaskId(m.id, "extract"));
+}
+function qExtractTaskOf(m: Material) {
+  return notifyStore.taskOf(materialTaskId(m.id, "qextract"));
 }
 function startOrganize(m: Material) {
   if (!currentCourseId()) return;
@@ -963,6 +978,10 @@ async function del(m: Material) {
 function extract(m: Material) {
   if (!currentCourseId()) return;
   startExtractTask(m.id, currentCourseId()!);
+}
+function startQExtract(m: Material) {
+  if (!currentCourseId()) return;
+  startExtractQuestionTask(m.id, currentCourseId()!);
 }
 
 const fullExtracting = ref(false);

@@ -42,6 +42,7 @@ export const QUESTION_SOURCE_LABELS: Record<string, string> = {
   ai: "AI 生成",
   import: "导入",
   paper: "真题",
+  material: "资料识别",
 };
 
 export function questionSourceLabel(source: string): string {
@@ -64,6 +65,7 @@ export const EXPLAIN_MASTER_SCORE = 80;
 
 export const AI_TASKS = [
   { key: "extract_kp", name: "文档知识点抽取" },
+  { key: "extract_question", name: "文档题目识别" },
   { key: "gen_plan", name: "AI 学习计划生成" },
   { key: "gen_question", name: "AI 习题生成" },
   { key: "eval_explain", name: "讲解内容评估" },

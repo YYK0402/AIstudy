@@ -584,6 +584,7 @@ import AskModal from "../components/AskModal.vue";
 import SkeletonList from "../components/SkeletonList.vue";
 import LoadError from "../components/LoadError.vue";
 import { useLoad } from "../composables/useLoad";
+import { useDataSavedRefresh } from "../composables/useDataSaved";
 import QuestionImportModal from "../components/QuestionImportModal.vue";
 import KpSelectModal from "../components/KpSelectModal.vue";
 import ExamPaperModal from "../components/ExamPaperModal.vue";
@@ -1466,6 +1467,9 @@ const { loading, error, load } = useLoad(async (ctx) => {
   questions.value = qs;
   chapters.value = chs;
 });
+
+// keep-alive 缓存下切回本页不重挂载：其他页签的数据变更（如「课程内容」页提取题目）按 DATA_SAVED 脏集刷新
+useDataSavedRefresh(() => void load());
 
 async function generate() {
   if (!currentCourseId() || selectedKpIds.value.length === 0) return;
