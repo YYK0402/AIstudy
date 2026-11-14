@@ -1,14 +1,16 @@
-import type { ExamPaper, KnowledgePoint, Question } from "../types/appData";
+import type { Course, ExamPaper, KnowledgePoint, Question } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now, parseQuestionKpIds, parseQuestionOptions, shuffleList } from "./format";
-import { QUESTION_DIFFICULTY_LABELS, QUESTION_SOURCE_LABELS, QUESTION_TYPE_LABELS, questionSourceLabel } from "./constants";
-import type { QuestionDifficulty, QuestionType } from "./constants";
+import { QUESTION_DIFFICULTY_LABELS, QUESTION_SOURCE_LABELS, questionSourceLabel } from "./constants";
+import type { QuestionDifficulty } from "./constants";
+import { typeLabelOf } from "../utils/questionTypes";
 
 /** 按题库导入约定格式导出（可再导入），含知识点/难度/来源元信息 */
 export function exportQuestionsMarkdown(
   questions: Question[],
   knowledgePoints: KnowledgePoint[],
   courseName: string,
+  course: Course | null = null,
 ): string {
   const kpMap = new Map(knowledgePoints.map((k) => [k.id, k.name]));
   const lines: string[] = [
@@ -23,7 +25,7 @@ export function exportQuestionsMarkdown(
     });
     lines.push(`答案: ${q.answer}`);
     if (q.analysis) lines.push(`解析: ${q.analysis}`);
-    lines.push(`题型: ${QUESTION_TYPE_LABELS[q.qType as QuestionType]}`);
+    lines.push(`题型: ${typeLabelOf(course, q.qType)}`);
     lines.push(`难度: ${QUESTION_DIFFICULTY_LABELS[q.difficulty as QuestionDifficulty]}`);
     const kpNames = parseQuestionKpIds(q).map((id) => kpMap.get(id)).filter(Boolean);
     if (kpNames.length) lines.push(`知识点: ${kpNames.join(", ")}`);
@@ -57,7 +59,8 @@ export async function updateQuestion(
     options: string[] | string[][];
     answer: string;
     analysis: string;
-    qType: QuestionType;
+    /** 题型键（内置注册表键或课程自定义名） */
+    qType: string;
     difficulty: QuestionDifficulty;
     kpIds: number[];
     /** 文章题空位列表 JSON；传 null 清除（非文章题/题干无空位标记） */
@@ -98,8 +101,8 @@ export async function deleteQuestions(ids: number[]): Promise<number> {
 }
 
 export interface QuizFilter {
-  /** 空数组 = 不限题型 */
-  qTypes: QuestionType[];
+  /** 空数组 = 不限题型（题型键：内置注册表键或课程自定义名） */
+  qTypes: string[];
   /** 空数组 = 不限难度 */
   difficulties: QuestionDifficulty[];
   /** 空数组 = 不限知识点（整课程）；题目命中任一即入选 */
@@ -114,7 +117,7 @@ export function buildQuizList(questions: Question[], filter: QuizFilter): Questi
   const diffSet = new Set(filter.difficulties);
   const kpSet = new Set(filter.kpIds);
   let pool = questions.filter((q) => {
-    if (qTypeSet.size > 0 && !qTypeSet.has(q.qType as QuestionType)) return false;
+    if (qTypeSet.size > 0 && !qTypeSet.has(q.qType)) return false;
     if (diffSet.size > 0 && !diffSet.has(q.difficulty as QuestionDifficulty)) return false;
     if (kpSet.size > 0 && !parseQuestionKpIds(q).some((id) => kpSet.has(id))) return false;
     return true;
@@ -131,7 +134,8 @@ export interface QuestionDraft {
   options: string[];
   answer: string;
   analysis: string;
-  qType: QuestionType;
+  /** 题型键（内置注册表键或课程自定义名） */
+  qType: string;
   difficulty: QuestionDifficulty;
   kpIds: number[];
   blanks?: string;

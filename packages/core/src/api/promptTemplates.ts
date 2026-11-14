@@ -57,6 +57,7 @@ export const PROMPT_TASKS: Record<string, PromptTaskMeta> = {
     desc: "按章节节点识别正文中实际出现的题目（例题/练习/考点条目）并入题库，不新编题目",
     vars: [
       { name: "courseName", desc: "课程名称" },
+      { name: "qTypes", desc: "本课程可用题型清单（形如 single（单选） / 写作（简答式），含通用与课程附加题型）" },
       { name: "chapter", desc: "当前节点名（章节/小节标题路径）" },
       { name: "siblings", desc: "兄弟节点名单（不得抽取其内容，无兄弟时为「（无）」）" },
       { name: "nodeKps", desc: "该节点知识点名单（kpNames 从中选取，无则为「（无）」）" },
@@ -70,7 +71,7 @@ export const PROMPT_TASKS: Record<string, PromptTaskMeta> = {
 2. 只识别正文中真实出现的题目：例题、练习题、带题干的知识考点条目（如「8.1.1 项目风险的定义【名词解释】」）。不得新编题目、不得扩写成题目组；没有题干的知识性陈述（纯定义/原理描述）不识别。
 3. 考点条目识别为简答题（qType="essay"），题干取条目名称（不含编号与【】标注），answer 留空。
 4. 客观题型（single 单选 / multiple 多选 / judge 判断）的答案必须真实出现在正文中（题干后、答案区或题目标注）；找不到答案的不要输出该题，绝不猜测答案。
-5. qType 取值：single / multiple / judge / essay / fill / banked / cloze / translation；无法确定题型时用 essay。
+5. qType 取值：{{qTypes}}；无法确定题型时用 essay。
 6. 选项写入 options 数组（2-8 条，纯选项文本，不含 A. 等选项字母）；无选项的题 options 为空数组，且不得标为 single/multiple（无选项的单选/多选用 essay）。
 7. analysis 取正文中该题的解析文字；没有则留空。
 8. 课程已有题目（名单已给）不要重复识别。
@@ -111,26 +112,19 @@ export const PROMPT_TASKS: Record<string, PromptTaskMeta> = {
     name: "AI 习题生成",
     desc: "围绕选中知识点按题型/难度生成习题",
     vars: [
-      { name: "qType", desc: "题型键：single / multiple / judge / essay / fill / banked / cloze / translation" },
+      { name: "qType", desc: "题型键（内置注册表键 single/multiple/judge/essay/fill/banked/cloze/translation 或课程自定义题型名）" },
       { name: "difficulty", desc: "难度键：easy / medium / hard" },
       { name: "courseName", desc: "课程名称" },
       { name: "count", desc: "生成题数" },
       { name: "qTypeLabel", desc: "题型中文名（如「单选」）" },
+      { name: "qTypeSpec", desc: "本题型的具体要求（选项数量/空位标记/答案格式），由调用方按题型注入" },
       { name: "diffLabel", desc: "难度中文名（如「中等」）" },
       { name: "kpLines", desc: "知识点列表，每行「- id. 名称：描述」" },
     ],
     system:
       "你是习题命题助手。根据给定知识点及描述出题。输出 JSON 数组，每项含：" +
       "qType（'{{qType}}'）、kpIds（关联知识点 id 数组）、title（题干）、options（选项文本数组）、answer（正确答案）、analysis（解析）、difficulty（'{{difficulty}}'）。" +
-      "各题型要求——" +
-      "single：options 恰好 4 项，answer 为正确选项文本；" +
-      "multiple：options 恰好 4-5 项，answer 为多个正确选项文本以逗号分隔；" +
-      'judge：options 固定为 ["正确","错误"]，answer 为「正确」或「错误」；' +
-      "essay：options 为空数组 []，answer 为参考答案要点；" +
-      "fill：options 为空数组 []，题干为含空位标记的单句或短文——词形填空用 `__ (原形词)`（如 needs __ (require)），自由填空用 `____`；单空 answer 直接填值，一空多题用 `编号:值` 管道分隔（编号即空位序号）；" +
-      "banked：options 为词池数组（N 个空给 N+2~N+5 个候选词），题干为含 N 个编号空 `__41__`、`__42__`…（从 41 起连续编号）的短文，answer 为 `编号:词` 管道分隔（词必须来自 options 词池）；" +
-      "cloze：options 为二维数组、每空恰好 4 个选项文本（行数=空数），题干为含 N 个编号空 `__41__`…（从 41 起连续编号）的短文，answer 为 `编号:字母` 管道分隔（字母 A-D 对应该行选项位置）；" +
-      "translation：options 为空数组 []，题干为待翻译原文，answer 为参考译文。" +
+      "本题型要求：{{qTypeSpec}}" +
       "只返回 JSON 数组，不要任何其他文字。",
     user:
       "课程：{{courseName}}\n共出 {{count}} 道 {{qTypeLabel}} 题，难度{{diffLabel}}。\n仅围绕以下知识点命题，如知识点数量多于题数可跨题分布：\n\n{{kpLines}}",

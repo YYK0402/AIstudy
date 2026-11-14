@@ -26,12 +26,12 @@
           <div class="filter-chips">
             <button class="chip" :class="{ on: filterType === '' }" @click="filterType = ''">全部题型</button>
             <button
-              v-for="(label, key) in QUESTION_TYPE_LABELS"
-              :key="key"
+              v-for="t in courseQTypes"
+              :key="t.key"
               class="chip"
-              :class="{ on: filterType === key }"
-              @click="filterType = filterType === key ? '' : String(key)"
-            >{{ label }}</button>
+              :class="{ on: filterType === t.key }"
+              @click="filterType = filterType === t.key ? '' : t.key"
+            >{{ t.label }}</button>
           </div>
           <div class="filter-chips">
             <button class="chip" :class="{ on: filterErr === '' }" @click="filterErr = ''">全部类型</button>
@@ -60,7 +60,7 @@
         <div v-else class="q-list">
           <div v-for="w in pagedWrong" :key="w.wrong.id" class="q-fixed">
             <div class="top">
-              <span class="tag" :class="w.question.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[w.question.qType as QuestionType] }}</span>
+              <span class="tag" :class="w.question.qType"><span class="d"></span>{{ qTypeLabel(w.question.qType) }}</span>
               <span class="src-tag">{{ questionSourceLabel(w.question.source) }}</span>
               <span class="wrong-times">答错 {{ w.wrong.reviewTimes }} 次</span>
             </div>
@@ -109,14 +109,16 @@ import {
   parseQuestionKpIds,
   exportWrongQuestionsMarkdown,
   questionSourceLabel,
-  QUESTION_TYPE_LABELS,
   WRONG_ERROR_TYPE_LABELS,
 } from "../api";
-import type { WrongQuestion, Question, QuestionType, KnowledgePoint, WrongErrorType } from "../api";
+import type { WrongQuestion, Question, KnowledgePoint, WrongErrorType } from "../api";
 import { getBridge } from "@/bridge";
+import { courseTypeList, typeLabelOf } from "../utils/questionTypes";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
+const courseQTypes = computed(() => courseTypeList(courseStore.currentCourse));
+const qTypeLabel = (qType: string) => typeLabelOf(courseStore.currentCourse, qType);
 
 const wrongList = ref<Array<{ wrong: WrongQuestion; question: Question }>>([]);
 const knowledgePoints = ref<KnowledgePoint[]>([]);

@@ -65,10 +65,12 @@ export async function queryCourseStats(courseId: number): Promise<CourseStats> {
   for (const k of kps) distribution[k.mastery]++;
 
   // 超保留期的作答记录已归档为月度汇总（answerStatsMonthly），合并后累计统计与归档前一致
+  const course = data.courses.find((c) => c.id === courseId) ?? null;
   const answerAgg = aggregateAnswers(
     records,
     questions,
     (data.answerStatsMonthly ?? []).filter((m) => m.courseId === courseId),
+    course,
   );
   const explainScores = explainRecords.map((r) => parseScoreText(r.aiScore)).filter((n): n is number => n !== null);
   const avgOf = (totalScore: number, count: number): string =>

@@ -6,12 +6,12 @@ import { callAiWithRetry, AiCanceledError, findTaskBinding, cancelAiCall } from 
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { buildChapterTree, chapterPathText, type NestedChapter } from "../utils/outline";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
-import { QUESTION_TYPES, type QuestionType } from "./constants";
 import { importQuestions, type QuestionDraft } from "./question";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
 import { buildNodeText, sliceNodeText } from "./nodeExtract";
-import type { AppData } from "../types/appData";
+import { courseTypeList, typeModeOf } from "../utils/questionTypes";
+import type { AppData, Course } from "../types/appData";
 
 /** 资料 → 映射覆盖的章节节点集合（章节树文档序）；空映射返回空数组（调用方回落整段正文） */
 export function resolveMaterialQuestionNodes(data: AppData, materialId: number): number[] {
@@ -38,7 +38,8 @@ export function resolveMaterialQuestionNodes(data: AppData, materialId: number):
 }
 
 export interface RawQuestionItem {
-  qType: QuestionType;
+  /** 题型键（内置注册表键或课程自定义题型名） */
+  qType: string;
   title: string;
   options: string[];
   answer: string;
@@ -51,18 +52,20 @@ export function normalizeQuestionTitle(s: string): string {
   return s.toLowerCase().replace(/[\s、，。；：！？（）()【】\[\]{}'"“”‘’·\-—/\\,.!?]/g, "");
 }
 
-/** 解析题目识别响应 [{qType,title,options,answer,analysis,kpNames}]；条目不合格（无题干）丢弃 */
-export function parseQuestionItems(content: string): RawQuestionItem[] {
+/** 解析题目识别响应 [{qType,title,options,answer,analysis,kpNames}]；条目不合格（无题干）丢弃。
+ *  qType 只保留课程题型清单内的键（内置/自定义），清单外回落 essay（防 AI 编造类型） */
+export function parseQuestionItems(content: string, course: Course | null): RawQuestionItem[] {
   const arr = unwrapArray(parseJsonCandidates(extractJsonCandidates(content, "array"))) as
     | Record<string, unknown>[]
     | null;
   if (!arr) return [];
+  const allowed = new Set(courseTypeList(course).map((t) => t.key));
   const out: RawQuestionItem[] = [];
   for (const it of arr) {
     const title = typeof it.title === "string" ? it.title.trim() : "";
     if (!title) continue;
     const qTypeRaw = typeof it.qType === "string" ? it.qType : "";
-    let qType = QUESTION_TYPES.includes(qTypeRaw as QuestionType) ? (qTypeRaw as QuestionType) : "essay";
+    let qType = allowed.has(qTypeRaw) ? qTypeRaw : "essay";
     let options: string[] = [];
     if (Array.isArray(it.options)) {
       options = (it.options as unknown[])
@@ -71,8 +74,9 @@ export function parseQuestionItems(content: string): RawQuestionItem[] {
         .filter(Boolean);
     }
     if (options.length === 1) options = []; // 单选项不合格，视为无选项
-    // 无选项不得标为单选/多选（刷题页按选项渲染，会无法作答）→ 回落 essay
-    if ((qType === "single" || qType === "multiple") && options.length < 2) qType = "essay";
+    // 无选项不得标为选项式（刷题页按选项渲染，会无法作答）→ 回落 essay
+    const mode = typeModeOf(course, qType);
+    if ((mode === "single" || mode === "multiple") && options.length < 2) qType = "essay";
     const answer = typeof it.answer === "string" ? it.answer.trim() : "";
     const analysis = typeof it.analysis === "string" ? it.analysis.trim() : "";
     let kpNames: string[] = [];
@@ -144,6 +148,10 @@ export async function extractNodeQuestions(
   const chunks = sliceNodeText(text);
   const scope = nodeId != null ? `node-${nodeId}` : `material-${materialId}`;
 
+  // 课程题型清单（通用 + 课程附加）→ prompt 取值行 + AI 输出允许集
+  const qTypesLine = courseTypeList(course)
+    .map((t) => `${t.key}（${t.label}）`)
+    .join(" / ");
   let raw: RawQuestionItem[] = [];
   for (let i = 0; i < chunks.length; i++) {
     if (isAborted?.()) throw new AiCanceledError();
@@ -155,7 +163,7 @@ export async function extractNodeQuestions(
       taskKey: "extract_question",
       scope,
       messages: [
-        { role: "system", content: renderPrompt(tpl.system, {}) },
+        { role: "system", content: renderPrompt(tpl.system, { qTypes: qTypesLine }) },
         {
           role: "user",
           content: renderPrompt(tpl.user, {
@@ -169,7 +177,7 @@ export async function extractNodeQuestions(
         },
       ],
     }, isAborted);
-    raw = raw.concat(parseQuestionItems(res.content));
+    raw = raw.concat(parseQuestionItems(res.content, course));
   }
   onProgress?.(chunks.length, chunks.length);
 

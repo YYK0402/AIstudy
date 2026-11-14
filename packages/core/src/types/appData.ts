@@ -56,6 +56,18 @@ export interface Course {
   isSample?: boolean;
   /** 课程级复习暂停开关；与学习计划暂停解耦。缺省/旧数据 = 不暂停（复习照常浮现） */
   reviewPaused?: boolean;
+  /** 课程附加题型（课程绑定，非通用）：内置扩展引用（name=translation/cloze/fill/banked）或自定义（name=显示名）。
+   *  缺省/空 = 仅 4 通用题型；题目 qType 用此处 name，作答行为按 mode（single/multiple/essay，见 questionTypes） */
+  extraQuestionTypes?: ExtraQuestionType[];
+}
+
+/** 题型作答模式：single=单选式（选项卡单选，含判断）/ multiple=多选式（选项卡多选）/ essay=简答式（自由文本+AI 阅卷）/ passage=文章空位（仅内置题型） */
+export type QuestionTypeMode = "single" | "multiple" | "essay" | "passage";
+
+/** 课程附加题型：name=内置扩展用注册表键（翻译/完形等，固定名），自定义用显示名（可改名）；mode=作答模式 */
+export interface ExtraQuestionType {
+  name: string;
+  mode: QuestionTypeMode;
 }
 
 export interface Chapter {

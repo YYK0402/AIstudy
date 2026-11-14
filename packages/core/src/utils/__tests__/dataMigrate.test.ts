@@ -34,4 +34,21 @@ describe("normalizeAppDataShape", () => {
     normalizeAppDataShape(d);
     expect(d.tocMappings).toEqual([]);
   });
+  it("课程存量非通用内置题型题：自动补入课程附加题型清单（幂等）", () => {
+    const d = createEmptyData();
+    d.courses = [
+      { id: 1, siyuanDocId: null, name: "英语", description: "", target: "", totalCycle: "", status: "active", createTime: "2026-01-01T00:00:00" },
+    ];
+    d.questions = [
+      {
+        id: 1, courseId: 1, kpIds: "", title: "t", options: "[]", answer: "",
+        analysis: "", qType: "cloze", difficulty: "medium", source: "ai",
+        paperId: null, createTime: "2026-01-01T00:00:00",
+      },
+    ];
+    normalizeAppDataShape(d);
+    expect(d.courses[0].extraQuestionTypes).toEqual([{ name: "cloze", mode: "passage" }]);
+    normalizeAppDataShape(d);
+    expect(d.courses[0].extraQuestionTypes).toEqual([{ name: "cloze", mode: "passage" }]);
+  });
 });

@@ -1233,6 +1233,19 @@
 .qe-multi-answer { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .qe-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--as-text-dim); cursor: pointer; }
 .qe-empty { font-size: 12px; color: var(--as-text-faint); }
+/* 课程题型管理（编辑题目弹窗） */
+.qe-add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.qe-add-row .s { font-size: 12px; color: var(--as-text-faint); }
+.qe-new-name { flex: 1; min-width: 140px; }
+.qe-manage-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.qe-extra-label { font-size: 13px; color: var(--as-text-dim); }
+.qe-mini {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  background: none; border: 1px solid var(--as-border); color: var(--as-text-dim);
+}
+.qe-mini:hover:not(:disabled) { border-color: var(--as-accent); color: var(--as-accent); }
+.qe-mini.danger:hover:not(:disabled) { border-color: var(--as-red-line); color: var(--as-red); }
+.qe-mini:disabled { opacity: .35; cursor: not-allowed; }
 
 /* 首页 - 全局学习立场 */
 .section-head { display: flex; align-items: center; margin: 26px 0 14px; }

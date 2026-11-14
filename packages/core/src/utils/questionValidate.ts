@@ -1,4 +1,4 @@
-import type { QuestionType } from "../api/constants";
+import type { QuestionTypeMode } from "../types/appData";
 
 export type QuestionAnswerValidation =
   | { ok: true; /** 建议落库的归一化答案（命中选项文本，保证与判分比对一致） */ answer: string }
@@ -35,19 +35,30 @@ function matchOption(options: string[], part: string): string | null {
 }
 
 /**
- * 校验题目答案与选项的一致性（AI 出题/导入共用的纯函数）：
- * - single：选项非空，答案须命中一个选项
- * - multiple：选项非空，答案各元素（逗号分隔，或 2-8 位连续字母拆分）须命中互不重复的选项
+ * 校验题目答案与选项的一致性（AI 出题/导入共用的纯函数）；mode 由 typeModeOf 解析：
+ * - single 式（single/自定义单选）：选项非空，答案须命中一个选项
+ * - multiple 式（multiple/自定义多选）：选项非空，答案各元素（逗号分隔，或 2-8 位连续字母拆分）须命中互不重复的选项
  * - judge：答案须可识别为对/错；存在同义选项时归一化为该选项文本
- * - essay/translation/fill/banked/cloze：不校验（自由作答）
+ * - essay/translation/fill/banked/cloze/自定义简答：不校验（自由作答）
  */
 export function validateQuestionAnswer(
-  qType: QuestionType,
+  qType: string,
+  mode: QuestionTypeMode,
   options: string[],
   answer: string,
 ): QuestionAnswerValidation {
   const opts = options.map((o) => o.trim()).filter(Boolean);
-  if (qType === "single") {
+  if (mode === "single" && qType === "judge") {
+    const v = judgeValue(answer);
+    if (v == null) return { ok: false, reason: `判断答案「${answer}」无法识别` };
+    if (opts.length > 0) {
+      const hit = opts.find((o) => judgeValue(o) === v);
+      if (!hit) return { ok: false, reason: `选项中无「${v === "true" ? "正确" : "错误"}」答案` };
+      return { ok: true, answer: hit };
+    }
+    return { ok: true, answer: v === "true" ? "对" : "错" };
+  }
+  if (mode === "single") {
     if (opts.length === 0) return { ok: false, reason: "缺少选项" };
     const hit = matchOption(opts, answer);
     if (!hit) return { ok: false, reason: `答案「${answer}」不在选项中` };
@@ -72,16 +83,6 @@ export function validateQuestionAnswer(
       hits.push(hit);
     }
     return { ok: true, answer: hits.join(",") };
-  }
-  if (qType === "judge") {
-    const v = judgeValue(answer);
-    if (v == null) return { ok: false, reason: `判断答案「${answer}」无法识别` };
-    if (opts.length > 0) {
-      const hit = opts.find((o) => judgeValue(o) === v);
-      if (!hit) return { ok: false, reason: `选项中无「${v === "true" ? "正确" : "错误"}」答案` };
-      return { ok: true, answer: hit };
-    }
-    return { ok: true, answer: v === "true" ? "对" : "错" };
   }
   return { ok: true, answer };
 }

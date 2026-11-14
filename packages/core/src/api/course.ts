@@ -1,5 +1,8 @@
-import type { Course } from "../types/appData";
+import type { Course, ExtraQuestionType } from "../types/appData";
 import { getData, saveData } from "./storage";
+import { validateExtraTypeName } from "../utils/questionTypes";
+import { QUESTION_TYPES as BUILTIN_QUESTION_KEYS_ARRAY } from "./constants";
+const BUILTIN_QUESTION_KEYS = new Set<string>(BUILTIN_QUESTION_KEYS_ARRAY);
 import { now } from "./format";
 import { nextCourseId } from "../utils/courseFileIds";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
@@ -67,6 +70,56 @@ export async function updateCourse(id: number, input: {
       console.error("同步课程名到思源失败:", e);
     }
   }
+  return course;
+}
+
+/** 课程附加题型：课程绑定（非通用），内置扩展引用或自定义；题目 qType 用此处 name */
+function courseOf(id: number, data: Awaited<ReturnType<typeof getData>>): Course {
+  const course = data.courses.find((c) => c.id === id);
+  if (!course) throw new Error("课程不存在，可能已被删除");
+  return course;
+}
+
+/** 为课程添加附加题型（内置扩展引用或自定义） */
+export async function addCourseQuestionType(id: number, input: ExtraQuestionType): Promise<Course> {
+  const data = await getData();
+  const course = courseOf(id, data);
+  const err = validateExtraTypeName(input.name, course);
+  if (err) throw new Error(err);
+  const name = input.name.trim();
+  course.extraQuestionTypes = [...(course.extraQuestionTypes ?? []), { name, mode: input.mode }];
+  await saveData(data);
+  return course;
+}
+
+/** 移除课程附加题型（内置扩展引用/自定义均可）；存量题目保留原 qType（标签/模式按注册表或简答回退） */
+export async function removeCourseQuestionType(id: number, name: string): Promise<Course> {
+  const data = await getData();
+  const course = courseOf(id, data);
+  const list = course.extraQuestionTypes ?? [];
+  const next = list.filter((t) => (t.name ?? "").trim() !== name.trim());
+  if (next.length === list.length) throw new Error("题型不存在或不是课程附加题型");
+  course.extraQuestionTypes = next;
+  await saveData(data);
+  return course;
+}
+
+/** 重命名自定义题型：同步改本课程全部题目 qType（级联，不留悬挂引用）；内置扩展引用不可改名 */
+export async function renameCourseQuestionType(id: number, from: string, to: string): Promise<Course> {
+  const data = await getData();
+  const course = courseOf(id, data);
+  const target = (course.extraQuestionTypes ?? []).find((t) => (t.name ?? "").trim() === from.trim());
+  if (!target) throw new Error("题型不存在或不是课程附加题型");
+  if (BUILTIN_QUESTION_KEYS.has(from.trim())) throw new Error("内置题型不可改名");
+  const err = validateExtraTypeName(to, course);
+  if (err) throw new Error(err);
+  target.name = to.trim();
+  for (const q of data.questions) {
+    if (q.courseId === id && q.qType === from.trim()) {
+      q.qType = to.trim();
+    }
+  }
+  await saveData(data);
   return course;
 }
 

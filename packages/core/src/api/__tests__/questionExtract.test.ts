@@ -111,6 +111,7 @@ describe("parseQuestionItems", () => {
         {"qType":"single","title":"","options":["甲","乙"],"answer":"甲"},
         {"qType":"single","title":"单选项题","options":["仅一项"],"answer":"x"}
       ]`,
+      null,
     );
     expect(items).toHaveLength(3);
     expect(items[0]).toEqual({ qType: "essay", title: "项目风险的定义", options: [], answer: "", analysis: "", kpNames: ["项目风险"] });
@@ -120,8 +121,25 @@ describe("parseQuestionItems", () => {
     expect(items[2].qType).toBe("essay");
   });
   it("非 JSON / 空数组", () => {
-    expect(parseQuestionItems("无题目")).toEqual([]);
-    expect(parseQuestionItems("[]")).toEqual([]);
+    expect(parseQuestionItems("无题目", null)).toEqual([]);
+    expect(parseQuestionItems("[]", null)).toEqual([]);
+  });
+  it("课程题型清单：自定义类型保留，未添加的内置类型回落 essay", () => {
+    const course: import("../../types/appData").Course = {
+      id: 1, siyuanDocId: null, name: "C", description: "", target: "", totalCycle: "", status: "active", createTime: "t",
+      extraQuestionTypes: [{ name: "写作", mode: "essay" }],
+    };
+    const items = parseQuestionItems(
+      `[
+        {"qType":"写作","title":"作文题","options":[],"answer":"要点","analysis":"","kpNames":[]},
+        {"qType":"cloze","title":"完形题","options":[],"answer":"1:A","analysis":"","kpNames":[]},
+        {"qType":"translation","title":"翻译题","options":[],"answer":"译文","analysis":"","kpNames":[]}
+      ]`,
+      course,
+    );
+    expect(items[0].qType).toBe("写作");
+    expect(items[1].qType).toBe("essay");
+    expect(items[2].qType).toBe("essay");
   });
 });
 

@@ -1,9 +1,10 @@
 import type { AnswerRecord, AppData, KnowledgePoint, Mastery, Question, WrongQuestion } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { formatLocalDate, nextId, now, parseQuestionKpIds, parseQuestionOptions } from "./format";
-import { EXPLAIN_MASTER_SCORE, isPassageType, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPE_LABELS, WRONG_ERROR_TYPE_LABELS } from "./constants";
-import type { QuestionDifficulty, QuestionType, WrongErrorType } from "./constants";
+import { EXPLAIN_MASTER_SCORE, isPassageType, QUESTION_DIFFICULTY_LABELS, WRONG_ERROR_TYPE_LABELS } from "./constants";
+import type { QuestionDifficulty, WrongErrorType } from "./constants";
 import { gradePassage } from "../utils/passage";
+import { typeLabelOf, typeModeOf } from "../utils/questionTypes";
 import { findTaskBinding, callAi } from "./ai";
 import { ensureQuestionReviewInData } from "./review";
 import { appendWeakPointTaskInData, completeKpTasksInData, logStudyInData } from "./studyData";
@@ -159,7 +160,9 @@ export async function submitAnswer(
   let writeData: AppData = data;
   const assistedPatch: Pick<AnswerRecord, "assisted"> = options?.assisted ? { assisted: true } : {};
 
-  if (question.qType === "essay" || question.qType === "translation") {
+  // 简答式题型（简答/翻译/课程自定义简答）统一走 AI 阅卷：按课程清单解析模式
+  const questionCourse = data.courses.find((c) => c.id === question.courseId) ?? null;
+  if (typeModeOf(questionCourse, question.qType) === "essay") {
     // 先落盘作答记录（graded=false）：AI 判分失败/中断也不丢作答
     record = {
       id: nextId(data.answerRecords),
@@ -322,7 +325,7 @@ export async function exportWrongQuestionsMarkdown(
     lines.push(`我的答案: ${lastAnswer.get(question.id) ?? "（无作答记录）"}`);
     lines.push(`正确答案: ${question.answer}`);
     if (question.analysis) lines.push(`解析: ${question.analysis}`);
-    lines.push(`题型: ${QUESTION_TYPE_LABELS[question.qType as QuestionType]}`);
+    lines.push(`题型: ${typeLabelOf(data.courses.find((c) => c.id === question.courseId) ?? null, question.qType)}`);
     lines.push(`难度: ${QUESTION_DIFFICULTY_LABELS[question.difficulty as QuestionDifficulty]}`);
     const kpNames = parseQuestionKpIds(question).map((id) => kpMap.get(id)).filter(Boolean);
     if (kpNames.length) lines.push(`知识点: ${kpNames.join(", ")}`);

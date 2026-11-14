@@ -56,8 +56,8 @@
             >{{ i + 1 }}</button>
           </div>
           <div class="q-title qr-title-text">{{ currentQuestion!.title }}</div>
-          <!-- 选择/判断/多选：标出用户作答与正确答案 -->
-          <template v-if="['single', 'judge', 'multiple'].includes(currentQuestion!.qType)">
+          <!-- 选项式（单选/判断/多选/自定义选项式）：标出用户作答与正确答案 -->
+          <template v-if="isChoiceMode(currentQuestion!.qType)">
             <div
               v-for="(opt, oi) in currentOptions"
               :key="oi"
@@ -124,12 +124,12 @@
           </div>
           <div class="q-card">
             <div class="q-head">
-              <span class="tag" :class="currentQuestion!.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[currentQuestion!.qType as QuestionType] }}</span>
+              <span class="tag" :class="currentQuestion!.qType"><span class="d"></span>{{ qTypeLabel(currentQuestion!.qType) }}</span>
               <span v-for="name in kpNames(currentQuestion!)" :key="name" class="tag-plain">{{ name }}</span>
             </div>
             <div class="q-title">{{ currentQuestion!.title }}</div>
-            <!-- 单选 / 判断：点选即判 -->
-            <template v-if="currentQuestion!.qType === 'single' || currentQuestion!.qType === 'judge'">
+            <!-- 单选式（单选/判断/自定义单选）：点选即判 -->
+            <template v-if="qTypeMode(currentQuestion!.qType) === 'single'">
               <div role="radiogroup" :aria-label="`第 ${quizIdx + 1} 题选项`">
                 <div
                   v-for="(opt, oi) in currentOptions"
@@ -151,8 +151,8 @@
                 </div>
               </div>
             </template>
-            <!-- 多选：勾选后提交 -->
-            <template v-else-if="currentQuestion!.qType === 'multiple'">
+            <!-- 多选式（多选/自定义多选）：勾选后提交 -->
+            <template v-else-if="qTypeMode(currentQuestion!.qType) === 'multiple'">
               <div role="listbox" aria-multiselectable="true" :aria-label="`第 ${quizIdx + 1} 题选项`">
                 <div
                   v-for="(opt, oi) in currentOptions"
@@ -276,7 +276,7 @@
                 :disabled="!!quizResult || gradingAll"
               />
             </template>
-            <div v-if="revealed && ['essay', 'translation'].includes(currentQuestion!.qType)" class="essay-feedback">
+            <div v-if="revealed && qTypeMode(currentQuestion!.qType) === 'essay'" class="essay-feedback">
               <div class="score" :class="{ pass: quizResult!.isCorrect, fail: !quizResult!.isCorrect }">{{ quizResult!.score }} 分</div>
               <div class="fb">{{ quizResult!.feedback || (currentQuestion!.qType === 'translation' ? 'AI 未给出具体点评' : '') }}</div>
               <div class="ref">{{ getAnswerLabel() }}：{{ currentQuestion!.answer }}</div>
@@ -294,7 +294,7 @@
             <button class="btn sm" style="margin-left:8px" @click="void submitAll(true)">仍要交卷</button>
           </div>
           <div v-else-if="isAfterAll && currentAnswered && !quizResult" class="s t-faint" style="margin:10px 14px 0">已作答 · 交卷后统一阅卷出分</div>
-          <div v-if="revealed && ['single', 'judge', 'multiple'].includes(currentQuestion!.qType)" class="judge-line judge-line--in" :class="quizResult!.isCorrect ? 'ok' : 'bad'">
+          <div v-if="revealed && isChoiceMode(currentQuestion!.qType)" class="judge-line judge-line--in" :class="quizResult!.isCorrect ? 'ok' : 'bad'">
             {{ quizResult!.isCorrect ? "✓ 回答正确" : "✗ 回答错误，答案是 " + currentQuestion!.answer }}
           </div>
           <div v-if="revealed && quizResult!.masteryNotes.length" class="mastery-note" style="margin:0 14px">↓ 掌握度：{{ quizResult!.masteryNotes.join(" · ") }}</div>
@@ -367,7 +367,7 @@
               <div class="field">
                 <label>题型</label>
                 <select v-model="genQType" :disabled="generating" aria-label="题型">
-                  <option v-for="(label, key) in QUESTION_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
+                  <option v-for="t in courseQTypes" :key="t.key" :value="t.key">{{ t.label }}</option>
                 </select>
               </div>
               <div class="field">
@@ -431,12 +431,12 @@
           <div class="filter-chips">
             <button class="chip" :class="{ on: filterType === '' }" @click="filterType = ''">全部</button>
             <button
-              v-for="(label, key) in QUESTION_TYPE_LABELS"
-              :key="key"
+              v-for="t in courseQTypes"
+              :key="t.key"
               class="chip"
-              :class="{ on: filterType === key }"
-              @click="filterType = filterType === key ? '' : String(key)"
-            >{{ label }}</button>
+              :class="{ on: filterType === t.key }"
+              @click="filterType = filterType === t.key ? '' : t.key"
+            >{{ t.label }}</button>
           </div>
           <div class="q-list">
             <div v-for="q in pagedQuestions" :key="q.id" class="q-fixed">
@@ -444,7 +444,7 @@
                 <label v-if="!archived" class="q-check">
                   <input type="checkbox" :checked="selectedIds.has(q.id)" @change="toggleSelect(q.id)" />
                 </label>
-                <span class="tag" :class="q.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[q.qType as QuestionType] }}</span>
+                <span class="tag" :class="q.qType"><span class="d"></span>{{ qTypeLabel(q.qType) }}</span>
                 <span class="src-tag">{{ questionSourceLabel(q.source) }}</span>
                 <span v-for="name in kpNames(q)" :key="name" class="tag-plain">{{ name }}</span>
               </div>
@@ -564,7 +564,6 @@ import {
   exportQuestionsMarkdown,
   questionSourceLabel,
   queryChapters,
-  QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
   completeTestTasks,
   getSettings,
@@ -574,8 +573,9 @@ import { formatPassageAnswer, formatPassageAnalysis, gradePassage, parsePassageA
 import type { PassageBlank } from "../utils/passage";
 import { kpsOfChapter } from "../utils/chapterScope";
 import { isQuizAnswered, resolveAnswerText, type AnswerState } from "../utils/quizDraft";
+import { courseTypeList, typeLabelOf, typeModeOf, type CourseQuestionTypeEntry } from "../utils/questionTypes";
 import { capStudySec } from "../constants/study";
-import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty, TestTaskContext } from "../api";
+import type { Chapter, KnowledgePoint, Question, QuestionDifficulty, TestTaskContext } from "../api";
 import type { AnswerResult } from "../api";
 import QuestionEditModal from "../components/QuestionEditModal.vue";
 import QuestionBatchKpModal from "../components/QuestionBatchKpModal.vue";
@@ -594,6 +594,12 @@ import { getBridge } from "@/bridge";
 const courseStore = useCourseStore();
 const { confirm } = useConfirm();
 const currentCourseId = () => courseStore.currentCourseId;
+/** 课程题型清单（4 通用 + 课程附加）与题型名/作答模式解析（课程感知） */
+const currentCourse = computed(() => courseStore.currentCourse);
+const courseQTypes = computed<CourseQuestionTypeEntry[]>(() => courseTypeList(currentCourse.value));
+const qTypeLabel = (qType: string) => typeLabelOf(currentCourse.value, qType);
+const qTypeMode = (qType: string) => typeModeOf(currentCourse.value, qType);
+const isChoiceMode = (qType: string) => qTypeMode(qType) === "single" || qTypeMode(qType) === "multiple";
 /** 课程归档后隐藏出题入口（已有题目仍可练习） */
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
 const route = useRoute();
@@ -604,7 +610,7 @@ const questions = ref<Question[]>([]);
 const chapters = ref<Chapter[]>([]);
 const selectedKpIds = ref<number[]>([]);
 const genKpOpen = ref(false);
-const genQType = ref<QuestionType>("single");
+const genQType = ref<string>("single");
 const genDifficulty = ref<QuestionDifficulty>("easy");
 const genCount = ref(3);
 const generating = ref(false);
@@ -978,8 +984,9 @@ function restoreAnsweredState(r: AnsweredEntry) {
   pickedSingle.value = null;
   resetPassageState();
   if (q) {
-    if (q.qType === "single" || q.qType === "judge") pickedSingle.value = r.userAnswer;
-    else if (q.qType === "multiple") {
+    const mode = qTypeMode(q.qType);
+    if (mode === "single") pickedSingle.value = r.userAnswer;
+    else if (mode === "multiple") {
       pickedMulti.value = r.userAnswer.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     } else if (q.blanks) {
       const map = parsePassageAnswer(r.userAnswer);
@@ -1020,7 +1027,7 @@ function nextOrSubmit() {
 /** 当前题是否已作答（整卷模式「已作答」提示用） */
 const currentAnswered = computed(() => {
   const q = currentQuestion.value;
-  return q ? isQuizAnswered(q, currentAnswerState()) : false;
+  return q ? isQuizAnswered(q, currentAnswerState(), qTypeMode(q.qType)) : false;
 });
 
 /** 整卷交卷：检查未作答 → 自动导航过去；全部已答 → 批量阅卷后出成绩单 */
@@ -1029,7 +1036,7 @@ async function submitAll(force = false) {
   saveDraft();
   if (!force) {
     const firstUn = quizList.value.findIndex(
-      (q) => !isQuizAnswered(q, answerDrafts.value[q.id]?.state ?? emptyState()),
+      (q) => !isQuizAnswered(q, answerDrafts.value[q.id]?.state ?? emptyState(), qTypeMode(q.qType)),
     );
     if (firstUn >= 0) {
       quizIdx.value = firstUn;
@@ -1051,7 +1058,7 @@ async function submitAll(force = false) {
       if (!quizResult.value) {
         const q = quizList.value[i];
         const s = answerDrafts.value[q.id]?.state ?? currentAnswerState();
-        userAnswer.value = resolveAnswerText(q, s);
+        userAnswer.value = resolveAnswerText(q, s, qTypeMode(q.qType));
         await submitCurrent(answerDrafts.value[q.id]?.sec ?? elapsedQuestionSec());
         if (pendingGrading.value !== null) {
           // 简答 AI 判分失败不中断批量阅卷：记 0 分占位（作答已落盘 graded=false）
@@ -1088,7 +1095,7 @@ async function submitAll(force = false) {
   }
   const total = answeredResults.value.length;
   const correct = answeredResults.value.filter((r) => r.isCorrect).length;
-  const essays = answeredResults.value.filter((r) => r.qType === "essay");
+  const essays = answeredResults.value.filter((r) => qTypeMode(r.qType) === "essay");
   const essayAvg = essays.length
     ? String(Math.round(essays.reduce((s, r) => s + Number(r.score || 0), 0) / essays.length))
     : "";
@@ -1257,20 +1264,22 @@ const primaryLabel = computed(() => {
   const q = currentQuestion.value;
   if (!q || isAfterAll.value) return "";
   if (quizResult.value) return quizIdx.value + 1 < quizList.value.length ? "下一题" : "查看成绩单";
-  if (q.qType === "multiple") return submitting.value ? "提交中…" : "提交答案";
-  if (q.qType === "essay" || q.qType === "translation") return submitting.value ? "AI 阅卷中…" : "提交（AI 阅卷）";
+  const mode = qTypeMode(q.qType);
+  if (mode === "multiple") return submitting.value ? "提交中…" : "提交答案";
+  if (mode === "essay") return submitting.value ? "AI 阅卷中…" : "提交（AI 阅卷）";
   if (isPassage.value && currentBlanks.value.length > 0) return submitting.value ? "提交中…" : "提交本篇";
-  // 无空位标记的填空/选填/完形：走文本框作答，同样需要提交
-  if (["fill", "banked", "cloze"].includes(q.qType)) return submitting.value ? "提交中…" : "提交答案";
+  // 无空位标记的文章题：走文本框作答，同样需要提交
+  if (mode === "passage") return submitting.value ? "提交中…" : "提交答案";
   return "";
 });
 const primaryDisabled = computed(() => {
   const q = currentQuestion.value;
   if (!q || isAfterAll.value || quizResult.value) return true;
-  if (q.qType === "multiple") return pickedMulti.value.length === 0 || submitting.value;
-  if (q.qType === "essay" || q.qType === "translation") return !userAnswer.value.trim() || submitting.value;
+  const mode = qTypeMode(q.qType);
+  if (mode === "multiple") return pickedMulti.value.length === 0 || submitting.value;
+  if (mode === "essay") return !userAnswer.value.trim() || submitting.value;
   if (isPassage.value && currentBlanks.value.length > 0) return !allPassageFilled.value || submitting.value;
-  if (["fill", "banked", "cloze"].includes(q.qType)) return !userAnswer.value.trim() || submitting.value;
+  if (mode === "passage") return !userAnswer.value.trim() || submitting.value;
   return true;
 });
 function primaryAction() {
@@ -1280,7 +1289,7 @@ function primaryAction() {
     nextQuestion();
     return;
   }
-  if (q.qType === "multiple") {
+  if (qTypeMode(q.qType) === "multiple") {
     submitMulti();
     return;
   }
@@ -1302,7 +1311,7 @@ function onOptionKeydown(e: KeyboardEvent, oi: number): void {
   } else if (e.key === " " || e.key === "Enter") {
     e.preventDefault();
     const opt = opts[oi];
-    if (currentQuestion.value?.qType === "multiple") toggleMulti(opt, oi);
+    if (currentQuestion.value && qTypeMode(currentQuestion.value.qType) === "multiple") toggleMulti(opt, oi);
     else pickOption(opt, oi);
   }
 }
@@ -1420,7 +1429,7 @@ function nextQuestion() {
   } else {
     const total = answeredResults.value.length;
     const correct = answeredResults.value.filter((r) => r.isCorrect).length;
-    const essays = answeredResults.value.filter((r) => r.qType === "essay");
+    const essays = answeredResults.value.filter((r) => qTypeMode(r.qType) === "essay");
     const essayAvg = essays.length
       ? String(Math.round(essays.reduce((s, r) => s + Number(r.score || 0), 0) / essays.length))
       : "";
@@ -1547,7 +1556,7 @@ async function batchDelete() {
 function exportMarkdown() {
   const list = filteredQuestions.value;
   if (list.length === 0) return;
-  const md = exportQuestionsMarkdown(list, knowledgePoints.value, courseStore.currentCourse?.name ?? "题库");
+  const md = exportQuestionsMarkdown(list, knowledgePoints.value, courseStore.currentCourse?.name ?? "题库", courseStore.currentCourse);
   const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

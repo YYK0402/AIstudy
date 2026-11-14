@@ -18,12 +18,12 @@
             <div class="qset-row">
               <button class="chip" :class="{ on: qTypes.length === 0 }" @click="qTypes = []">全部</button>
               <button
-                v-for="(label, key) in QUESTION_TYPE_LABELS"
-                :key="key"
+                v-for="t in courseQTypes"
+                :key="t.key"
                 class="chip"
-                :class="{ on: qTypes.includes(key as QuestionType) }"
-                @click="toggleQType(key as QuestionType)"
-              >{{ label }}</button>
+                :class="{ on: qTypes.includes(t.key) }"
+                @click="toggleQType(t.key)"
+              >{{ t.label }}</button>
             </div>
           </div>
           <div class="field">
@@ -106,12 +106,16 @@
 import { computed, ref, watch } from "vue";
 import {
   buildQuizList,
-  QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
 } from "../api";
-import type { Chapter, KnowledgePoint, Question, QuestionType, QuestionDifficulty } from "../api";
+import type { Chapter, KnowledgePoint, Question, QuestionDifficulty } from "../api";
 import KpTreePicker from "./KpTreePicker.vue";
 import AppIcon from "./AppIcon.vue";
+import { courseTypeList } from "../utils/questionTypes";
+import { useCourseStore } from "../stores/course";
+
+const courseStore = useCourseStore();
+const courseQTypes = computed(() => courseTypeList(courseStore.currentCourse));
 
 const props = defineProps<{
   open: boolean;
@@ -131,7 +135,7 @@ const emit = defineEmits<{
   (e: "generated", list: Question[], opts: { revealMode: "immediate" | "afterAll" }): void;
 }>();
 
-const qTypes = ref<QuestionType[]>([]);
+const qTypes = ref<string[]>([]);
 const difficulties = ref<QuestionDifficulty[]>([]);
 const kpIds = ref<number[]>([]);
 const count = ref(10);
@@ -176,7 +180,7 @@ const pool = computed(() =>
   }),
 );
 
-function toggleQType(t: QuestionType) {
+function toggleQType(t: string) {
   qTypes.value = qTypes.value.includes(t) ? qTypes.value.filter((x) => x !== t) : [...qTypes.value, t];
 }
 

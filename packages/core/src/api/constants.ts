@@ -1,4 +1,4 @@
-import type { Material } from "../types/appData";
+import type { Material, QuestionTypeMode } from "../types/appData";
 import { getBridgeSafe } from "@/bridge";
 
 export const QUESTION_TYPES = [
@@ -28,6 +28,21 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
 export function isPassageType(qType: string): boolean {
   return qType === "fill" || qType === "banked" || qType === "cloze";
 }
+
+/** 内置题型注册表：题型 → 作答模式（judge 与 single 同判分口径：选项文本精确匹配） */
+export const QUESTION_TYPE_MODES: Record<QuestionType, QuestionTypeMode> = {
+  single: "single",
+  multiple: "multiple",
+  judge: "single",
+  essay: "essay",
+  translation: "essay",
+  fill: "passage",
+  banked: "passage",
+  cloze: "passage",
+};
+
+/** 通用题型：所有课程默认恒有；其余 4 型（翻译/完形/填空/选择填空）为内置扩展，按课程添加 */
+export const GENERIC_QUESTION_TYPES = ["single", "multiple", "judge", "essay"] as const;
 
 export const QUESTION_DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export type QuestionDifficulty = (typeof QUESTION_DIFFICULTIES)[number];

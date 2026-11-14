@@ -1,4 +1,4 @@
-import type { Question } from "../types/appData";
+import type { Question, QuestionTypeMode } from "../types/appData";
 import { formatPassageAnswer } from "./passage";
 
 /** 答题卡作答状态（整卷模式草稿与交卷判定统一结构） */
@@ -23,32 +23,29 @@ function parseBlanks(q: Pick<Question, "blanks">): Array<{ no: number }> | null 
   }
 }
 
-/** 按题型判断一道题是否已作答（整卷交卷时逐题检查） */
-export function isQuizAnswered(q: Pick<Question, "qType" | "blanks">, s: AnswerState): boolean {
-  switch (q.qType) {
+/** 按作答模式判断一道题是否已作答（整卷交卷时逐题检查；mode 由 typeModeOf 解析） */
+export function isQuizAnswered(q: Pick<Question, "blanks">, s: AnswerState, mode: QuestionTypeMode): boolean {
+  switch (mode) {
     case "single":
-    case "judge":
       return s.single != null;
     case "multiple":
       return s.multi.length > 0;
-    case "fill":
-    case "banked":
-    case "cloze": {
+    case "passage": {
       const blanks = parseBlanks(q);
       if (blanks && blanks.length > 0) {
         return blanks.every((b) => (s.passage[b.no] ?? "").trim() !== "");
       }
       return s.text.trim() !== "";
     }
-    default:
+    case "essay":
       return s.text.trim() !== "";
   }
 }
 
-/** 把作答状态解析为提交给判分的答案串（与逐题提交时的 userAnswer 格式一致） */
-export function resolveAnswerText(q: Pick<Question, "qType" | "blanks">, s: AnswerState): string {
-  if (q.qType === "single" || q.qType === "judge") return s.single ?? "";
-  if (q.qType === "multiple") return s.multi.join(",");
+/** 把作答状态解析为提交给判分的答案串（与逐题提交时的 userAnswer 格式一致；mode 由 typeModeOf 解析） */
+export function resolveAnswerText(q: Pick<Question, "blanks">, s: AnswerState, mode: QuestionTypeMode): string {
+  if (mode === "single") return s.single ?? "";
+  if (mode === "multiple") return s.multi.join(",");
   const blanks = parseBlanks(q);
   if (blanks && blanks.length > 0) {
     return formatPassageAnswer(blanks.map((b) => [b.no, (s.passage[b.no] ?? "").trim()] as [number, string]));

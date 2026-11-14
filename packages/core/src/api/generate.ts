@@ -1,7 +1,7 @@
-import type { AppData, Question } from "../types/appData";
+import type { AppData, Question, QuestionTypeMode } from "../types/appData";
 import { getData, saveData } from "./storage";
 import { nextId, now, truncateText } from "./format";
-import { isPassageType, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPES, QUESTION_TYPE_LABELS } from "./constants";
+import { isPassageType, QUESTION_DIFFICULTY_LABELS, QUESTION_TYPES } from "./constants";
 import type { QuestionDifficulty, QuestionType } from "./constants";
 import { parsePassageBlanks } from "../utils/passage";
 import { findTaskBinding, callAi } from "./ai";
@@ -10,9 +10,37 @@ import { startBgTask } from "./bgTask";
 import { courseTaskId } from "../stores/notify";
 import { validateQuestionAnswer } from "../utils/questionValidate";
 import { extractJsonCandidates, parseJsonCandidates, unwrapArray } from "../utils/aiJson";
+import { courseTypeList, typeLabelOf, typeModeOf } from "../utils/questionTypes";
+import type { Course } from "../types/appData";
+
+/** 内置题型出题规格（gen_question prompt 的「本题型要求」） */
+const BUILTIN_TYPE_SPECS: Record<QuestionType, string> = {
+  single: "options 恰好 4 项，answer 为正确选项文本",
+  multiple: "options 恰好 4-5 项，answer 为多个正确选项文本以逗号分隔",
+  judge: 'options 固定为 ["正确","错误"]，answer 为「正确」或「错误」',
+  essay: "options 为空数组 []，answer 为参考答案要点",
+  fill: "options 为空数组 []，题干为含空位标记的单句或短文——词形填空用 `__ (原形词)`（如 needs __ (require)），自由填空用 `____`；单空 answer 直接填值，一空多题用 `编号:值` 管道分隔（编号即空位序号）",
+  banked: "options 为词池数组（N 个空给 N+2~N+5 个候选词），题干为含 N 个编号空 `__41__`、`__42__`…（从 41 起连续编号）的短文，answer 为 `编号:词` 管道分隔（词必须来自 options 词池）",
+  cloze: "options 为二维数组、每空恰好 4 个选项文本（行数=空数），题干为含 N 个编号空 `__41__`…（从 41 起连续编号）的短文，answer 为 `编号:字母` 管道分隔（字母 A-D 对应该行选项位置）",
+  translation: "options 为空数组 []，题干为待翻译原文，answer 为参考译文",
+};
+
+/** 自定义题型（课程绑定）出题规格：按作答模式给出 */
+const CUSTOM_MODE_SPECS: Record<Exclude<QuestionTypeMode, "passage">, string> = {
+  single: "options 恰好 4 项，answer 为正确选项文本",
+  multiple: "options 恰好 4-5 项，answer 为多个正确选项文本以逗号分隔",
+  essay: "options 为空数组 []，answer 为参考答案要点（AI 按要点阅卷）",
+};
+
+/** 题型出题规格：内置注册表键取内置规格，自定义题型按作答模式给规格 */
+function typeSpecOf(course: Course | null, qType: string): string {
+  if ((QUESTION_TYPES as readonly string[]).includes(qType)) return BUILTIN_TYPE_SPECS[qType as QuestionType];
+  const mode = typeModeOf(course, qType);
+  return CUSTOM_MODE_SPECS[mode === "passage" ? "essay" : mode];
+}
 
 interface AiQuestionItem {
-  qType: QuestionType;
+  qType: string;
   kpIds: number[];
   title: string;
   /** 选择/判断/多选=选项文本；完形=每空 4 选项的二维数组 */
@@ -68,15 +96,16 @@ function extractCompleteObjects(text: string): string[] {
   return out;
 }
 
-/** 单条题目归一化：字段别名容错 + 必填校验（title/answer），不合格返回 null */
-function normalizeAiQuestionItem(raw: unknown, fallbackQType: QuestionType): AiQuestionItem | null {
+/** 单条题目归一化：字段别名容错 + 必填校验（title/answer），不合格返回 null。
+ *  qType 只在允许集（课程题型清单键）内保留 AI 输出值，否则回退请求题型（防 AI 编造清单外类型） */
+function normalizeAiQuestionItem(raw: unknown, fallbackQType: string, allowed: Set<string>): AiQuestionItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const it = raw as Record<string, unknown>;
   const title = pickString(it, ["title", "question", "题干"]);
   const answer = pickString(it, ["answer", "正确答案", "correctAnswer"]);
   if (title == null || answer == null) return null;
   const qTypeRaw = typeof it.qType === "string" ? it.qType : typeof it.type === "string" ? it.type : "";
-  const qType = QUESTION_TYPES.includes(qTypeRaw as QuestionType) ? (qTypeRaw as QuestionType) : fallbackQType;
+  const qType = allowed.has(qTypeRaw) ? qTypeRaw : fallbackQType;
   const kpRaw = it.kpIds ?? it.kpId;
   let kpIds: number[] = [];
   if (Array.isArray(kpRaw)) {
@@ -120,10 +149,10 @@ function normalizeAiQuestionItem(raw: unknown, fallbackQType: QuestionType): AiQ
  * 1) 整体 JSON（裸数组 / ```json 块 / {"questions": [...]} 包装）；
  * 2) 整体解析失败（如输出被截断）时救援：提取完整的对象逐条解析，部分成功也算成功。
  */
-function parseAiQuestionResponse(content: string, fallbackQType: QuestionType = "single"): AiQuestionItem[] {
+function parseAiQuestionResponse(content: string, fallbackQType: string, allowed: Set<string>): AiQuestionItem[] {
   const items: AiQuestionItem[] = [];
   const pushItem = (raw: unknown) => {
-    const item = normalizeAiQuestionItem(raw, fallbackQType);
+    const item = normalizeAiQuestionItem(raw, fallbackQType, allowed);
     if (item) items.push(item);
   };
 
@@ -152,7 +181,7 @@ const generatingCourseIds = new Set<number>();
 /** 生成题目（批量）。成功落库后返回新题，任何校验/AI 失败时不动题库。 */
 export async function generateQuestions(
   courseId: number,
-  input: { kpIds: number[]; count: number; qType: QuestionType; difficulty: QuestionDifficulty },
+  input: { kpIds: number[]; count: number; /** 题型键（内置注册表键或课程自定义题型名） */ qType: string; difficulty: QuestionDifficulty },
 ): Promise<Question[]> {
   const data: AppData = await getData();
   const course = data.courses.find((c) => c.id === courseId);
@@ -176,8 +205,10 @@ export async function generateQuestions(
       "未配置 AI 任务模型，请前往「模型配置 → AI 任务模型分配」设置「gen_question」任务或「全局默认模型」",
     );
   }
-  const qTypeLabel = QUESTION_TYPE_LABELS[input.qType];
+  const qTypeLabel = typeLabelOf(course, input.qType);
   const diffLabel = QUESTION_DIFFICULTY_LABELS[input.difficulty];
+  // 课程题型清单键 = AI 输出 qType 的允许集（防编造）
+  const allowedQTypes = new Set(courseTypeList(course).map((t) => t.key));
 
   // 铃铛：出题是单次长调用，无分段进度（total=0 不显示进度条）
   const qTask = startBgTask({
@@ -203,6 +234,7 @@ export async function generateQuestions(
     courseName: course.name,
     count: String(input.count),
     qTypeLabel,
+    qTypeSpec: typeSpecOf(course, input.qType),
     diffLabel,
     kpLines,
   };
@@ -224,7 +256,7 @@ export async function generateQuestions(
         scope: "course-" + courseId,
         messages,
       });
-      items = parseAiQuestionResponse(res.content, input.qType);
+      items = parseAiQuestionResponse(res.content, input.qType, allowedQTypes);
       if (items.length > 0) break;
       if (attempt === 1) {
         messages = [
@@ -251,7 +283,7 @@ export async function generateQuestions(
     for (const item of items) {
       const opts = item.options;
       const flatOptions: string[] = opts.length > 0 && Array.isArray(opts[0]) ? [] : (opts as string[]);
-      const v = validateQuestionAnswer(item.qType, flatOptions, item.answer);
+      const v = validateQuestionAnswer(item.qType, typeModeOf(course, item.qType), flatOptions, item.answer);
       if (!v.ok) {
         answerInvalid++;
         console.warn(`[siyuan-ai-study] 剔除答案异常题目：${item.title.slice(0, 40)}…（${v.reason}）`);

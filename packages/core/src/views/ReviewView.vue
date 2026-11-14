@@ -110,7 +110,7 @@
               <!-- 题目触点（错题复习：关联错题本 meta） -->
               <template v-else-if="item.question">
                 <div class="ri-head">
-                  <span class="tag" :class="item.question.qType"><span class="d"></span>{{ QUESTION_TYPE_LABELS[item.question.qType as QuestionType] }}</span>
+                  <span class="tag" :class="item.question.qType"><span class="d"></span>{{ qTypeLabel(item.question.qType) }}</span>
                   <span class="ri-meta">第 {{ item.schedule.stage }} 阶 · 间隔 {{ item.schedule.intervalDays }} 天 · 累计 {{ item.schedule.reviewTimes }} 次</span>
                 </div>
                 <div v-if="wrongOf(item)" class="ri-wrong">
@@ -122,7 +122,7 @@
                   <button class="btn primary sm" @click="reveal(item.schedule.id)">揭示</button>
                 </template>
                 <template v-else>
-                  <div v-if="item.question.qType !== 'essay'" class="review-body reveal-answer">
+                  <div v-if="qTypeMode(item.question.qType) !== 'essay'" class="review-body reveal-answer">
                     参考答案：{{ item.question.answer }}
                     <div v-if="item.question.analysis" class="review-analysis">{{ item.question.analysis }}</div>
                   </div>
@@ -195,15 +195,18 @@ import {
   submitAnswer,
   setPlanStatus,
   setCourseReviewPaused,
-  QUESTION_TYPE_LABELS,
+  QUESTION_DIFFICULTY_LABELS,
 } from "../api";
-import type { ReviewDueItem, QuestionType, KnowledgePoint, WrongQuestion } from "../api";
+import type { ReviewDueItem, KnowledgePoint, WrongQuestion } from "../api";
 import { capStudySec } from "../constants/study";
 import { getBridge } from "@/bridge";
+import { typeLabelOf, typeModeOf } from "../utils/questionTypes";
 
 const courseStore = useCourseStore();
 const currentCourseId = () => courseStore.currentCourseId;
 const archived = computed(() => courseStore.currentCourse?.status === "archived");
+const qTypeLabel = (qType: string) => typeLabelOf(courseStore.currentCourse, qType);
+const qTypeMode = (qType: string) => typeModeOf(courseStore.currentCourse, qType);
 const route = useRoute();
 const router = useRouter();
 const { confirmWithChoice } = useConfirm();
@@ -376,7 +379,7 @@ async function grade(item: ReviewDueItem, g: "forgotten" | "vague" | "solid") {
     // 题目触点若填了简答也可提交作答记录（不阻塞评分）；fromReview=true 避免与下方牢固评分重复计连对
     // 该重答入口只在「揭示」答案之后出现（textarea 在 revealed 分支内），按受助口径标记
     const answer = essayAnswers[id];
-    if (item.question && item.question.qType === "essay" && answer && answer.trim()) {
+    if (item.question && qTypeMode(item.question.qType) === "essay" && answer && answer.trim()) {
       try {
         await submitAnswer(item.question, answer.trim(), 0, { fromReview: true, assisted: true });
       } catch (e) {

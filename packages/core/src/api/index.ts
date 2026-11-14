@@ -64,6 +64,8 @@ export type {
   AppSettings,
   Mastery,
   PromptTemplateDef,
+  QuestionTypeMode,
+  ExtraQuestionType,
 } from "../types/appData";
 export { PROMPT_TASKS, renderPrompt } from "./promptTemplates";
 export type { PromptTaskMeta, PromptVarInfo } from "./promptTemplates";

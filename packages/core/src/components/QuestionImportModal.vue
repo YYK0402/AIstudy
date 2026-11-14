@@ -55,7 +55,7 @@
         </div>
         <div v-if="report.drafts.length" class="qimp-list">
           <div v-for="(d, i) in report.drafts" :key="i" class="qimp-item">
-            <span class="qimp-type">{{ QUESTION_TYPE_LABELS[d.qType] }}·{{ QUESTION_DIFFICULTY_LABELS[d.difficulty] }}</span>
+            <span class="qimp-type">{{ qTypeLabel(d.qType) }}·{{ QUESTION_DIFFICULTY_LABELS[d.difficulty] }}</span>
             <span class="qimp-title">{{ d.title.replace(/\n/g, " ").slice(0, 30) }}{{ d.title.length > 30 ? "…" : "" }}</span>
             <span v-if="d.unmatchedKpNames.length" class="qimp-warn">未匹配知识点：{{ d.unmatchedKpNames.join("、") }}</span>
           </div>
@@ -82,7 +82,6 @@ import {
   importQuestions,
   createExamPaper,
   getExamPapers,
-  QUESTION_TYPE_LABELS,
   QUESTION_DIFFICULTY_LABELS,
 } from "../api";
 import {
@@ -92,12 +91,17 @@ import {
 } from "../utils/questionImport";
 import type { KnowledgePoint, ExamPaperWithQuestions } from "../api";
 import { getBridge } from "@/bridge";
+import { typeLabelOf } from "../utils/questionTypes";
+import { useCourseStore } from "../stores/course";
 
 const props = defineProps<{
   open: boolean;
   courseId: number;
   knowledgePoints: KnowledgePoint[];
 }>();
+
+const courseStore = useCourseStore();
+const qTypeLabel = (qType: string) => typeLabelOf(courseStore.currentCourse, qType);
 const emit = defineEmits<{
   close: [];
   imported: [count: number];

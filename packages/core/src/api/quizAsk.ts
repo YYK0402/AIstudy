@@ -3,11 +3,12 @@ import { getData, saveData } from "./storage";
 import { nextId, now, parseQuestionKpIds, parseQuestionOptions } from "./format";
 import { findTaskBinding, callAi } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
-import { QUESTION_TYPE_LABELS } from "./constants";
+import { typeLabelOf } from "../utils/questionTypes";
 
 /** 回看 AI 问答上下文（system 提示词）：课程/题干/选项/答案/解析 + 关联知识点 */
 export function buildAskSystem(data: AppData, q: Question): string {
-  const courseName = data.courses.find((c) => c.id === q.courseId)?.name ?? "";
+  const course = data.courses.find((c) => c.id === q.courseId) ?? null;
+  const courseName = course?.name ?? "";
   const options = parseQuestionOptions(q);
   const optionsText =
     options.length > 0
@@ -21,7 +22,7 @@ export function buildAskSystem(data: AppData, q: Question): string {
     : "（无）";
   const vars = {
     courseName,
-    qTypeLabel: QUESTION_TYPE_LABELS[q.qType as keyof typeof QUESTION_TYPE_LABELS] ?? q.qType,
+    qTypeLabel: typeLabelOf(course, q.qType),
     title: q.title,
     options: optionsText,
     answer: q.answer,

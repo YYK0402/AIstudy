@@ -1,4 +1,5 @@
-import type { AnswerRecord, AnswerStatsMonthly, Question, StudyLogMonthly } from "../types/appData";
+import type { AnswerRecord, AnswerStatsMonthly, Course, Question, StudyLogMonthly } from "../types/appData";
+import { typeModeOf } from "./questionTypes";
 
 export interface AnswerAggregates {
   total: number;
@@ -20,6 +21,7 @@ export function aggregateAnswers(
   records: AnswerRecord[],
   questions: Question[],
   monthly: AnswerStatsMonthly[],
+  course: Course | null = null,
 ): AnswerAggregates {
   const qById = new Map(questions.map((q) => [q.id, q]));
   const out: AnswerAggregates = { total: 0, correct: 0, essayTotalScore: 0, essayCount: 0, assistedTotal: 0, assistedCorrect: 0 };
@@ -32,7 +34,7 @@ export function aggregateAnswers(
       out.assistedTotal += 1;
       if (r.isCorrect) out.assistedCorrect += 1;
     }
-    if (q.qType === "essay") {
+    if (typeModeOf(course, q.qType) === "essay") {
       const n = Number(r.score);
       if (Number.isFinite(n)) {
         out.essayTotalScore += n;
