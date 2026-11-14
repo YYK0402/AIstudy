@@ -5,6 +5,8 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(rootDir, "../..");
+// fast-glob 在 Windows 下不认反斜杠绝对路径，统一转正斜杠（否则静态复制 0 个文件）
+const globPath = (p: string) => p.replace(/\\/g, "/");
 
 // 插件主入口构建：src/index.ts -> <仓库根>/dist/index.js（CommonJS，external siyuan）
 export default defineConfig({
@@ -16,10 +18,10 @@ export default defineConfig({
   plugins: [
     viteStaticCopy({
       targets: [
-        { src: resolve(rootDir, "plugin.json"), dest: "./" },
-        { src: resolve(rootDir, "icon.png"), dest: "./" },
-        { src: resolve(rootDir, "preview.png"), dest: "./" },
-        { src: resolve(repoRoot, "README*.md"), dest: "./" },
+        { src: globPath(resolve(rootDir, "plugin.json")), dest: "./" },
+        { src: globPath(resolve(rootDir, "icon.png")), dest: "./" },
+        { src: globPath(resolve(rootDir, "preview.png")), dest: "./" },
+        { src: globPath(resolve(repoRoot, "README*.md")), dest: "./" },
       ],
     }),
   ],
