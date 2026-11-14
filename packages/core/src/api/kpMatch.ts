@@ -5,20 +5,26 @@ export function normalizeKpName(s: string): string {
 }
 
 // 归一化知识点名：小写、去掉空白与标点，用于本地去重
-// 本地判断两个知识点名是否重复（精确/归一化后相同，或相互包含）
+// 本地判断两个知识点名是否重复（归一化后相同，或相互包含且短名占比 ≥0.5）。
+// 占比守卫（M3）：防短 KP 被长名吞并（「成本」⊄「项目成本管理」0.33 不判重；「挣值法」⊂「挣值法分析」0.6 判重）
 export function isDuplicateKpName(a: string, b: string): boolean {
   const na = normalizeKpName(a);
   const nb = normalizeKpName(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
-  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) return true;
+  if (na.length >= 2 && nb.length >= 2 && (na.includes(nb) || nb.includes(na))) {
+    const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
+    if (ratio >= 0.5) return true;
+  }
   return false;
 }
 
-/** 归一化章节引用：在去空白标点的基础上，再剥掉开头的编号前缀（如「第一章」「1.2」「第3节」） */
+/** 归一化章节引用：在去空白标点的基础上，再剥掉开头的编号前缀（如「第一章」「1.2」「第3节」）。
+ *  纯编号名剥空后保留原归一化串，防「1.1」与「1.2」误判同名 */
 export function normalizeChapterRef(s: string): string {
   const n = normalizeKpName(s);
-  return n.replace(/^(第[0-9一二三四五六七八九十百零两]+[章节部分讲单元]|[0-9]+(\.[0-9]+)*[、.]?)+/, "");
+  const stripped = n.replace(/^(第[0-9一二三四五六七八九十百零两]+[章节部分讲单元]|[0-9]+(\.[0-9]+)*[、.]?)+/, "");
+  return stripped || n;
 }
 
 /** 候选中取层级最深者（level 越大层级越深，归属更精确）；同级取先出现者 */
