@@ -7,16 +7,20 @@ import type { StudyBridge } from "../../bridge/types";
 // mock AI：固定返回结构化内容；callAi 执行时触发替换钩子（模拟整理期间内存对象被替换）
 const REFORMATTED = "- 维度 A\n- 维度 B";
 const hooks: { onAi: (() => void) | null } = { onAi: null };
-vi.mock("../ai", () => ({
-  findTaskBinding: () => ({ providerId: 1, modelId: 1 }),
-  callAi: async () => {
+vi.mock("../ai", () => {
+  const callAiImpl = async () => {
     hooks.onAi?.();
     return { content: "```json\n" + JSON.stringify({ content: REFORMATTED }) + "\n```" };
-  },
-  AiCanceledError: class AiCanceledError extends Error {},
-}));
+  };
+  return {
+    findTaskBinding: () => ({ providerId: 1, modelId: 1 }),
+    callAi: callAiImpl,
+    callAiWithRetry: callAiImpl,
+    AiCanceledError: class AiCanceledError extends Error {},
+  };
+});
 
-const { needsReformat, parseReformatContent, isRetryableError, reformatKpContents } = await import("../kpReformat");
+const { needsReformat, parseReformatContent, reformatKpContents } = await import("../kpReformat");
 
 const LONG =
   "按不确定性，项目可分为封闭性项目、半封闭性项目、半开放性项目和开放性项目，其中封闭性项目不确定性最低，开放性项目不确定性最高、信息缺口最大。" +
@@ -87,17 +91,6 @@ describe("parseReformatContent", () => {
   });
 });
 
-describe("isRetryableError", () => {
-  it("429/5xx/超时可重试", () => {
-    expect(isRetryableError(new Error("LLM 请求失败: HTTP 429 rate_limit_error"))).toBe(true);
-    expect(isRetryableError(new Error("LLM 请求失败: HTTP 500 internal"))).toBe(true);
-    expect(isRetryableError(new Error("request timeout"))).toBe(true);
-  });
-  it("422 内容过滤/404 不可重试", () => {
-    expect(isRetryableError(new Error("LLM 请求失败: HTTP 422 input new_sensitive"))).toBe(false);
-    expect(isRetryableError(new Error("HTTP 404 not found"))).toBe(false);
-  });
-});
 
 describe("reformatKpContents 批量执行", () => {
   it("只整理预筛命中的知识点，落库结果可验证", async () => {

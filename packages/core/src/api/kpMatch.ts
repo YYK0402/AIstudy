@@ -1,4 +1,4 @@
-import type { Chapter } from "../types/appData";
+import type { Chapter, KnowledgePoint } from "../types/appData";
 
 export function normalizeKpName(s: string): string {
   return s.toLowerCase().replace(/[\s、，。；：（）()【】\[\]'"“”‘’·\-—/\\,.]/g, "");
@@ -28,6 +28,23 @@ export function pickDeepestChapter(candidates: Chapter[]): Chapter | undefined {
     if (!best || c.level > best.level) best = c;
   }
   return best;
+}
+
+/** 为单个未分配知识点找章节：先按块标题宽松匹配，再按知识点名归一化精确匹配（精确匹配防误挂）；N 级命中取最深 */
+export function matchChapterForKp(
+  kp: Pick<KnowledgePoint, "name" | "chapterName">,
+  chapters: Chapter[],
+): Chapter | undefined {
+  if (kp.chapterName) {
+    const byTitle = findDeepestChapterByTitle(chapters, kp.chapterName);
+    if (byTitle) return byTitle;
+  }
+  const name = normalizeChapterRef(kp.name);
+  if (name.length >= 2) {
+    const byName = chapters.filter((c) => normalizeChapterRef(c.name) === name);
+    if (byName.length > 0) return pickDeepestChapter(byName);
+  }
+  return undefined;
 }
 
 /** 按标题找章节（N 级）：归一化后精确匹配取最深者；否则双向包含（短侧 ≥2 字），最深优先、同级取章节名最长者 */

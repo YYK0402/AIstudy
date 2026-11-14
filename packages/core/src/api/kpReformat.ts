@@ -1,7 +1,7 @@
 // 批量整理知识点内容：预筛单段长文本 → AI 重写为结构化排版（并发 3，只调排版不改信息）；
 // 每条落库前重取最新数据防脏写（对齐 nodeExtract 模式）；已结构化内容预筛跳过
 import { getData, saveData } from "./storage";
-import { callAi, AiCanceledError, findTaskBinding } from "./ai";
+import { callAi, callAiWithRetry, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { extractJsonCandidates, parseJsonCandidates } from "../utils/aiJson";
 
@@ -23,30 +23,6 @@ export interface ReformatResult {
   done: number;
   changed: number;
   failed: number;
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** 限流（429）/服务端错误（5xx）/超时可退避重试；422 内容敏感过滤等不可重试 */
-export function isRetryableError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return /429|rate.?limit|HTTP 5\d\d|超时|timeout/i.test(msg);
-}
-
-const RETRY_DELAYS = [10000, 30000, 60000];
-
-async function callAiWithRetry(
-  input: Parameters<typeof callAi>[0],
-): Promise<Awaited<ReturnType<typeof callAi>>> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await callAi(input);
-    } catch (e) {
-      if (e instanceof AiCanceledError) throw e;
-      if (attempt >= RETRY_DELAYS.length || !isRetryableError(e)) throw e;
-      await sleep(RETRY_DELAYS[attempt]);
-    }
-  }
 }
 
 /** 解析 AI 的 {"content": "..."}（围栏/包装对象容忍）；不可用返回 null */

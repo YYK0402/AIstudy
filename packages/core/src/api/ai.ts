@@ -82,3 +82,28 @@ export async function callAi(input: CallAiInput): Promise<{ content: string; tok
 export function cancelAiCall(taskKey: string, scope?: string): void {
   getBridge().cancelAiCall(taskKey, scope);
 }
+
+/** 限流（429）/服务端错误（5xx）/超时可退避重试；422 内容敏感过滤等不可重试 */
+export function isRetryableError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /429|rate.?limit|HTTP 5\d\d|超时|timeout/i.test(msg);
+}
+
+const DEFAULT_RETRY_DELAYS = [10000, 30000, 60000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 可退避重试的 AI 调用：按 delays 退避（测试可传短延时）；取消与不可重试错误立即抛出 */
+export async function callAiWithRetry(
+  input: CallAiInput,
+  delays: number[] = DEFAULT_RETRY_DELAYS,
+): Promise<Awaited<ReturnType<typeof callAi>>> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callAi(input);
+    } catch (e) {
+      if (e instanceof AiCanceledError) throw e;
+      if (attempt >= delays.length || !isRetryableError(e)) throw e;
+      await sleep(delays[attempt]);
+    }
+  }
+}

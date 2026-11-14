@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { stripThinking } from "../ai";
+import { describe, expect, it, vi } from "vitest";
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
+import { stripThinking, isRetryableError, callAiWithRetry, AiCanceledError } from "../ai";
+import type { CallAiInput } from "../ai";
 
 // think 标签用拼接构造（工具链路会把源码中的原始标签串转写成省略号）
 const OPEN = "<" + "think>";
@@ -47,5 +50,68 @@ describe("stripThinking 剥离模型内联思考块", () => {
 
   it("空串：返回空串", () => {
     expect(stripThinking("")).toBe("");
+  });
+});
+
+describe("isRetryableError 可重试判定", () => {
+  it("429/限流/5xx/超时 → 可重试（含插件真实错误文案）", () => {
+    expect(isRetryableError(new Error("LLM 请求失败: HTTP 429 rate_limit_error"))).toBe(true);
+    expect(isRetryableError(new Error("HTTP 500 internal"))).toBe(true);
+    expect(isRetryableError(new Error("request timeout"))).toBe(true);
+    expect(isRetryableError(new Error("请求超时"))).toBe(true);
+  });
+  it("422 内容敏感过滤/404 → 不可重试", () => {
+    expect(isRetryableError(new Error("LLM 请求失败: HTTP 422 input new_sensitive"))).toBe(false);
+    expect(isRetryableError(new Error("HTTP 404 not found"))).toBe(false);
+  });
+});
+
+describe("callAiWithRetry 退避重试", () => {
+  const input: CallAiInput = { providerId: 1, modelId: "m1", taskKey: "kp_relink", messages: [] };
+  function stubCallAi(impl: (n: number) => Promise<{ content: string; tokenIn: number; tokenOut: number }>) {
+    let n = 0;
+    setBridge({ callAi: async () => impl(++n) } as unknown as StudyBridge);
+    return () => n;
+  }
+
+  it("429 失败两次后成功：按传入 delays 重试返回成功", async () => {
+    const count = stubCallAi(async (n) => {
+      if (n < 3) throw new Error("HTTP 429 Too Many Requests");
+      return { content: "ok", tokenIn: 1, tokenOut: 1 };
+    });
+    const res = await callAiWithRetry(input, [1, 1, 1]);
+    expect(res.content).toBe("ok");
+    expect(count()).toBe(3);
+  });
+
+  it("不可重试错误：不重试直接抛出", async () => {
+    const count = stubCallAi(async () => {
+      throw new Error("HTTP 422 content filtered");
+    });
+    await expect(callAiWithRetry(input, [1, 1, 1])).rejects.toThrow("HTTP 422 content filtered");
+    expect(count()).toBe(1);
+  });
+
+  it("AiCanceledError：不重试直接抛出", async () => {
+    const count = stubCallAi(async () => {
+      throw new AiCanceledError();
+    });
+    await expect(callAiWithRetry(input, [1, 1, 1])).rejects.toBeInstanceOf(AiCanceledError);
+    expect(count()).toBe(1);
+  });
+
+  it("重试次数耗尽：抛出最后错误", async () => {
+    const count = stubCallAi(async () => {
+      throw new Error("HTTP 429 Too Many Requests");
+    });
+    await expect(callAiWithRetry(input, [1, 1, 1])).rejects.toThrow("HTTP 429");
+    expect(count()).toBe(4); // 初始 1 次 + 3 次重试
+  });
+
+  it("默认 delays：不传 delays 时也可成功（不触发真实等待即通过）", async () => {
+    const count = stubCallAi(async () => ({ content: "ok", tokenIn: 1, tokenOut: 1 }));
+    const res = await callAiWithRetry(input);
+    expect(res.content).toBe("ok");
+    expect(count()).toBe(1);
   });
 });

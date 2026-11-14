@@ -416,9 +416,17 @@ function chapterKpIds(chapterId: number): Set<number> {
   return expandChapterNodeIds(chapters.value, chapterId);
 }
 
+const chapterIdSet = computed(() => new Set(chapters.value.map((c) => c.id)));
+
+/** 归位范围：未分配（chapterId=null）+ 孤儿（chapterId 指向已删章节） */
+function isRelinkableKp(kp: KnowledgePoint): boolean {
+  return kp.chapterId === null || !chapterIdSet.value.has(kp.chapterId);
+}
+
 /** 知识点所属章节完整路径（N 级，搜索结果展示归属用） */
 function kpChapterPath(kp: KnowledgePoint): string {
   if (kp.chapterId == null) return "未分配";
+  if (!chapterIdSet.value.has(kp.chapterId)) return "孤儿";
   return chapterPathText(chapters.value, kp.chapterId);
 }
 
@@ -433,12 +441,12 @@ function openReview(ch: Chapter) {
   reviewChapter.value = ch;
 }
 
-const unassignedCount = computed(() => knowledgePoints.value.filter((k) => k.chapterId === null).length);
+const unassignedCount = computed(() => knowledgePoints.value.filter(isRelinkableKp).length);
 
 const filteredKnowledgePoints = computed(() => {
   let list = knowledgePoints.value;
   if (showUnassigned.value) {
-    list = list.filter((k) => k.chapterId === null);
+    list = list.filter(isRelinkableKp);
   } else if (selectedChapterId.value !== null) {
     const ids = chapterKpIds(selectedChapterId.value);
     list = list.filter((k) => k.chapterId !== null && ids.has(k.chapterId));
@@ -641,22 +649,20 @@ function toggleUnassigned() {
   currentPage.value = 1;
 }
 
-// 把未分配知识点按章节标题重新匹配归位（章节后建/改名后）
+// 把未分配/孤儿知识点两级匹配归位（本地确定性优先 + AI 兜底，章节后建/改名后）
 async function autoRelink() {
   const id = currentCourseId();
   if (!id) return;
   relinking.value = true;
   try {
     const res = await relinkUnassignedKps(id);
-    getBridge().showMessage(
-      res.linked > 0
-        ? res.stuck > 0
-          ? `已自动归位 ${res.linked} 个知识点；${res.stuck} 个无法自动挂钩（无标题或与章节名差异过大），可逐个「编辑」指定章节`
-          : `已自动归位 ${res.linked} 个知识点`
-        : `${res.stuck} 个知识点无法自动挂钩，需逐个「编辑」手动指定章节`,
-      4000,
-      res.stuck > 0 ? "error" : "info",
-    );
+    const parts: string[] = [];
+    if (res.linked > 0) parts.push(`已自动归位 ${res.linked} 个（本地 ${res.linkedLocal} / AI ${res.linkedAi}）`);
+    if (res.aiSkipped) parts.push("「知识点归位」未配置模型，仅本地匹配");
+    else if (res.aiError) parts.push(`AI 匹配失败：${res.aiError}`);
+    if (res.stuck > 0) parts.push(`${res.stuck} 个无法自动挂钩，可逐个「编辑」指定章节`);
+    if (parts.length === 0) parts.push("没有需要归位的知识点");
+    getBridge().showMessage(parts.join("；"), 4000, res.stuck > 0 || res.aiError ? "error" : "info");
     await loadKnowledgePoints();
   } catch (e) {
     console.error("自动归位失败:", e);

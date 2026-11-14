@@ -4,7 +4,8 @@ import { getSettings } from "./settings";
 import { nextId, now } from "./format";
 import { persistDocIfEnabled, removeDoc, removeDocIfExists } from "./docStore";
 import { sanitizeDocSegment } from "../utils/docPath";
-import { findDeepestChapterByTitle, normalizeChapterRef, normalizeKpName, pickDeepestChapter } from "./kpMatch";
+import { matchChapterForKp, normalizeChapterRef } from "./kpMatch";
+import { relinkKps, type RelinkOutcome } from "./kpRelink";
 import { removeCsvIds } from "../utils/csvIds";
 import { getBridge } from "@/bridge";
 import { effectiveNodeOf } from "../utils/kpTreeImport";
@@ -301,20 +302,6 @@ export interface RelinkResult {
   linkedIds: number[];
 }
 
-/** 为单个未分配知识点找章节：先按块标题宽松匹配，再按知识点名归一化精确匹配（精确匹配防误挂）；N 级命中取最深 */
-function matchChapterForKp(kp: KnowledgePoint, chapters: Chapter[]): Chapter | undefined {
-  if (kp.chapterName) {
-    const byTitle = findDeepestChapterByTitle(chapters, kp.chapterName);
-    if (byTitle) return byTitle;
-  }
-  const name = normalizeChapterRef(kp.name);
-  if (name.length >= 2) {
-    const byName = chapters.filter((c) => normalizeChapterRef(c.name) === name);
-    if (byName.length > 0) return pickDeepestChapter(byName);
-  }
-  return undefined;
-}
-
 function relinkCourseKps(data: AppData, courseId: number): RelinkResult {
   const courseChapters = data.chapters.filter((c) => c.courseId === courseId);
   let linked = 0;
@@ -334,19 +321,9 @@ function relinkCourseKps(data: AppData, courseId: number): RelinkResult {
   return { linked, stuck, linkedIds };
 }
 
-/** 将课程内未分配章节的知识点重新匹配绑定（章节后建/改名后使用），返回绑定数与无法自动挂钩数 */
-export async function relinkUnassignedKps(courseId: number): Promise<RelinkResult> {
-  const data = await getData();
-  const result = relinkCourseKps(data, courseId);
-  if (result.linked > 0) {
-    await saveData(data);
-    for (const id of result.linkedIds) {
-      void scheduleKpRegionSync(courseId, null);
-      const kp = data.knowledgePoints.find((k) => k.id === id);
-      if (kp) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, data.chapters));
-    }
-  }
-  return result;
+/** 将课程内未分配/孤儿知识点两级匹配归位（本地确定性优先 + AI 兜底，直接落库），章节后建/改名后使用 */
+export async function relinkUnassignedKps(courseId: number): Promise<RelinkOutcome> {
+  return relinkKps(courseId);
 }
 
 export async function updateChapter(chapter: Chapter): Promise<void> {
