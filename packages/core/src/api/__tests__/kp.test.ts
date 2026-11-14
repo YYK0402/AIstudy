@@ -80,6 +80,7 @@ function mergeFixture(): MergeResult {
       { materialId: 10, materialSeq: 1, nodeId: 1 },
     ],
     failed: [],
+    processed: [10],
   };
 }
 
@@ -182,6 +183,33 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     expect(d2.tocMappings).toHaveLength(2);
   });
 
+  it("M2：AI 节点「第5章 X」复用既有「X」章，不建重章", async () => {
+    seedCleanCourse([]);
+    dataRef.data.chapters = [
+      { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "项目成本管理", level: 1, sort: 1 },
+    ];
+    const r = await importChapterTree(1, [
+      { name: "第5章 项目成本管理", level: 1, parentName: null },
+    ]);
+    expect(r.created).toBe(0);
+    expect(dataRef.data.chapters.filter((c) => c.courseId === 1)).toHaveLength(1);
+  });
+
+  it("M2：父章定位走 normalizeChapterRef：「第1章 X」命中既有「X」", async () => {
+    seedCleanCourse([]);
+    dataRef.data.chapters = [
+      { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "项目成本管理", level: 1, sort: 1 },
+    ];
+    const r = await importChapterTree(1, [
+      { name: "项目成本管理", level: 1, parentName: null },
+      { name: "成本估算方法", level: 2, parentName: "第1章 项目成本管理" },
+    ]);
+    expect(r.created).toBe(1);
+    const sub = dataRef.data.chapters.find((c) => c.name === "成本估算方法");
+    expect(sub).toBeTruthy();
+    expect(sub!.parentId).toBe(1); // 挂到既有章下，而非父丢失挂到课程根
+  });
+
   it("deleteChapters 级联删 tocMappings", async () => {
     seedCleanCourse([matFixture()]);
     await importChapterTree(1, [
@@ -192,6 +220,72 @@ describe("importChapterTree N 级导入 + tocMappings（outline-first）", () =>
     const top = dataRef.data.chapters.find((c) => c.name === "第一章")!;
     await deleteChapters([top.id]);
     expect(dataRef.data.tocMappings).toHaveLength(0);
+  });
+});
+
+describe("importChapterTree 子集合并映射保留（H1）", () => {
+  beforeEach(() => {
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      showMessage: () => {},
+    } as unknown as StudyBridge);
+  });
+
+  function twoMatCourse(): void {
+    seedCleanCourse([
+      matFixture(),
+      { ...matFixture(), id: 11, name: "教材B", contentText: "第一章\n丙\n1.1\n丁" },
+    ]);
+    dataRef.data.chapters = [
+      { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: 1, sort: 1 },
+      { id: 2, courseId: 1, parentId: 1, siyuanBlockId: null, name: "1.1", level: 2, sort: 1 },
+    ];
+    dataRef.data.tocMappings = [
+      { id: 1, materialId: 10, courseId: 1, materialPath: "第一章", chapterId: 1 },
+      { id: 2, materialId: 11, courseId: 1, materialPath: "第一章", chapterId: 1 },
+    ];
+  }
+
+  it("子集合并：未处理资料映射保留，已处理资料映射被替换", async () => {
+    twoMatCourse();
+    const res: MergeResult = {
+      nodes: [
+        { id: 0, parent: null, name: "第一章", variants: [], chapterId: 1 },
+        { id: 1, parent: 0, name: "1.1", variants: [], chapterId: 2 },
+      ],
+      mappings: [{ materialId: 11, materialSeq: 1, nodeId: 1 }],
+      failed: [],
+      processed: [11],
+    };
+    await importChapterTree(1, [
+      { name: "第一章", level: 1, parentName: null },
+      { name: "1.1", level: 2, parentName: "第一章" },
+    ], { result: res });
+    const m10 = dataRef.data.tocMappings.filter((m) => m.materialId === 10);
+    const m11 = dataRef.data.tocMappings.filter((m) => m.materialId === 11);
+    expect(m10).toHaveLength(1); // 未处理：旧映射保留
+    expect(m10[0].chapterId).toBe(1);
+    expect(m11).toHaveLength(1); // 已处理：替换为新映射
+    expect(m11[0].chapterId).toBe(2);
+    expect(m11[0].materialPath).toBe("第一章>1.1");
+  });
+
+  it("processed 缺省（旧格式 result）：保留全部旧映射，只追加新映射", async () => {
+    twoMatCourse();
+    const res = {
+      nodes: [{ id: 0, parent: null, name: "第一章", variants: [], chapterId: 1 }],
+      mappings: [{ materialId: 10, materialSeq: 0, nodeId: 0 }],
+      failed: [],
+    } as unknown as MergeResult;
+    await importChapterTree(1, [
+      { name: "第一章", level: 1, parentName: null },
+    ], { result: res });
+    expect(dataRef.data.tocMappings.filter((m) => m.materialId === 11)).toHaveLength(1);
+    expect(dataRef.data.tocMappings.filter((m) => m.materialId === 10)).toHaveLength(1);
   });
 });
 

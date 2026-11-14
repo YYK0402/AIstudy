@@ -36,11 +36,9 @@ export async function deleteKnowledgePoint(id: number): Promise<void> {
   await deleteKnowledgePoints([id]);
 }
 
-/** 批量删除知识点（级联清理复习触点、讲解记录与前置引用） */
-export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
-  if (ids.length === 0) return;
-  const data = await getData();
-  const removed = new Set(ids);
+/** 级联清理被删知识点的关联引用（复习触点/讲解记录/闪卡/题目 kpIds/计划任务/前置引用）。
+ *  纯数据操作（不保存），返回被删 KP；供 deleteKnowledgePoints 与全量重抽 staging 复用 */
+export function purgeKpCascade(data: AppData, removed: Set<number>): KnowledgePoint[] {
   const removedKps = data.knowledgePoints.filter((k) => removed.has(k.id));
   data.knowledgePoints = data.knowledgePoints.filter((k) => !removed.has(k.id));
   // 级联清理复习触点与讲解记录，避免悬挂引用
@@ -64,6 +62,14 @@ export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
       k.prevKpIds = kept.join(",");
     }
   }
+  return removedKps;
+}
+
+/** 批量删除知识点（级联清理复习触点、讲解记录与前置引用） */
+export async function deleteKnowledgePoints(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const data = await getData();
+  const removedKps = purgeKpCascade(data, new Set(ids));
   await saveData(data);
   for (const kp of removedKps) {
     void scheduleKpRegionSync(kp.courseId, effectiveNodeOf(kp, data.chapters));
@@ -143,8 +149,8 @@ export async function importChapterTree(
   const course = data.courses.find((c) => c.id === courseId);
   const coursePath = `/${sanitizeDocSegment(course?.name ?? "课程")}`;
   const existing = data.chapters.filter((c) => c.courseId === courseId);
-  // 去空白归一化比较：AI 目录矫正可能只改空格/标点（如「第一章X」→「第一章 X」），避免误判为新章节重复建章
-  const norm = (s: string) => s.replace(/\s+/g, "");
+  // 判重口径与 createChapter/知识点章节匹配一致（normalizeChapterRef：去空白标点 + 剥「第X章」编号前缀），
+  // 防 AI 输出带编号前缀的节点（「第5章 成本」vs 既有「成本」）误建重章
   const persistOn = (await getSettings()).persistToSiyuan;
   let created = 0;
   let docFailed = 0;
@@ -155,13 +161,13 @@ export async function importChapterTree(
     const node = nodes[i];
     const name = node.name.trim();
     if (!name) continue;
-    const dup = existing.find((c) => norm(c.name) === norm(name));
+    const dup = existing.find((c) => normalizeChapterRef(c.name) === normalizeChapterRef(name));
     if (dup) {
       nodeIdToChapter.set(i, dup.id);
       continue;
     }
     const parent = node.parentName
-      ? existing.find((c) => c.level === node.level - 1 && norm(c.name) === norm(node.parentName!))
+      ? existing.find((c) => c.level === node.level - 1 && normalizeChapterRef(c.name) === normalizeChapterRef(node.parentName!))
       : null;
     const sort =
       data.chapters
@@ -204,18 +210,26 @@ export async function importChapterTree(
     if (node.level < 2 || !parentName) continue;
     const name = node.name.trim();
     if (!name) continue;
-    const dup = existing.find((c) => norm(c.name) === norm(name));
+    const dup = existing.find((c) => normalizeChapterRef(c.name) === normalizeChapterRef(name));
     if (!dup || dup.level !== node.level) continue;
-    const target = existing.find((c) => c.level === node.level - 1 && norm(c.name) === norm(parentName));
+    const target = existing.find((c) => c.level === node.level - 1 && normalizeChapterRef(c.name) === normalizeChapterRef(parentName));
     if (!target || dup.parentId === target.id) continue;
     reparents.push({ chapter: dup, newParentId: target.id, newSort: null, newLevel: dup.level });
   }
   const moveErrors = reparents.length > 0 ? await applyParentAndSort(data, reparents) : [];
-  // toc 映射落库：课程级替换（先删该课程旧映射），(materialId, materialPath) 幂等去重；
-  // materialPath = 资料 outline 节点路径（祖先 > 自身）
+  // toc 映射落库：只清「本轮成功合并（processed）」资料的旧映射再写入新映射——
+  // 子集合并（单资料重识别）不清未处理资料，失败资料保留旧映射（防静默丢溯源）；
+  // processed 缺省（旧格式 result）时保留全部旧映射只追加。materialPath = 资料 outline 节点路径（祖先 > 自身）
   if (toc) {
-    const nextMappings = data.tocMappings.filter((m) => m.courseId !== courseId);
+    const processedMatIds = new Set(toc.result.processed ?? []);
+    const nextMappings = data.tocMappings.filter(
+      (m) => m.courseId !== courseId || !processedMatIds.has(m.materialId),
+    );
     const seen = new Set<string>();
+    // 保留的本课程旧映射键入 seen：processed 缺省（旧格式 result）走纯追加时不产生同 (资料,路径) 重复
+    for (const m of nextMappings) {
+      if (m.courseId === courseId) seen.add(`${m.materialId}:${m.materialPath}`);
+    }
     let mid = data.tocMappings.reduce((mx, m) => Math.max(mx, m.id), 0) + 1;
     // 按资料 id 显式查找（RawMapping.materialId 是资料 id，与列表顺序无关，防子集合并下标错位）
     const byId = new Map((await queryMaterials(courseId)).map((m) => [m.id, m]));
