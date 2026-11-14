@@ -192,6 +192,21 @@
       </div>
     </div>
     <div class="card">
+      <h3>备份与恢复</h3>
+      <div class="s t-faint" style="margin-top:0">
+        导出全量数据（课程内容 + 学习进度 + 模型配置）为 zip 文件，用于备份、换机或迁移到其它端；
+        也可从备份文件恢复（覆盖或合并）。
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:12px">
+        <button class="btn primary sm" @click="backupExportOpen = true">
+          <AppIcon name="download" :size="13" /> 导出全量备份
+        </button>
+        <button class="btn sm" @click="backupRestoreOpen = true">
+          <AppIcon name="upload" :size="13" /> 从备份恢复
+        </button>
+      </div>
+    </div>
+    <div class="card">
       <h3>最近调用日志</h3>
       <div v-if="providerStore.logs.length === 0" class="empty-state" style="padding:24px 0">
         <AppIcon name="book" :size="28" />
@@ -263,11 +278,15 @@
         </div>
       </template>
     </div>
+    <BackupExportModal :open="backupExportOpen" @close="backupExportOpen = false" />
+    <BackupRestoreModal :open="backupRestoreOpen" @close="backupRestoreOpen = false" />
   </div>
 </template>
 
 <script setup lang="ts">
 import AppIcon from "../components/AppIcon.vue";
+import BackupExportModal from "../components/BackupExportModal.vue";
+import BackupRestoreModal from "../components/BackupRestoreModal.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useModalStore } from "../stores/modal";
 import { useProviderStore } from "../stores/provider";
@@ -296,6 +315,9 @@ import { getBridge } from "@/bridge";
 const modalStore = useModalStore();
 const { confirm } = useConfirm();
 const providerStore = useProviderStore();
+
+const backupExportOpen = ref(false);
+const backupRestoreOpen = ref(false);
 
 const settings = reactive({
   chapterMode: "manual" as "manual" | "auto",
