@@ -2,7 +2,7 @@
   <Teleport to=".ai-study-app">
   <div class="modal-mask" :class="{ open: open }" @click.self="close">
     <div class="modal">
-      <h2>编辑知识点</h2>
+      <h2>{{ knowledgePoint ? "编辑知识点" : "新建知识点" }}</h2>
       <div class="field">
         <label>名称 <span class="req">*</span></label>
         <input v-model="form.name" aria-label="知识点名称" />
@@ -68,7 +68,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { docsEnabled, parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
+import { createKnowledgePoint, docsEnabled, parseTagsInput, queryChapters, updateKnowledgePoint } from "../api";
 import type { Chapter, KnowledgePoint, SiyuanDocSelection } from "../api";
 import SiyuanDocPicker from "./SiyuanDocPicker.vue";
 import { getBridge } from "@/bridge";
@@ -76,7 +76,11 @@ import { buildChapterTreeFlat, type NestedChapter } from "../utils/outline";
 
 const props = defineProps<{
   open: boolean;
+  /** 所属课程（新建态用于加载章节树） */
+  courseId: number;
   knowledgePoint: KnowledgePoint | null;
+  /** 新建态默认归属章节（null/0=未分配） */
+  defaultChapterId?: number | null;
 }>();
 
 const emit = defineEmits<{ (e: "close"): void; (e: "saved"): void }>();
@@ -125,8 +129,7 @@ function onDocClick(e: MouseEvent) {
 }
 
 function loadChapters() {
-  if (!props.knowledgePoint) return;
-  queryChapters(props.knowledgePoint.courseId).then((cs) => {
+  queryChapters(props.courseId).then((cs) => {
     chapters.value = cs;
   });
 }
@@ -150,8 +153,21 @@ watch(
   { immediate: true },
 );
 
-onMounted(() => {
+/** 打开准备：加载章节树；新建态重置空表单 + 默认章节（编辑态由 knowledgePoint watch 回填） */
+function prepareForm() {
   loadChapters();
+  if (!props.knowledgePoint) {
+    form.name = "";
+    form.content = "";
+    form.mastery = "unlearn";
+    chapterId.value = props.defaultChapterId ?? 0;
+    tagsText.value = "";
+    binding.value = null;
+  }
+}
+
+onMounted(() => {
+  prepareForm();
   document.addEventListener("click", onDocClick);
 });
 
@@ -162,9 +178,7 @@ onBeforeUnmount(() => {
 watch(
   () => props.open,
   (open) => {
-    if (open) {
-      loadChapters();
-    }
+    if (open) prepareForm();
   },
 );
 
@@ -173,20 +187,36 @@ function close() {
 }
 
 async function save() {
-  if (!props.knowledgePoint || !form.name.trim()) return;
+  if (!form.name.trim()) return;
   saving.value = true;
   try {
     const tags = parseTagsInput(tagsText.value);
-    await updateKnowledgePoint({
-      ...props.knowledgePoint,
-      name: form.name.trim(),
-      content: form.content,
-      mastery: form.mastery,
-      chapterId: chapterId.value === 0 ? null : chapterId.value,
-      tags: tags.length ? tags : undefined,
-      blockId: binding.value ? (binding.value.blockId ?? binding.value.docId) : null,
-      blockName: binding.value?.label,
-    });
+    const chapterIdVal = chapterId.value === 0 ? null : chapterId.value;
+    const blockId = binding.value ? (binding.value.blockId ?? binding.value.docId) : null;
+    const blockName = binding.value?.label;
+    if (props.knowledgePoint) {
+      await updateKnowledgePoint({
+        ...props.knowledgePoint,
+        name: form.name.trim(),
+        content: form.content,
+        mastery: form.mastery,
+        chapterId: chapterIdVal,
+        tags: tags.length ? tags : undefined,
+        blockId,
+        blockName,
+      });
+    } else {
+      await createKnowledgePoint({
+        courseId: props.courseId,
+        chapterId: chapterIdVal,
+        name: form.name.trim(),
+        content: form.content,
+        mastery: form.mastery,
+        tags: tags.length ? tags : undefined,
+        blockId,
+        blockName,
+      });
+    }
     emit("saved");
     close();
   } catch (e) {

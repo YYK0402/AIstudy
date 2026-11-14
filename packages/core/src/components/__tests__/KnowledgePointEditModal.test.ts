@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { nextTick } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import KnowledgePointEditModal from "../KnowledgePointEditModal.vue";
-import { queryChapters } from "../../api";
+import { createKnowledgePoint, queryChapters, updateKnowledgePoint } from "../../api";
 import type { Chapter, KnowledgePoint } from "../../api";
 
 vi.mock("../../api", () => ({
@@ -11,6 +11,7 @@ vi.mock("../../api", () => ({
   parseTagsInput: (s: string) => s.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
   queryChapters: vi.fn(),
   updateKnowledgePoint: vi.fn(),
+  createKnowledgePoint: vi.fn(),
 }));
 
 function ch(id: number, parentId: number | null, level: number, sort: number, name: string): Chapter {
@@ -61,7 +62,7 @@ function mountModal() {
   host = document.createElement("div");
   host.className = "ai-study-app";
   document.body.appendChild(host);
-  wrapper = mount(KnowledgePointEditModal, { props: { open: true, knowledgePoint: KP } });
+  wrapper = mount(KnowledgePointEditModal, { props: { open: true, courseId: 1, knowledgePoint: KP } });
 }
 
 afterEach(() => {
@@ -111,5 +112,58 @@ describe("KnowledgePointEditModal 归属章节下拉（N 级）", () => {
     await nextTick();
     expect(q(".chapter-tree-panel")).toBeNull();
     expect(q(".chapter-tree-trigger")!.textContent).toContain("第一章");
+  });
+});
+
+describe("KnowledgePointEditModal 新建态", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("新建态：标题「新建知识点」、表单空、章节默认 defaultChapterId，保存走 createKnowledgePoint", async () => {
+    vi.mocked(queryChapters).mockResolvedValue(CHAPTERS);
+    vi.mocked(createKnowledgePoint).mockResolvedValue({ ...KP, id: 11 });
+    host = document.createElement("div");
+    host.className = "ai-study-app";
+    document.body.appendChild(host);
+    wrapper = mount(KnowledgePointEditModal, {
+      props: { open: true, courseId: 1, knowledgePoint: null, defaultChapterId: 2 },
+    });
+    await flushPromises();
+    expect(q(".modal h2")!.textContent).toBe("新建知识点");
+    const nameInput = q('input[aria-label="知识点名称"]') as HTMLInputElement;
+    expect(nameInput.value).toBe("");
+    // 默认章节 = defaultChapterId（1.1 节）
+    expect(q(".chapter-tree-trigger")!.textContent).toContain("1.1 节");
+
+    nameInput.value = "手动知识点";
+    nameInput.dispatchEvent(new Event("input"));
+    await nextTick();
+    (q(".btn.primary") as HTMLElement).click();
+    await flushPromises();
+
+    expect(vi.mocked(createKnowledgePoint)).toHaveBeenCalledTimes(1);
+    const arg = vi.mocked(createKnowledgePoint).mock.calls[0][0];
+    expect(arg.courseId).toBe(1);
+    expect(arg.chapterId).toBe(2);
+    expect(arg.name).toBe("手动知识点");
+    expect(arg.content).toBe("");
+    expect(arg.mastery).toBe("unlearn");
+    expect(arg.blockId).toBeNull();
+    expect(vi.mocked(updateKnowledgePoint)).not.toHaveBeenCalled();
+    expect(wrapper.emitted("saved")).toBeTruthy();
+    expect(wrapper.emitted("close")).toBeTruthy();
+  });
+
+  it("编辑态保存仍走 updateKnowledgePoint，不走 createKnowledgePoint", async () => {
+    vi.mocked(queryChapters).mockResolvedValue(CHAPTERS);
+    vi.mocked(updateKnowledgePoint).mockResolvedValue(undefined);
+    mountModal();
+    await flushPromises();
+    expect(q(".modal h2")!.textContent).toBe("编辑知识点");
+    (q(".btn.primary") as HTMLElement).click();
+    await flushPromises();
+    expect(vi.mocked(updateKnowledgePoint)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createKnowledgePoint)).not.toHaveBeenCalled();
   });
 });

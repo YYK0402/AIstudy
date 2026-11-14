@@ -34,7 +34,7 @@ setBridge({
     },
   } as unknown as StudyBridge);
 
-const { createChapter, importChapterTree, deleteChapters, relinkUnassignedKps } = await import("../kp");
+const { createChapter, importChapterTree, deleteChapters, relinkUnassignedKps, createKnowledgePoint } = await import("../kp");
 
 describe("createChapter 判重口径（与知识点章节匹配一致的归一化）", () => {
   it("仅「第X章/节」前缀或空格差异 → 视为重名，拒绝创建", async () => {
@@ -318,5 +318,71 @@ describe("relinkUnassignedKps 章节匹配（matchChapterForKp）", () => {
     expect(res.linked).toBe(1);
     expect(res.stuck).toBe(0);
     expect(dataRef.data.knowledgePoints[0].chapterId).toBe(2); // 最深命中：1.1 节（L2）而非第一章（L1）
+  });
+});
+
+describe("createKnowledgePoint 手动新建", () => {
+  beforeEach(() => {
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (next: AppData) => {
+        dataRef.data = next;
+        return { code: 0 };
+      },
+      showMessage: () => {},
+    } as unknown as StudyBridge);
+    seedCleanCourse();
+    dataRef.data.chapters = [
+      { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章 鸦片战争", level: 1, sort: 1 },
+      { id: 2, courseId: 1, parentId: 1, siyuanBlockId: null, name: "1.1 战争背景", level: 2, sort: 1 },
+    ];
+    dataRef.data.knowledgePoints = [
+      {
+        id: 7, courseId: 1, chapterId: 1, blockId: null, name: "已有知识点A", content: "a",
+        mastery: "unlearn", sourceAssetIds: "10", prevKpIds: "", chapterName: "第一章 鸦片战争", sort: 5,
+        createTime: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: 9, courseId: 1, chapterId: 2, blockId: null, name: "已有知识点B", content: "b",
+        mastery: "unlearn", sourceAssetIds: "10", prevKpIds: "", chapterName: "1.1 战争背景", sort: 7,
+        createTime: "2026-01-01T00:00:00Z",
+      },
+    ];
+  });
+
+  it("章下创建：id 取全局最大+1，sort 含子级章节追加末尾，chapterName=章名，无资料来源", async () => {
+    const kp = await createKnowledgePoint({ courseId: 1, chapterId: 1, name: "手动知识点", content: "手动内容" });
+    expect(kp.id).toBe(10);
+    expect(kp.chapterId).toBe(1);
+    expect(kp.chapterName).toBe("第一章 鸦片战争");
+    expect(kp.sort).toBe(8); // 章1范围（含子级节2）现有最大 sort 7 + 1
+    expect(kp.sourceAssetIds).toBe("");
+    expect(kp.prevKpIds).toBe("");
+    expect(kp.mastery).toBe("unlearn");
+    expect(kp.blockId).toBeNull();
+    expect(kp.createTime).toBeTruthy();
+    expect(dataRef.data.knowledgePoints).toHaveLength(3);
+  });
+
+  it("节下创建：sort 只按本节现有 KP 追加", async () => {
+    const kp = await createKnowledgePoint({ courseId: 1, chapterId: 2, name: "节内知识点", content: "" });
+    expect(kp.chapterId).toBe(2);
+    expect(kp.chapterName).toBe("1.1 战争背景");
+    expect(kp.sort).toBe(8); // 节2现有最大 sort 7 + 1
+  });
+
+  it("未分配创建：chapterId=null、chapterName 空、sort 从 0 起，可带掌握度/标签/文档绑定", async () => {
+    const kp = await createKnowledgePoint({
+      courseId: 1, chapterId: null, name: "未分配知识点", content: "",
+      mastery: "known", tags: ["手动"], blockId: "doc-1", blockName: "某文档",
+    });
+    expect(kp.chapterId).toBeNull();
+    expect(kp.chapterName).toBe("");
+    expect(kp.sort).toBe(0);
+    expect(kp.mastery).toBe("known");
+    expect(kp.tags).toEqual(["手动"]);
+    expect(kp.blockId).toBe("doc-1");
+    expect(kp.blockName).toBe("某文档");
+    expect(dataRef.data.knowledgePoints).toHaveLength(3);
   });
 });

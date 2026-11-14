@@ -75,6 +75,7 @@
               </button>
               <button v-if="!kpBatchMode" class="btn sm ghost" title="批量删除知识点" :disabled="filteredKnowledgePoints.length === 0" @click="enterKpBatchMode"><AppIcon name="check-square" :size="13" /><span>批量删除</span></button>
               <button v-else class="btn sm ghost" @click="exitKpBatchMode">取消</button>
+              <button v-if="!kpBatchMode" class="btn primary sm" title="手动新建知识点（默认归入当前选中章节）" :disabled="!currentCourseId()" @click="startNewKp">＋ 新建知识点</button>
             </template>
             <span class="kp-count">共 {{ filteredKnowledgePoints.length }} 个</span>
           </span>
@@ -226,7 +227,14 @@
       @edit="editDetailKp"
       @delete="removeDetailKp"
     />
-    <KnowledgePointEditModal :open="editingKp !== null" :knowledge-point="editingKp" @close="editingKp = null" @saved="loadKnowledgePoints" />
+    <KnowledgePointEditModal
+      :open="kpModalOpen"
+      :course-id="currentCourseId()"
+      :knowledge-point="editingKp"
+      :default-chapter-id="selectedChapterId"
+      @close="kpModalOpen = false"
+      @saved="loadKnowledgePoints"
+    />
     <MaterialPreviewModal :open="previewMaterial !== null" :material="previewMaterial" @close="previewMaterial = null" />
     <ChapterEditModal
       :open="chapterModal !== null"
@@ -273,6 +281,7 @@ defineOptions({ name: "CourseContentView" });
 onDeactivated(() => {
     detailKp.value = null;
     editingKp.value = null;
+    kpModalOpen.value = false;
     previewMaterial.value = null;
     chapterModal.value = null;
     reviewChapter.value = null;
@@ -379,6 +388,7 @@ async function refreshSiyuanPersist() {
 }
 const knowledgePoints = ref<KnowledgePoint[]>([]);
 const editingKp = ref<KnowledgePoint | null>(null);
+const kpModalOpen = ref(false);
 const detailKp = ref<KnowledgePoint | null>(null);
 const route = useRoute();
 const router = useRouter();
@@ -1059,7 +1069,14 @@ function viewKp(kp: KnowledgePoint) {
 
 function editDetailKp() {
   editingKp.value = detailKp.value;
+  kpModalOpen.value = true;
   detailKp.value = null;
+}
+
+/** 手动新建知识点：默认归入当前选中章节（未选中章节=未分配），表单内可改 */
+function startNewKp() {
+  editingKp.value = null;
+  kpModalOpen.value = true;
 }
 
 async function removeDetailKp() {

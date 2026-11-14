@@ -32,6 +32,63 @@ export async function updateKnowledgePoint(kp: KnowledgePoint): Promise<void> {
   }
 }
 
+/** 手动新建知识点（课程内容页「＋ 新建知识点」入口）：
+ *  sort 在归属范围（章节含全部后代；未分配=未分配组）现有最大 sort 后追加，范围空则 0 */
+export async function createKnowledgePoint(input: {
+  courseId: number;
+  chapterId: number | null;
+  name: string;
+  content: string;
+  mastery?: KnowledgePoint["mastery"];
+  tags?: string[];
+  blockId?: string | null;
+  blockName?: string | null;
+}): Promise<KnowledgePoint> {
+  const data = await getData();
+  const chapter = input.chapterId ? data.chapters.find((c) => c.id === input.chapterId) : null;
+  let scopeIds: Set<number> | null = null;
+  if (chapter) {
+    scopeIds = new Set<number>([chapter.id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const c of data.chapters) {
+        if (c.parentId !== null && scopeIds.has(c.parentId) && !scopeIds.has(c.id)) {
+          scopeIds.add(c.id);
+          grew = true;
+        }
+      }
+    }
+  }
+  const scopeKps = data.knowledgePoints.filter((k) => {
+    if (k.courseId !== input.courseId) return false;
+    if (chapter) return k.chapterId !== null && scopeIds!.has(k.chapterId);
+    return k.chapterId === null;
+  });
+  const sort = scopeKps.length > 0 ? scopeKps.reduce((m, k) => Math.max(m, k.sort), 0) + 1 : 0;
+  const kp: KnowledgePoint = {
+    id: nextId(data.knowledgePoints),
+    courseId: input.courseId,
+    chapterId: chapter ? chapter.id : null,
+    blockId: input.blockId ?? null,
+    blockName: input.blockName ?? undefined,
+    name: input.name.trim(),
+    content: input.content,
+    mastery: input.mastery ?? "unlearn",
+    sourceAssetIds: "",
+    prevKpIds: "",
+    tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
+    chapterName: chapter?.name ?? "",
+    sort,
+    createTime: now(),
+  };
+  data.knowledgePoints.push(kp);
+  await saveData(data);
+  // 思源知识点区写回：新 KP 所在节点的章文档（与 AI 抽取同口径）
+  void scheduleKpRegionSync(input.courseId, effectiveNodeOf(kp, data.chapters));
+  return kp;
+}
+
 export async function deleteKnowledgePoint(id: number): Promise<void> {
   await deleteKnowledgePoints([id]);
 }
