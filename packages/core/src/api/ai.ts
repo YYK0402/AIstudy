@@ -92,18 +92,38 @@ export function isRetryableError(e: unknown): boolean {
 const DEFAULT_RETRY_DELAYS = [10000, 30000, 60000];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** 可退避重试的 AI 调用：按 delays 退避（测试可传短延时）；取消与不可重试错误立即抛出 */
+/** 可中断 sleep：每 500ms 检查一次 isAborted（取消时不空等满整个退避时长，由调用方循环顶检查上抛） */
+async function sleepInterruptible(ms: number, isAborted?: () => boolean): Promise<void> {
+  if (!isAborted) {
+    await sleep(ms);
+    return;
+  }
+  const SLICE = 500;
+  let waited = 0;
+  while (waited < ms) {
+    if (isAborted()) return;
+    await sleep(Math.min(SLICE, ms - waited));
+    waited += SLICE;
+  }
+}
+
+/** 可退避重试的 AI 调用：按 delays 退避（测试可传短延时）；取消与不可重试错误立即抛出。
+ *  第二参：delays 数组 或 isAborted（每轮调用前与退避期间检查，取消时立即抛 AiCanceledError，不空等满退避） */
 export async function callAiWithRetry(
   input: CallAiInput,
-  delays: number[] = DEFAULT_RETRY_DELAYS,
+  delaysOrIsAborted: number[] | (() => boolean) = DEFAULT_RETRY_DELAYS,
+  isAborted?: () => boolean,
 ): Promise<Awaited<ReturnType<typeof callAi>>> {
+  const delays = Array.isArray(delaysOrIsAborted) ? delaysOrIsAborted : DEFAULT_RETRY_DELAYS;
+  const abort = Array.isArray(delaysOrIsAborted) ? isAborted : delaysOrIsAborted;
   for (let attempt = 0; ; attempt++) {
+    if (abort?.()) throw new AiCanceledError();
     try {
       return await callAi(input);
     } catch (e) {
       if (e instanceof AiCanceledError) throw e;
       if (attempt >= delays.length || !isRetryableError(e)) throw e;
-      await sleep(delays[attempt]);
+      await sleepInterruptible(delays[attempt], abort);
     }
   }
 }

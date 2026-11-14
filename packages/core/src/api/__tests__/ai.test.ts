@@ -114,4 +114,22 @@ describe("callAiWithRetry 退避重试", () => {
     expect(res.content).toBe("ok");
     expect(count()).toBe(1);
   });
+
+  it("isAborted 一开始即 true：不调 AI，直接抛 AiCanceledError", async () => {
+    const count = stubCallAi(async () => ({ content: "ok", tokenIn: 1, tokenOut: 1 }));
+    await expect(callAiWithRetry(input, [1, 1], () => true)).rejects.toBeInstanceOf(AiCanceledError);
+    expect(count()).toBe(0);
+  });
+
+  it("退避期间取消：无需等满退避时长，约一个分片内抛出", async () => {
+    let aborted = false;
+    const count = stubCallAi(async () => {
+      throw new Error("HTTP 429 Too Many Requests");
+    });
+    const t0 = Date.now();
+    setTimeout(() => { aborted = true; }, 100);
+    await expect(callAiWithRetry(input, [60000], () => aborted)).rejects.toBeInstanceOf(AiCanceledError);
+    expect(Date.now() - t0).toBeLessThan(3000); // 远小于 60s 退避
+    expect(count()).toBe(1);
+  });
 });
