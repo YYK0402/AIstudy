@@ -1,15 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import type { AppData } from "../../types/appData";
 import { createEmptyData } from "../../types/appData";
 import { setBridge, type StudyBridge } from "../../bridge";
-import { buildNodeText, extractMaterialNodes, resolveExtractNodes } from "../nodeExtract";
+import { buildNodeText, buildCourseKpNames, extractMaterialNodes, resolveExtractNodes } from "../nodeExtract";
 import { listUnextractedMaterials } from "../extract";
 
 // 假桥：KP 写入走真实 saveData 假桥，AI 响应由假桥 callAi 返回固定 JSON 并计数
 const bridgeDataRef: { data: AppData } = { data: createEmptyData() };
 let callAiCount = 0;
 let saveCount = 0;
+let callAiImpl: (n: number) => Promise<{ content: string; tokenIn: number; tokenOut: number }> = async () => ({
+  content: "[]",
+  tokenIn: 0,
+  tokenOut: 0,
+});
 setBridge({
   getData: async () => bridgeDataRef.data,
   saveData: async (next: AppData) => {
@@ -17,10 +22,7 @@ setBridge({
     saveCount++;
     return { code: 0 };
   },
-  callAi: async () => {
-    callAiCount++;
-    return { content: "[]", tokenIn: 0, tokenOut: 0 };
-  },
+  callAi: async () => callAiImpl(++callAiCount),
 } as unknown as StudyBridge);
 
 // fixture：课程 1；章 1（level1）→ 节 2（level2）→ 小节 3（level3）
@@ -111,7 +113,7 @@ describe("extractMaterialNodes 来源回填（跳过节点）", () => {
     saveCount = 0;
 
     const r = await extractMaterialNodes(1, [11]);
-    expect(r).toEqual({ nodeTotal: 0, nodeDone: 0, created: 0, skippedDup: 0 });
+    expect(r).toEqual({ nodeTotal: 0, nodeDone: 0, created: 0, skippedDup: 0, emptyNodes: 0, invalidItems: 0 });
     expect(callAiCount).toBe(0); // 全跳过，无 AI 调用
     // 去重、顺序稳定：原有顺序保留，新 id 追加
     expect(bridgeDataRef.data.knowledgePoints.find((k) => k.id === 100)!.sourceAssetIds).toBe("99,11");
@@ -126,5 +128,92 @@ describe("extractMaterialNodes 来源回填（跳过节点）", () => {
     await extractMaterialNodes(1, [11]);
     expect(bridgeDataRef.data.knowledgePoints.find((k) => k.id === 100)!.sourceAssetIds).toBe("99,11");
     expect(saveCount).toBe(1);
+  });
+});
+
+describe("抽取质量可见性（M6）", () => {
+  it("AI 返回缺 description 的项计入 invalidItems，不静默丢弃", async () => {
+    const d = fixture();
+    d.providers = [{ id: 1, name: "P", baseUrl: "http://x", apiKey: "k", timeout: 30000, enabled: true, createTime: "t" }];
+    d.models = [{ id: 1, providerId: 1, modelId: "m1", displayName: "M", maxContext: null }];
+    d.taskModels = [{ taskKey: "extract_kp", modelId: 1, isGlobalDefault: false }];
+    bridgeDataRef.data = d;
+    callAiCount = 0;
+    callAiImpl = async () => ({
+      content: JSON.stringify([
+        { name: "新知识点A", description: "描述A" },
+        { name: "缺描述知识点" },
+      ]),
+      tokenIn: 0,
+      tokenOut: 0,
+    });
+    const r = await extractMaterialNodes(1, [11]);
+    expect(r.created).toBe(1);
+    expect(r.invalidItems).toBe(1);
+    expect(r.emptyNodes).toBe(0);
+  });
+
+  it("无正文节点计入 emptyNodes 且不调 AI", async () => {
+    const d = fixture();
+    d.providers = [{ id: 1, name: "P", baseUrl: "http://x", apiKey: "k", timeout: 30000, enabled: true, createTime: "t" }];
+    d.models = [{ id: 1, providerId: 1, modelId: "m1", displayName: "M", maxContext: null }];
+    d.taskModels = [{ taskKey: "extract_kp", modelId: 1, isGlobalDefault: false }];
+    // 资料 12：outline 含正文中不存在的标题（识别错位）→ 映射节点 span 未定位 → 无可用正文
+    d.chapters.push({ id: 5, courseId: 1, parentId: 4, siyuanBlockId: null, name: "第四节", level: 2, sort: 1 });
+    d.materials.push({
+      id: 12, courseId: 1, name: "教材C", fileType: "txt", assetPath: "",
+      contentText: "第三章\n有正文", headings: "[]", siyuanDocId: null, status: "parsed", createTime: "t",
+      outline: JSON.stringify([{ text: "第三章", level: 1 }, { text: "第四节", level: 2 }]), outlineStatus: "done",
+    });
+    d.tocMappings.push({ id: 7, materialId: 12, courseId: 1, materialPath: "第三章>第四节", chapterId: 5 });
+    bridgeDataRef.data = d;
+    callAiCount = 0;
+    const r = await extractMaterialNodes(1, [12]);
+    expect(r.nodeTotal).toBe(1);
+    expect(r.emptyNodes).toBe(1);
+    expect(r.created).toBe(0);
+    expect(callAiCount).toBe(0);
+  });
+});
+
+describe("extractMaterialNodes AI 限流重试（H2）", () => {
+  it("首次 429 后自动退避重试成功：抽取照常完成，不整任务失败", async () => {
+    const d = fixture();
+    d.providers = [{ id: 1, name: "P", baseUrl: "http://x", apiKey: "k", timeout: 30000, enabled: true, createTime: "t" }];
+    d.models = [{ id: 1, providerId: 1, modelId: "m1", displayName: "M", maxContext: null }];
+    d.taskModels = [{ taskKey: "extract_kp", modelId: 1, isGlobalDefault: false }];
+    bridgeDataRef.data = d;
+    callAiCount = 0;
+    callAiImpl = async (n) => {
+      if (n === 1) throw new Error("HTTP 429 Too Many Requests");
+      return { content: "[]", tokenIn: 0, tokenOut: 0 };
+    };
+    vi.useFakeTimers();
+    try {
+      const p = extractMaterialNodes(1, [11]); // 节点 2 需抽取，1 次 AI 调用
+      await vi.advanceTimersByTimeAsync(11000); // 覆盖默认 10s 首档退避
+      const r = await p;
+      expect(r.created).toBe(0);
+      expect(callAiCount).toBe(2); // 429 一次 + 重试一次
+    } finally {
+      vi.useRealTimers();
+      callAiImpl = async () => ({ content: "[]", tokenIn: 0, tokenOut: 0 });
+    }
+  });
+});
+
+
+describe("buildCourseKpNames 提示词封顶（L1）", () => {
+  it("空列表：（无）", () => {
+    expect(buildCourseKpNames([])).toBe("（无）");
+  });
+  it("未超上限：全部名称", () => {
+    expect(buildCourseKpNames([{ name: "A" }, { name: "B" }])).toBe("A、B");
+  });
+  it("超上限：取最近 500 个 + 省略说明", () => {
+    const kps = Array.from({ length: 502 }, (_, i) => ({ name: `K${i}` }));
+    const text = buildCourseKpNames(kps);
+    expect(text.startsWith("K2、K3")).toBe(true);
+    expect(text.endsWith("K501（另有 2 个已省略）")).toBe(true);
   });
 });

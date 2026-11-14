@@ -2,7 +2,7 @@
 // 节点正文 = 各贡献资料映射 span 的精确切片拼接（无模糊挂接）；
 // AI 输入带兄弟节点边界与已有 KP 名单（双层去重）；挂接 = 映射的 chapterId
 import { getData, saveData } from "./storage";
-import { callAi, AiCanceledError, findTaskBinding } from "./ai";
+import { callAiWithRetry, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import {
   alignOutlineSpans,
@@ -112,17 +112,32 @@ interface RawKp {
   description: string;
 }
 
-/** 解析 [{name, description}]（新契约，无 section）；复用 AI JSON 候选提取（围栏/包装对象容忍） */
-function parseKpItems(content: string): RawKp[] {
+/** L1：课程知识点名列表提示词装配——最多取最近 cap 个（超出加省略说明）。
+ *  提示词只辅助 AI 避重，代码级去重（isDuplicateKpName）是兜底，封顶不损失正确性 */
+export function buildCourseKpNames(courseKps: { name: string }[], cap = 500): string {
+  if (courseKps.length === 0) return "（无）";
+  if (courseKps.length <= cap) return courseKps.map((k) => k.name).join("、");
+  const shown = courseKps.slice(-cap);
+  return `${shown.map((k) => k.name).join("、")}（另有 ${courseKps.length - cap} 个已省略）`;
+}
+
+/** 解析 [{name, description}]（新契约，无 section）；复用 AI JSON 候选提取（围栏/包装对象容忍）。
+ *  invalid = 缺 name/description 的项数（M6：不再静默丢弃，由结果上抛给完成提示） */
+function parseKpItems(content: string): { items: RawKp[]; invalid: number } {
   const arr = unwrapArray(parseJsonCandidates(extractJsonCandidates(content, "array"))) as
     | Record<string, unknown>[]
     | null;
   if (!arr) throw new Error("AI 返回的知识点不是合法 JSON");
-  return arr
-    .filter((it): it is { name: string; description: string } =>
-      typeof it.name === "string" && typeof it.description === "string",
-    )
-    .map((it) => ({ name: it.name.trim(), description: it.description }));
+  const items: RawKp[] = [];
+  let invalid = 0;
+  for (const it of arr) {
+    if (typeof it.name === "string" && typeof it.description === "string") {
+      items.push({ name: it.name.trim(), description: it.description });
+    } else {
+      invalid++;
+    }
+  }
+  return { items, invalid };
 }
 
 /** 抽取单个规范节点：圈定正文（>60K 分片）→ AI → 按映射挂接 + 双层去重 */
@@ -131,8 +146,10 @@ export async function extractNodeKps(
   nodeId: number,
   onProgress?: (done: number, total: number) => void,
   isAborted?: () => boolean,
-): Promise<{ created: number; skippedDup: number }> {
-  const data = await getData();
+  /** 暂存副本（全量重抽 H3）：读写走副本，跳过 saveData 与区域同步（由调用方提交后统一调度） */
+  staging?: AppData,
+): Promise<{ created: number; skippedDup: number; invalidItems: number; emptyNode: boolean }> {
+  const data = staging ?? (await getData());
   const binding = findTaskBinding(data, "extract_kp", courseId);
   if (!binding) throw new Error("未配置「知识点抽取」模型：请到「模型配置 → 任务模型」为该任务指定模型");
   const tpl = resolvePromptTemplate(data, "extract_kp");
@@ -140,7 +157,7 @@ export async function extractNodeKps(
   if (!course) throw new Error("课程不存在或已删除");
   const chapters = data.chapters.filter((c) => c.courseId === courseId);
   const { text, materialIds } = buildNodeText(data, nodeId);
-  if (!text.trim()) return { created: 0, skippedDup: 0 };
+  if (!text.trim()) return { created: 0, skippedDup: 0, invalidItems: 0, emptyNode: true };
 
   const node = chapters.find((c) => c.id === nodeId);
   const nodePath = node ? chapterPathText(chapters, nodeId) : "";
@@ -151,15 +168,16 @@ export async function extractNodeKps(
         .map((c) => c.name)
     : [];
   const existingNodeKps = data.knowledgePoints.filter((k) => k.courseId === courseId && k.chapterId === nodeId);
-  const courseKps = data.knowledgePoints.filter((k) => k.courseId === courseId);
+  const courseKpsLine = buildCourseKpNames(data.knowledgePoints.filter((k) => k.courseId === courseId));
   const chunks = sliceNodeText(text);
 
   let raw: RawKp[] = [];
+  let invalidItems = 0;
   for (let i = 0; i < chunks.length; i++) {
     if (isAborted?.()) throw new AiCanceledError();
     onProgress?.(i, chunks.length);
     const partNote = chunks.length > 1 ? `\n（本节点正文较长，以下为第 ${i + 1}/${chunks.length} 片）` : "";
-    const res = await callAi({
+    const res = await callAiWithRetry({
       providerId: binding.providerId,
       modelId: binding.modelId,
       taskKey: "extract_kp",
@@ -173,19 +191,21 @@ export async function extractNodeKps(
             chapter: nodePath,
             siblings: siblings.length ? siblings.join("、") : "（无）",
             existingKps: existingNodeKps.map((k) => k.name).join("、") || "（无）",
-            courseKps: courseKps.map((k) => k.name).join("、") || "（无）",
+            courseKps: courseKpsLine,
             text: chunks[i] + partNote,
           }),
         },
       ],
-    });
-    raw = raw.concat(parseKpItems(res.content));
+    }, isAborted);
+    const parsed = parseKpItems(res.content);
+    raw = raw.concat(parsed.items);
+    invalidItems += parsed.invalid;
   }
   onProgress?.(chunks.length, chunks.length);
 
   // 双层去重（节点内 + 课程级）；挂接 = nodeId（映射是结构事实，无模糊匹配）
-  // 落库前重新取最新数据，防任务期间其他写入被覆盖（脏写）
-  const latest = await getData();
+  // 落库前重新取最新数据，防任务期间其他写入被覆盖（脏写）；staging 模式用副本自身
+  const latest = staging ?? (await getData());
   const courseLatest = latest.knowledgePoints.filter((k) => k.courseId === courseId);
   const nodeNames: string[] = [];
   const newKps: KnowledgePoint[] = [];
@@ -232,10 +252,10 @@ export async function extractNodeKps(
     newKps.push(newKp);
     created++;
   }
-  if (created > 0 || merged > 0) await saveData(latest);
-  // 思源知识点区写回：新增 KP 所在节点的章文档
-  for (const kp of newKps) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, latest.chapters));
-  return { created, skippedDup };
+  if ((created > 0 || merged > 0) && !staging) await saveData(latest);
+  // 思源知识点区写回：新增 KP 所在节点的章文档（staging 模式由提交方统一调度）
+  if (!staging) for (const kp of newKps) void scheduleKpRegionSync(courseId, effectiveNodeOf(kp, latest.chapters));
+  return { created, skippedDup, invalidItems, emptyNode: false };
 }
 
 /**
@@ -274,25 +294,31 @@ export async function extractMaterialNodes(
   materialIds: number[],
   onProgress?: (done: number, total: number, nodePath: string) => void,
   isAborted?: () => boolean,
-): Promise<{ nodeTotal: number; nodeDone: number; created: number; skippedDup: number }> {
-  const data = await getData();
+  /** 暂存副本（全量重抽 H3）：节点解析/回填都走副本，不落盘（由调用方原子提交） */
+  staging?: AppData,
+): Promise<{ nodeTotal: number; nodeDone: number; created: number; skippedDup: number; emptyNodes: number; invalidItems: number }> {
+  const data = staging ?? (await getData());
   const nodes = resolveExtractNodes(data, materialIds);
   let created = 0;
   let skippedDup = 0;
+  let emptyNodes = 0;
+  let invalidItems = 0;
   try {
     for (let i = 0; i < nodes.length; i++) {
       if (isAborted?.()) throw new AiCanceledError();
       const path = chapterPathText(data.chapters.filter((c) => c.courseId === courseId), nodes[i]);
       onProgress?.(i, nodes.length, path);
-      const r = await extractNodeKps(courseId, nodes[i], undefined, isAborted);
+      const r = await extractNodeKps(courseId, nodes[i], undefined, isAborted, staging);
       created += r.created;
       skippedDup += r.skippedDup;
+      emptyNodes += r.emptyNode ? 1 : 0;
+      invalidItems += r.invalidItems;
     }
   } finally {
     // 来源回填是本地数据操作、不依赖 AI：取消（上抛 AiCanceledError）时也照常执行，
     // 保证增量资料进已有节点 KP 的 sourceAssetIds（listUnextractedMaterials 覆盖判定依赖它）
-    const latest = await getData();
-    if (backfillSkippedNodeSources(latest, courseId, materialIds)) await saveData(latest);
+    const latest = staging ?? (await getData());
+    if (backfillSkippedNodeSources(latest, courseId, materialIds) && !staging) await saveData(latest);
   }
-  return { nodeTotal: nodes.length, nodeDone: nodes.length, created, skippedDup };
+  return { nodeTotal: nodes.length, nodeDone: nodes.length, created, skippedDup, emptyNodes, invalidItems };
 }
