@@ -126,21 +126,23 @@ export function buildQuizList(questions: Question[], filter: QuizFilter): Questi
   return pool.slice(0, n);
 }
 
+export interface QuestionDraft {
+  title: string;
+  options: string[];
+  answer: string;
+  analysis: string;
+  qType: QuestionType;
+  difficulty: QuestionDifficulty;
+  kpIds: number[];
+  blanks?: string;
+}
+
 export async function importQuestions(
   courseId: number,
-  drafts: Array<{
-    title: string;
-    options: string[];
-    answer: string;
-    analysis: string;
-    qType: QuestionType;
-    difficulty: QuestionDifficulty;
-    kpIds: number[];
-    blanks?: string;
-  }>,
+  drafts: QuestionDraft[],
   options?: {
     paperId?: number | null;
-    source?: "import" | "paper";
+    source?: "import" | "paper" | "material";
   },
 ): Promise<Question[]> {
   const data = await getData();

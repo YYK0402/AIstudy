@@ -85,8 +85,8 @@ export function buildNodeText(data: AppData, nodeId: number): { text: string; ma
   return { text: parts.join("\n\n"), materialIds };
 }
 
-/** 节点正文按段落边界切片（片长 ≤ NODE_TEXT_CHUNK；超长单段强制硬切） */
-function sliceNodeText(text: string): string[] {
+/** 节点正文按段落边界切片（片长 ≤ NODE_TEXT_CHUNK；超长单段强制硬切）；题目识别回落整段模式共用 */
+export function sliceNodeText(text: string): string[] {
   if (text.length <= NODE_TEXT_CHUNK) return [text];
   const paras = text.split(/\n{2,}/);
   const out: string[] = [];
