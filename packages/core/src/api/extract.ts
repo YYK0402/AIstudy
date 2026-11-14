@@ -1,7 +1,10 @@
 import type { AppData, Material } from "../types/appData";
-import { getData } from "./storage";
+import { getData, saveData } from "./storage";
 import { findTaskBinding, cancelAiCall, AiCanceledError } from "./ai";
 import { extractMaterialNodes } from "./nodeExtract";
+import { purgeKpCascade } from "./kp";
+import { effectiveNodeOf } from "../utils/kpTreeImport";
+import { scheduleKpRegionSync } from "./kpDocSync";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { materialTaskId } from "../stores/notify";
 import {
@@ -19,6 +22,10 @@ export interface ExtractKpResult {
   newCount: number;
   duplicateCount: number;
   totalChunks: number;
+  /** 无可用正文（标题后无内容）的节点数：未调 AI，完成提示可见（M6） */
+  emptyNodes: number;
+  /** AI 返回缺 name/description 的项数：未采用，完成提示可见（M6） */
+  invalidItems: number;
   errors: string[];
 }
 
@@ -56,10 +63,89 @@ export async function extractKnowledgePoints(
       (done, total, nodePath) => options?.onProgress?.(done + 1, total, nodePath),
       options?.isAborted,
     );
-    return { newCount: r.created, duplicateCount: r.skippedDup, totalChunks: r.nodeTotal, errors: [] };
+    return {
+      newCount: r.created,
+      duplicateCount: r.skippedDup,
+      totalChunks: r.nodeTotal,
+      emptyNodes: r.emptyNodes,
+      invalidItems: r.invalidItems,
+      errors: [],
+    };
   } finally {
     unmarkMaterialExtracting(materialId);
   }
+}
+
+export interface ReextractCourseResult {
+  materials: number;
+  nodes: number;
+  created: number;
+  skippedDup: number;
+  emptyNodes: number;
+  invalidItems: number;
+}
+
+/**
+ * 全量重抽（H3：暂存 + 原子提交）：
+ * 在内存副本上删除课程全部 KP（级联清理）→ 按资料顺序逐节点重抽；
+ * 全部成功才一次性 saveData（原子落库，数据库不出现「删了一半」中间态）；
+ * 任一资料失败/取消 → 丢弃副本，原知识点原样保留（旧实现先删后抽，中途失败=永久丢失）。
+ * 提交后统一调度思源 KP 区同步（staging 期间 extractNodeKps 不调度）。
+ */
+export async function reextractCourse(
+  courseId: number,
+  onProgress?: (materialIndex: number, materialTotal: number, nodePath: string) => void,
+  isAborted?: () => boolean,
+): Promise<ReextractCourseResult> {
+  const base: AppData = await getData();
+  const course = base.courses.find((c) => c.id === courseId);
+  if (!course) throw new Error("课程不存在或已删除");
+  const binding = findTaskBinding(base, "extract_kp", courseId);
+  if (!binding) throw new Error("未配置「知识点抽取」模型：请到「模型配置 → 任务模型」为该任务指定模型");
+  const mats = base.materials
+    .filter((m) => m.courseId === courseId)
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }));
+  if (mats.length === 0) throw new Error("课程没有资料，无法全量重新抽取");
+  // staging 副本：删除课程 KP（级联）后在其上抽取；base 不受影响
+  const staging: AppData = structuredClone(base);
+  purgeKpCascade(
+    staging,
+    new Set(staging.knowledgePoints.filter((k) => k.courseId === courseId).map((k) => k.id)),
+  );
+  let nodes = 0;
+  let created = 0;
+  let skippedDup = 0;
+  let emptyNodes = 0;
+  let invalidItems = 0;
+  try {
+    for (let i = 0; i < mats.length; i++) {
+      if (isAborted?.()) throw new AiCanceledError();
+      onProgress?.(i, mats.length, "");
+      const r = await extractMaterialNodes(
+        courseId,
+        [mats[i].id],
+        (_done, _total, nodePath) => onProgress?.(i, mats.length, nodePath),
+        isAborted,
+        staging,
+      );
+      nodes += r.nodeTotal;
+      created += r.created;
+      skippedDup += r.skippedDup;
+      emptyNodes += r.emptyNodes;
+      invalidItems += r.invalidItems;
+    }
+  } catch (e) {
+    // 丢弃 staging：数据库保持原样（旧 KP 未被删除）
+    throw e;
+  }
+  await saveData(staging);
+  // 提交后统一调度 KP 区同步：课程文档（null）+ 有 KP 的全部节点
+  const syncTargets = new Set<number | null>([null]);
+  for (const k of staging.knowledgePoints) {
+    if (k.courseId === courseId) syncTargets.add(effectiveNodeOf(k, staging.chapters));
+  }
+  for (const nid of syncTargets) void scheduleKpRegionSync(courseId, nid);
+  return { materials: mats.length, nodes, created, skippedDup, emptyNodes, invalidItems };
 }
 
 const extractAbortFlags = new Map<number, { aborted: boolean }>();
@@ -177,6 +263,8 @@ async function runExtractTask(
       return;
     }
     let msg = `抽取完成：新增 ${result.newCount} 个知识点，合并重复 ${result.duplicateCount} 个`;
+    if (result.emptyNodes > 0) msg += `，${result.emptyNodes} 个节点无可用正文未抽取`;
+    if (result.invalidItems > 0) msg += `，${result.invalidItems} 个 AI 返回项缺描述未采用`;
     if (result.errors.length > 0) msg += `；${result.errors.length} 块失败（${result.errors[0]}）`;
     reporter.done(msg);
   } catch (e) {
