@@ -294,7 +294,9 @@ import {
   startTocMergeTask,
   queryMaterials,
   deleteMaterial,
-  extractKnowledgePoints,
+  reextractCourse,
+  startBgTask,
+  AiCanceledError,
   isFullExtracting,
   beginFullExtract,
   endFullExtract,
@@ -1004,40 +1006,46 @@ const fullExtractLabel = computed(() => {
 async function fullReExtract() {
   const cid = currentCourseId();
   if (!cid || fullExtracting.value) return;
-  const ids = knowledgePoints.value.map((k) => k.id);
-  if (!(await confirm({ message: `全量重新抽取将先清空本课程全部 ${ids.length} 个知识点（级联清理复习节点与讲解记录），再按资料顺序重新抽取。确定继续？`, danger: true, confirmText: "重新抽取" }))) return;
+  const count = knowledgePoints.value.length;
+  if (!(await confirm({ message: `全量重新抽取将清空本课程全部 ${count} 个知识点（级联清理复习节点与讲解记录）并按资料顺序重新抽取。若中途失败，原知识点原样保留。确定继续？`, danger: true, confirmText: "重新抽取" }))) return;
   if (!beginFullExtract()) return;
   fullExtracting.value = true;
   fullExtractProgress.value = null;
+  // 铃铛任务（M4）：全量重抽纳入后台任务通知，页面刷新后僵尸检测可标记中断
+  const reporter = startBgTask({
+    taskId: `full-extract-${cid}`,
+    taskType: "full_extract",
+    label: courseStore.currentCourse?.name ?? `课程 ${cid}`,
+    courseId: cid,
+    message: "准备中…",
+  });
   try {
-    if (ids.length) await deleteKnowledgePoints(ids);
-    await loadKnowledgePoints();
-    const mats = [...materials.value];
-    let skipped = 0;
-    for (let i = 0; i < mats.length; i++) {
-      fullExtractProgress.value = { material: i + 1, total: mats.length, block: "" };
-      try {
-        await extractKnowledgePoints(mats[i].id, {
-          onProgress: (_current, _total, blockTitle) => {
-            fullExtractProgress.value = { material: i + 1, total: mats.length, block: blockTitle };
-          },
+    const r = await reextractCourse(cid, (materialIndex, materialTotal, nodePath) => {
+      fullExtractProgress.value = { material: materialIndex + 1, total: materialTotal, block: nodePath };
+      if (materialTotal > 0) {
+        reporter.progress({
+          done: materialIndex,
+          total: materialTotal,
+          message: `全量重抽：资料 ${materialIndex + 1}/${materialTotal}${nodePath ? " · " + nodePath : ""}`,
         });
-      } catch (e) {
-        // 单资料并发冲突跳过并计数，不打断全量流程；其他错误仍整体中止
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("正在抽取中")) {
-          skipped++;
-          console.warn(`全量重抽跳过资料「${mats[i].name}」：`, e);
-          continue;
-        }
-        throw e;
       }
-    }
+    });
     await loadKnowledgePoints();
-    getBridge().showMessage(skipped > 0 ? `全量重新抽取完成，${skipped} 个资料冲突已跳过` : "全量重新抽取完成");
+    let msg = `全量重新抽取完成：新增 ${r.created} 个知识点，合并重复 ${r.skippedDup} 个`;
+    if (r.emptyNodes > 0) msg += `，${r.emptyNodes} 个节点无可用正文未抽取`;
+    if (r.invalidItems > 0) msg += `，${r.invalidItems} 个 AI 返回项缺描述未采用`;
+    reporter.done(msg);
+    getBridge().showMessage(msg);
   } catch (e) {
-    console.error("全量重新抽取失败:", e);
-    getBridge().showMessage(e instanceof Error ? e.message : "全量重新抽取失败", 4000, "error");
+    if (e instanceof AiCanceledError) {
+      reporter.canceled();
+      getBridge().showMessage("已取消，知识点保持原样");
+    } else {
+      console.error("全量重新抽取失败:", e);
+      const detail = e instanceof Error ? e.message : "全量重新抽取失败";
+      reporter.fail(e, `全量重新抽取失败（原知识点已保留）：${detail}`);
+      getBridge().showMessage(`全量重新抽取失败：${detail}（原知识点已保留）`, 4000, "error");
+    }
   } finally {
     endFullExtract();
     fullExtracting.value = false;
