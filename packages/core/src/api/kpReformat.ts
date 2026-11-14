@@ -1,17 +1,25 @@
-// 批量整理知识点内容：预筛单段长文本 → AI 重写为结构化排版（并发 3，只调排版不改信息）；
+// 批量整理知识点内容：预筛密排长内容（单段无换行，或多行中分号连排并列项）→ AI 重写为结构化排版（并发 2，只调排版不改信息）；
 // 每条落库前重取最新数据防脏写（对齐 nodeExtract 模式）；已结构化内容预筛跳过
 import { getData, saveData } from "./storage";
 import { callAi, callAiWithRetry, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { extractJsonCandidates, parseJsonCandidates } from "../utils/aiJson";
 
-/** 预筛：仅整理单段长内容（超阈值、无换行、非列表开头）；已结构化/过短的跳过 */
+const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+/;
+
+/** 密排行：单行内 ≥2 个分号分隔符（≥3 条并列项连排）；行首列表标记不影响判定（"1. 标签：a；b；c" 仍算密排） */
+function isDenseLine(line: string): boolean {
+  const t = line.trim().replace(LIST_MARKER, "");
+  return t.split("；").length >= 3;
+}
+
+/** 预筛：整理密排长内容——单段（无换行、非列表开头），或多行中 ≥2 行密排；已结构化/过短的跳过 */
 export function needsReformat(content: string, minLen = 60): boolean {
   const t = content.trim();
   if (t.length < minLen) return false;
-  if (t.includes("\n")) return false;
-  if (/^\s*([-*+]|\d+[.)])\s+/.test(t)) return false;
-  return true;
+  const lines = t.split("\n");
+  if (lines.length <= 1) return !LIST_MARKER.test(t);
+  return lines.filter(isDenseLine).length >= 2;
 }
 
 export interface ReformatProgress {

@@ -79,6 +79,46 @@ describe("needsReformat 预筛", () => {
   });
 });
 
+describe("needsReformat 预筛（多行密排）", () => {
+  it("分号连排词对列表（多行密排段落）→ 需整理", () => {
+    const c =
+      "v+ment：achieve-achievement 成就；advertise-advertisement 广告；agree-agreement 同意；amuse-amusement 娱乐" +
+      "\nv+ion：inform-information 内容；invent-invention 发明；predict-prediction 预言；impress-impression 印象" +
+      "\n其他：fail-failure；sit-seat；believe-belief；behave-behavior";
+    expect(needsReformat(c)).toBe(true);
+  });
+  it("编号行行内仍密排 → 需整理", () => {
+    const c =
+      "1. 形容词+ly：effective-effectively；recent-recently；real-really；bad-badly" +
+      "\n2. -le 结尾去 e 加 y：comfortable-comfortably；gentle-gently；possible-possibly";
+    expect(needsReformat(c)).toBe(true);
+  });
+  it("列表项行内多条并列分号连排 → 需整理", () => {
+    const c =
+      "- 名词 n.；动词 v.（及物 vt. / 不及物 vi.）；形容词 adj.；副词 adv." +
+      "\n- 数词 num.；连接词 conj.；代词 pron.；介词 prep.；冠词 art.";
+    expect(needsReformat(c)).toBe(true);
+  });
+  it("每行一条的列表 → 已结构化，跳过", () => {
+    const c =
+      "- fortunately—unfortunately 不幸地；\n- satisfaction—dissatisfaction 不满；\n- patience—impatience 不耐烦；\n- able—unable 不能的；\n- happy—unhappy 不开心的；\n- possible—impossible 不可能的；\n- believable—unbelievable 难以置信的。";
+    expect(needsReformat(c)).toBe(false);
+  });
+  it("散文每行至多 1 个分号 → 跳过", () => {
+    const c =
+      "由关系词引导的从句，句法功能多做定语（也称关系从句、形容词性从句）。" +
+      "\n规则：关系从句的时态由语境决定；没有固定模板可套。";
+    expect(needsReformat(c)).toBe(false);
+  });
+  it("仅 1 行密排 → 保守跳过", () => {
+    const c =
+      "标签：甲项说明；乙项说明；丙项说明；丁项说明" +
+      "\n正文说明第一行，描述一种较长的使用情境与适用条件。" +
+      "\n正文说明第二行，描述另一种较长的使用情境与适用条件。";
+    expect(needsReformat(c)).toBe(false);
+  });
+});
+
 describe("parseReformatContent", () => {
   it("裸对象 / 围栏均能解析", () => {
     expect(parseReformatContent('{"content": "abc"}')).toBe("abc");
