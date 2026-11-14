@@ -1,7 +1,7 @@
 // 阶段③ 目录语义合并：既有课程章节树为种子 → 逐资料顺序调 AI（merge_toc）把资料 outline
 // 合并进规范树 → 完整规范树 + outline 节点→规范节点映射（后台任务，完成后派发 toc-merged 事件）
 import { getData } from "./storage";
-import { callAi, cancelAiCall, AiCanceledError, findTaskBinding } from "./ai";
+import { callAiWithRetry, cancelAiCall, AiCanceledError, findTaskBinding } from "./ai";
 import { resolvePromptTemplate, renderPrompt } from "./promptTemplates";
 import { startBgTask, type BgTaskReporter } from "./bgTask";
 import { queryMaterials } from "./material";
@@ -12,6 +12,9 @@ import type { Chapter } from "../types/appData";
 
 /** 单次合并调用可携带的 outline 节点上限（超过按顶层边界拆片顺序合） */
 const MAX_OUTLINE_PER_CALL = 150;
+// M5 护栏：章节树 + 本片段大纲的 prompt 体积上限（字符）。超过则 fail-loud 报「章节树过大」，
+// 不赌模型上下文窗口（outline 侧已按 150 节点分片，此处管树侧）
+const MAX_MERGE_PROMPT_CHARS = 20000;
 
 /** 合并完成事件：detail = { courseId, result: MergeResult }；课程视图监听后打开预览弹窗（api 层不依赖组件层） */
 export const TOC_MERGED_EVENT = "siyuan-ai-study:toc-merged";
@@ -37,6 +40,8 @@ export interface RawMapping {
 export interface MergeResult {
   nodes: MergeNode[];
   mappings: RawMapping[];
+  /** 本轮成功完成合并的资料 id（失败的在 failed，不含）；落库据此确定映射替换范围（子集合并不清未处理资料） */
+  processed: number[];
   failed: { materialName: string; reason: string; outline: OutlineNode[] }[];
 }
 
@@ -194,6 +199,7 @@ export async function mergeCourseToc(
 
   let nodes = seedNodesFromChapters(data.chapters, courseId);
   const mappings: RawMapping[] = [];
+  const processed: number[] = [];
   const failed: MergeResult["failed"] = [];
 
   for (let i = 0; i < mats.length; i++) {
@@ -213,7 +219,12 @@ export async function mergeCourseToc(
           ? nodes.map((n) => `L${levelOf(nodes, n.id)} ${n.name}`).join("\n")
           : "（空，课程还没有章节树）";
         const outlineText = part.nodes.map((h, j) => `[${part.start + j}] L${h.level} ${h.text}`).join("\n");
-        const res = await callAi({
+        if (treeText.length + outlineText.length > MAX_MERGE_PROMPT_CHARS) {
+          throw new Error(
+            `章节树过大（${nodes.length} 节点），超出目录合并单次处理上限。请拆分课程章节（或删去冗余章节）后重新识别`,
+          );
+        }
+        const res = await callAiWithRetry({
           providerId: binding.providerId,
           modelId: binding.modelId,
           taskKey: "merge_toc",
@@ -222,7 +233,7 @@ export async function mergeCourseToc(
             { role: "system", content: renderPrompt(tpl.system, {}) },
             { role: "user", content: renderPrompt(tpl.user, { tree: treeText, materialName: mat.name, outline: outlineText }) },
           ],
-        });
+        }, isAborted);
         const parsed = parseMergeResponse(res.content, nodes.length, part.nodes.length);
         // chapterId 侧信道：旧 id 继承，新 id 为 null
         const oldById = new Map(nodes.map((n) => [n.id, n.chapterId]));
@@ -231,6 +242,7 @@ export async function mergeCourseToc(
           mappings.push({ materialId: mat.id, materialSeq: part.start + mp.seq, nodeId: mp.node });
         }
       }
+      processed.push(mat.id);
     } catch (e) {
       if (e instanceof AiCanceledError) throw e;
       // outline 用当前值（补跑②后的新结果；未补跑时等价 outlineOf(mat)）
@@ -238,7 +250,7 @@ export async function mergeCourseToc(
     }
   }
   onProgress?.(mats.length, mats.length, "merge");
-  return { nodes, mappings, failed };
+  return { nodes, mappings, processed, failed };
 }
 
 // 后台任务：模块级 Set 防重入 + flag Map 协作取消（同一课程串行，多课程并行）

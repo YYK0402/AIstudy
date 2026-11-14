@@ -148,3 +148,112 @@ describe("splitOutlineForMerge", () => {
     expect(cursor).toBe(outline.length);
   });
 });
+
+// ===== mergeCourseToc 编排：processed/failed 归类（假桥 callAi） =====
+import { setBridge } from "../../bridge";
+import type { StudyBridge } from "../../bridge/types";
+import type { AppData, Material } from "../../types/appData";
+import { createEmptyData } from "../../types/appData";
+import { mergeCourseToc } from "../tocMerge";
+
+function matBase(id: number, name: string): Material {
+  return {
+    id, courseId: 1, name, fileType: "txt", assetPath: "",
+    contentText: "第一章\n正文\n1.1\n正文2",
+    headings: "[]", siyuanDocId: null, status: "parsed", createTime: "2026-01-01T00:00:00Z",
+    outline: JSON.stringify([{ text: "第一章", level: 1 }, { text: "1.1", level: 2 }]),
+    outlineStatus: "done",
+  };
+}
+
+describe("mergeCourseToc processed/failed 归类", () => {
+  it("成功资料进 processed；失败资料进 failed 且不进 processed", async () => {
+    const dataRef: { data: AppData } = {
+      data: {
+        ...createEmptyData(),
+        courses: [
+          { id: 1, siyuanDocId: null, name: "C", description: "", target: "", totalCycle: "", status: "active", createTime: "t", modelId: null },
+        ],
+        chapters: [
+          { id: 1, courseId: 1, parentId: null, siyuanBlockId: null, name: "第一章", level: 1, sort: 1 },
+        ],
+        materials: [matBase(10, "教材A"), matBase(11, "教材B")],
+        providers: [
+          { id: 1, name: "P", baseUrl: "http://x", apiKey: "k", timeout: 30000, enabled: true, createTime: "t" },
+        ],
+        models: [
+          { id: 1, providerId: 1, modelId: "m1", displayName: "M", maxContext: null },
+        ],
+        taskModels: [
+          { taskKey: "merge_toc", modelId: 1, isGlobalDefault: false },
+        ],
+      },
+    };
+    const valid = `{"nodes": [
+      {"id": 0, "parent": null, "name": "第一章", "variants": []},
+      {"id": 1, "parent": 0, "name": "1.1", "variants": []}
+    ], "mappings": [{"seq": 0, "node": 0}, {"seq": 1, "node": 1}]}`;
+    let call = 0;
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (d: AppData) => {
+        dataRef.data = d;
+        return { code: 0 };
+      },
+      callAi: async () => {
+        call++;
+        if (call === 1) return { content: valid, tokenIn: 0, tokenOut: 0 };
+        throw new Error("HTTP 418 teapot");
+      },
+    } as unknown as StudyBridge);
+    const res = await mergeCourseToc(1);
+    expect(res.processed).toEqual([10]);
+    expect(res.failed).toHaveLength(1);
+    expect(res.failed[0].materialName).toBe("教材B");
+  });
+});
+
+
+describe("mergeCourseToc 体积护栏（M5）", () => {
+  it("章节树过大：不调 AI，fail-loud 报「章节树过大」", async () => {
+    const dataRef: { data: AppData } = {
+      data: {
+        ...createEmptyData(),
+        courses: [
+          { id: 1, siyuanDocId: null, name: "C", description: "", target: "", totalCycle: "", status: "active", createTime: "t", modelId: null },
+        ],
+        chapters: Array.from({ length: 1600 }, (_, i) => ({
+          id: i + 1, courseId: 1, parentId: null, siyuanBlockId: null,
+          name: `第${i}章 这是一个比较长的章节标题`, level: 1, sort: i,
+        })),
+        materials: [matBase(10, "教材A")],
+        providers: [
+          { id: 1, name: "P", baseUrl: "http://x", apiKey: "k", timeout: 30000, enabled: true, createTime: "t" },
+        ],
+        models: [
+          { id: 1, providerId: 1, modelId: "m1", displayName: "M", maxContext: null },
+        ],
+        taskModels: [
+          { taskKey: "merge_toc", modelId: 1, isGlobalDefault: false },
+        ],
+      },
+    };
+    let called = 0;
+    setBridge({
+      getData: async () => dataRef.data,
+      saveData: async (d: AppData) => {
+        dataRef.data = d;
+        return { code: 0 };
+      },
+      callAi: async () => {
+        called++;
+        return { content: "[]", tokenIn: 0, tokenOut: 0 };
+      },
+    } as unknown as StudyBridge);
+    const res = await mergeCourseToc(1);
+    expect(called).toBe(0);
+    expect(res.processed).toEqual([]);
+    expect(res.failed).toHaveLength(1);
+    expect(res.failed[0].reason).toMatch(/章节树过大/);
+  });
+});
