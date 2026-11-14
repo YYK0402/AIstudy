@@ -79,6 +79,12 @@ export interface StudyBridge {
   uploadAsset(file: File): Promise<string>;
   removeAsset(path: string): Promise<void>;
   /**
+   * 校验 assetPath 是否为安全的「同源可 fetch 路径」（防数据被污染后发起任意请求）。
+   * 各端资源路径形态不同（思源 /data|/storage，飞牛 api/assets|api/nas），core 不感知；
+   * 未实现时回退 core 的思源规则。
+   */
+  isValidAssetPath?(path: string): boolean;
+  /**
    * 打开宿主系统文件选择器选取 NAS 文件（选择即自动授权，不复制副本）。
    * 仅 capabilities.nasFiles 为 true 的宿主可用；用户取消返回空数组。
    */

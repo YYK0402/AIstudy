@@ -19,7 +19,7 @@ import { nextId, now } from "./format";
 import { getData, saveData } from "./storage";
 import { uploadAsset } from "./material";
 import { getBridgeSafe } from "@/bridge";
-import { isSafeAssetPath } from "../utils/assetPath";
+import { isValidAssetPath } from "../utils/assetPath";
 import { nextCourseId } from "../utils/courseFileIds";
 
 export const PACKAGE_FORMAT = "ai-study-course";
@@ -311,7 +311,7 @@ export async function buildCoursePackageZip(
       if (!m.assetPath) continue; // 纯文本资料，无原始文件
       const orig = data.materials.find((x) => x.id === m.id);
       if (!orig?.assetPath) continue;
-      if (!isSafeAssetPath(orig.assetPath)) continue; // 非法路径跳过（保留文本）
+      if (!isValidAssetPath(orig.assetPath)) continue; // 非法路径跳过（保留文本）
       try {
         const res = await fetch(orig.assetPath);
         if (!res.ok) continue;

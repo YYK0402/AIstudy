@@ -139,6 +139,30 @@
       throw new Error(NO_DOCS);
     },
     isValidDocRef: () => false,
+    // 飞牛资源路径形态：上传件 api/assets/file?name=<时间戳-uuid.ext>；NAS 引用 api/nas/file?path=<编码绝对路径>
+    // 仅允许同源相对路径，拒绝协议注入 / 路径穿越；服务端仍会二次校验权限与文件名
+    isValidAssetPath: (path) => {
+      if (typeof path !== "string" || !path || path.includes("..") || /^[a-z][a-z0-9+.-]*:/i.test(path)) {
+        return false;
+      }
+      if (/^api\/assets\/file\?name=[^&]+$/.test(path)) {
+        try {
+          const name = decodeURIComponent(path.slice("api/assets/file?name=".length));
+          return /^\d{13}-[a-f0-9]{8}\.[a-z0-9]{1,8}$/i.test(name);
+        } catch {
+          return false;
+        }
+      }
+      if (path.startsWith("api/nas/file?path=")) {
+        try {
+          const p = decodeURIComponent(path.slice("api/nas/file?path=".length));
+          return p.startsWith("/");
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    },
     uploadAsset: async (file) => {
       const fd = new FormData();
       fd.append("file", file);

@@ -18,6 +18,7 @@ import type { AiRetryFailInfo } from "../../core/src/aiRetry";
 import { shouldRejectEmptyOverwrite } from "../../core/src/utils/emptyGuard";
 import { parseCourseFileIds } from "../../core/src/utils/courseFileIds";
 import { migratePassageQuestions } from "../../core/src/utils/passageMigration";
+import { isSafeAssetPath } from "../../core/src/utils/assetPath";
 import { applyRetention } from "./retention";
 import { safeJsonParse, syTreeToMarkdown } from "./syMarkdown";
 import type { SyNode } from "./syMarkdown";
@@ -273,6 +274,7 @@ export default class AiStudyPlugin extends Plugin {
       isValidDocRef: (ref: string) => {
         return /^\d{14}-[0-9a-z]{7}$/.test(ref);
       },
+      isValidAssetPath: (path: string) => isSafeAssetPath(path),
       uploadAsset: async (file: File) => {
         return await this.handleUploadAsset(file);
       },
