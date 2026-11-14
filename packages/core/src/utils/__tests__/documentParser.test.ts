@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregatePdfRows, sortSlideNames } from "../documentParser";
+import JSZip from "jszip";
+import { aggregatePdfRows, pdfContentMargin, parseDocument, sortSlideNames } from "../documentParser";
 
 describe("sortSlideNames（U3：pptx 页码数值排序）", () => {
   it("slide10 排在 slide2 之后（数值序而非字典序）", () => {
@@ -52,5 +53,70 @@ describe("aggregatePdfRows（y/3 桶化行聚合）", () => {
     const fast = aggregatePdfRows(parts);
     expect(fast.map((r) => r.y)).toEqual(naive.map((r) => r.y));
     expect(fast.map((r) => r.parts.map((p) => p.str))).toEqual(naive.map((r) => r.parts.map((p) => p.str)));
+  });
+});
+
+import { extractHeadingsFromMarkdown } from "../documentParser";
+
+describe("extractHeadingsFromMarkdown 编号标题识别（M1 放宽）", () => {
+  const levels = (md: string) => extractHeadingsFromMarkdown(md).map((h) => `${h.level}:${h.text}`);
+
+  it("「5.3项目成本估算」（编号后直接跟中文）→ 节标题", () => {
+    expect(levels("5.3项目成本估算\n正文内容")).toEqual(["2:5.3项目成本估算"]);
+  });
+  it("「一、项目背景」（顿号后无空格）→ 子标题", () => {
+    expect(levels("一、项目背景\n正文内容")).toEqual(["3:一、项目背景"]);
+  });
+  it("「3.14倍是圆周率的近似值。」（句末标点）→ 正文，不识别", () => {
+    expect(levels("3.14倍是圆周率的近似值。\n下一句")).toEqual([]);
+  });
+  it("回归：「5.3 项目成本估算」（编号后带空格）仍识别", () => {
+    expect(levels("5.3 项目成本估算\n正文")).toEqual(["2:5.3 项目成本估算"]);
+  });
+  it("回归：「一、 项目背景」（顿号后带空格）仍识别", () => {
+    expect(levels("一、 项目背景\n正文")).toEqual(["3:一、 项目背景"]);
+  });
+  it("回归：「第5章 项目成本管理」→ 章", () => {
+    expect(levels("第5章 项目成本管理\n正文")).toEqual(["1:第5章 项目成本管理"]);
+  });
+  it("超长编号行（>40 字）→ 不识别（正文）", () => {
+    expect(levels("5.3 " + "长".repeat(40))).toEqual([]);
+  });
+});
+
+
+describe("pdfContentMargin 相对页边距（L2）", () => {
+  it("页高 8%，最小 40pt", () => {
+    expect(pdfContentMargin(842)).toBe(67); // A4
+    expect(pdfContentMargin(792)).toBe(63); // Letter
+    expect(pdfContentMargin(100)).toBe(40); // 小页面取下限
+  });
+});
+
+describe("parseDocument pptx 标题处理（L4）", () => {
+  async function pptxFile(slideXml: string): Promise<File> {
+    const zip = new JSZip();
+    zip.file("ppt/slides/slide1.xml", slideXml);
+    const buf = await zip.generateAsync({ type: "arraybuffer" });
+    return new File([buf], "deck.pptx");
+  }
+  const sp = (ph: string, paras: string[]) =>
+    `<p:sp><p:nvSpPr><p:ph type="${ph}"/></p:nvSpPr><p:txBody>${paras
+      .map((t) => `<a:p><a:t>${t}</a:t></a:p>`)
+      .join("")}</p:txBody></p:sp>`;
+
+  it("与标题同名的正文形状不被误删", async () => {
+    const xml = sp("title", ["项目背景"]) + sp("body", ["项目背景"]) + sp("body", ["详细说明"]);
+    const r = await parseDocument(await pptxFile(xml));
+    expect(r.headings).toEqual([{ level: 1, text: "项目背景" }]);
+    expect(r.contentText).toContain("# 项目背景\n\n项目背景\n\n详细说明");
+  });
+
+  it("无占位符：第一个形状作标题且只出现一次（不进正文）", async () => {
+    const xml = sp("", ["第一章"]) + sp("", ["内容A"]);
+    const r = await parseDocument(await pptxFile(xml));
+    expect(r.headings).toEqual([{ level: 1, text: "第一章" }]);
+    expect(r.contentText.split("第一章").length - 1).toBe(1);
+    expect(r.contentText).toContain("内容A");
   });
 });

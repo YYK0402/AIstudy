@@ -36,10 +36,15 @@ function detectHeadingLevel(text: string): number {
   if (/^第[一二三四五六七八九十百\d]+[章部编]/.test(text)) return 1;
   // 节：第X节
   if (/^第[一二三四五六七八九十百\d]+节/.test(text)) return 2;
-  // 节：X.X / X.X.X
-  if (/^\d+(\.\d+){1,2}[\s、．.．]/.test(text)) return 2;
-  // 子标题：一、二、三、四、...
-  if (/^[一二三四五六七八九十]+[、.．．]\s/.test(text)) return 3;
+  // 节：X.X / X.X.X——编号后可带分隔符，也可直接跟中文/字母（「5.3项目成本估算」）；
+  // 守卫：长行或句末标点按正文（「3.14倍是近似值。」类小数句）。残留：无标点的短小数句可能误判（best-effort）
+  if (
+    /^\d+(\.\d+){1,2}(?:[\s、．.．]|(?=[\u4e00-\u9fa5A-Za-z]))/.test(text) &&
+    text.length <= 40 &&
+    !/[。；！？!?，,]$/.test(text)
+  ) return 2;
+  // 子标题：一、二、三、四、...（顿号后不强制空格：「一、项目背景」）
+  if (/^[一二三四五六七八九十]+[、.．．]\s*\S/.test(text)) return 3;
   // 子标题：（一）（二）（三）...
   if (/^（[一二三四五六七八九十]+）\s?/.test(text)) return 3;
   return 0;
@@ -129,6 +134,11 @@ export function aggregatePdfRows(parts: PdfRowPart[]): Array<{ y: number; parts:
   return rows;
 }
 
+/** PDF 页眉/页脚过滤边距（L2）：页高的 8%、最小 40pt——固定 70pt 在大版面页面会误裁正文 */
+export function pdfContentMargin(pageHeight: number): number {
+  return Math.max(40, Math.round(pageHeight * 0.08));
+}
+
 async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   // 聚合所有行：每行 = { 文本, 字号, 页码, 水平中心, 页面宽度 }
@@ -158,7 +168,7 @@ async function parsePdf(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
           height: Math.abs(it.transform?.[3] ?? it.height ?? 12),
           width: it.width ?? 0,
         }))
-        .filter((it) => it.y <= pageHeight - 70 && it.y >= 70),
+         .filter((it) => it.y <= pageHeight - pdfContentMargin(pageHeight) && it.y >= pdfContentMargin(pageHeight)),
     );
     // pdfjs 的 y 坐标从下往上（原点在左下角），降序排序 = 从上往下的视觉顺序
     rows.sort((a, b) => b.y - a.y);
@@ -291,13 +301,13 @@ async function parsePptx(arrayBuffer: ArrayBuffer): Promise<ParsedContent> {
   for (const name of slideNames) {
     const xml = await zip.files[name].async("string");
     const shapes = extractPptxShapes(xml);
-    // 标题占位符优先；无占位符时用第一个非空形状作为标题
-    const titleShape = shapes.find((s) => s.type === "title" || s.type === "ctrTitle" || s.type === "subTitle");
-    const title = titleShape ? titleShape.text : shapes[0]?.text;
-    const bodies = shapes
-      .filter((s) => s !== titleShape)
-      .filter((s) => s.text !== title)
-      .map((s) => s.text);
+    // 标题占位符优先；无占位符时用第一个形状作为标题（L4：只按引用排除标题形状本身，
+    // 不用文本相等删形状——那会误删正文里与标题同名的合法内容）
+    const titleShape =
+      shapes.find((s) => s.type === "title" || s.type === "ctrTitle" || s.type === "subTitle") ??
+      (shapes[0]?.text ? shapes[0] : undefined);
+    const title = titleShape?.text;
+    const bodies = shapes.filter((s) => s !== titleShape).map((s) => s.text);
     if (title) {
       markdown += `# ${title}\n\n`;
       headings.push({ level: 1, text: title });
