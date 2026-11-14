@@ -161,6 +161,7 @@ const TASK_TYPE_LABELS: Record<BgTaskType, string> = {
   extract: "知识点抽取",
   qextract: "题目识别",
   toc: "目录合并",
+  full_extract: "全量重抽",
   gen_question: "AI 出题",
   gen_flashcard: "AI 闪卡",
   gen_plan: "AI 学习计划",

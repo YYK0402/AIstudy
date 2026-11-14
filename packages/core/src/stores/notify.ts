@@ -4,7 +4,7 @@ import { computed, onScopeDispose, ref } from "vue";
 import { getBridge, getBridgeSafe } from "@/bridge";
 
 export type BgTaskStatus = "running" | "done" | "failed" | "canceled";
-export type BgTaskType = "organize" | "extract" | "qextract" | "toc" | "gen_question" | "gen_flashcard" | "gen_plan";
+export type BgTaskType = "organize" | "extract" | "qextract" | "toc" | "full_extract" | "gen_question" | "gen_flashcard" | "gen_plan";
 
 export interface BgTaskState {
   /** 唯一键：organize-{materialId} / extract-{materialId} / course-{courseId}-toc / gen_question-{courseId} / gen_flashcard-{courseId} / gen_plan-{courseId} */
@@ -48,6 +48,7 @@ function isBgTaskType(v: unknown): v is BgTaskType {
     v === "extract" ||
     v === "qextract" ||
     v === "toc" ||
+    v === "full_extract" ||
     v === "gen_question" ||
     v === "gen_flashcard" ||
     v === "gen_plan"
